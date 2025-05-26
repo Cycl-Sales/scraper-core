@@ -1,0 +1,180 @@
+<odoo>
+    <data>
+        <!-- Market Size Views -->
+        <record id="view_market_size_list" model="ir.ui.view">
+            <field name="name">market.size.list</field>
+            <field name="model">market.size</field>
+            <field name="arch" type="xml">
+                <list string="Market Sizes">
+                    <field name="name"/>
+                    <field name="capacity"/>
+                    <field name="price" widget="monetary" options="{'currency_field': 'currency_id'}"/>
+                </list>
+            </field>
+        </record>
+        <record id="view_market_size_form" model="ir.ui.view">
+            <field name="name">market.size.form</field>
+            <field name="model">market.size</field>
+            <field name="arch" type="xml">
+                <form string="Market Size">
+                    <sheet>
+                        <group>
+                            <field name="name"/>
+                            <field name="capacity"/>
+                            <field name="price" widget="monetary" options="{'currency_field': 'currency_id'}"/>
+                            <field name="currency_id"/>
+                        </group>
+                        <group>
+                            <field name="user_ids" widget="many2many_tags"/>
+                        </group>
+                    </sheet>
+                </form>
+            </field>
+        </record>
+
+        <!-- Market Location Views -->
+        <record id="view_market_location_list" model="ir.ui.view">
+            <field name="name">market.location.list</field>
+            <field name="model">market.location</field>
+            <field name="arch" type="xml">
+                <list string="Market Locations">
+                    <field name="city_address"/>
+                    <field name="market_size_id"/>
+                    <field name="zipcode_ids"  widget="many2many_tags"/>
+                    <field name="population"/>
+                </list>
+            </field>
+        </record>
+        <record id="view_market_location_form" model="ir.ui.view">
+            <field name="name">market.location.form</field>
+            <field name="model">market.location</field>
+            <field name="arch" type="xml">
+                <form string="Market Location">
+                    <sheet>
+                        <group>
+                            <field name="city_address"/>
+                            <field name="market_size_id"/> 
+                        </group>
+                        <group>
+                            <field name="user_ids" widget="many2many_tags"/>
+                        </group>
+                        <group>
+                            <field name="zipcode_ids"  widget="many2many_tags"/>
+                        </group>
+                    </sheet>
+                </form>
+            </field>
+        </record>
+
+        <!-- US ZIP Code Views -->
+        <record id="view_us_zipcode_list" model="ir.ui.view">
+            <field name="name">us.zipcode.list</field>
+            <field name="model">us.zipcode</field>
+            <field name="arch" type="xml">
+                <list string="US ZIP Codes">
+                    <field name="zip_code"/>
+                    <field name="city"/>
+                    <field name="state"/>
+                    <field name="county_fips"/>
+                    <field name="population"/>
+                    <field name="market_location_id"/>
+                </list>
+            </field>
+        </record>
+        <record id="view_us_zipcode_form" model="ir.ui.view">
+            <field name="name">us.zipcode.form</field>
+            <field name="model">us.zipcode</field>
+            <field name="arch" type="xml">
+                <form string="US ZIP Code">
+                    <sheet>
+                        <group>
+                            <field name="zip_code"/>
+                            <field name="city"/>
+                            <field name="state"/>
+                            <field name="county_fips"/>
+                            <field name="population"/>
+                            <field name="market_location_id"/>
+                        </group>
+                    </sheet>
+                </form>
+            </field>
+        </record>
+        <record id="action_market_size" model="ir.actions.act_window">
+            <field name="name">Market Sizes</field>
+            <field name="res_model">market.size</field>
+            <field name="view_mode">list,form</field>
+        </record>
+        <record id="action_market_location" model="ir.actions.act_window">
+            <field name="name">Market Locations</field>
+            <field name="res_model">market.location</field>
+            <field name="view_mode">list,form</field>
+        </record>
+        <record id="action_us_zipcode" model="ir.actions.act_window">
+            <field name="name">US ZIP Codes</field>
+            <field name="res_model">us.zipcode</field>
+            <field name="view_mode">list,form</field>
+        </record>
+
+        <!-- US ZIP Code Reference Views -->
+        <record id="view_us_zipcode_reference_list" model="ir.ui.view">
+            <field name="name">us.zipcode.reference.list</field>
+            <field name="model">us.zipcode.reference</field>
+            <field name="arch" type="xml">
+                <list string="ZIP Code Reference">
+                    <field name="zip"/>
+                    <field name="primary_city"/>
+                    <field name="state"/>
+                    <field name="county"/>
+                    <field name="synced"/>
+                    <field name="sync_status"/>
+                </list>
+            </field>
+        </record>
+        <record id="view_us_zipcode_reference_form" model="ir.ui.view">
+            <field name="name">us.zipcode.reference.form</field>
+            <field name="model">us.zipcode.reference</field>
+            <field name="arch" type="xml">
+                <form string="ZIP Code Reference">
+                    <sheet>
+                        <group>
+                            <field name="zip"/>
+                            <field name="type"/>
+                            <field name="decommissioned"/>
+                            <field name="primary_city"/>
+                            <field name="acceptable_cities"/>
+                            <field name="unacceptable_cities"/>
+                            <field name="state"/>
+                            <field name="county"/>
+                            <field name="timezone"/>
+                            <field name="area_codes"/>
+                            <field name="world_region"/>
+                            <field name="country"/>
+                            <field name="latitude"/>
+                            <field name="longitude"/>
+                            <field name="irs_estimated_population"/>
+                            <field name="synced"/>
+                            <field name="sync_status"/>
+                        </group>
+                    </sheet>
+                </form>
+            </field>
+        </record>
+        <record id="action_us_zipcode_reference" model="ir.actions.act_window">
+            <field name="name">ZIP Code Reference</field>
+            <field name="res_model">us.zipcode.reference</field>
+            <field name="view_mode">list,form</field>
+        </record>
+        <menuitem id="menu_us_zipcode_reference" name="ZIP Code Reference" parent="menu_zillow_configurations" action="action_us_zipcode_reference" sequence="97"/>
+
+        <!-- New ir.cron record -->
+        <record id="ir_cron_us_zipcode_reference_fetch" model="ir.cron">
+            <field name="name">Fetch US ZIP Codes (Batch, API)</field>
+            <field name="model_id" ref="model_us_zipcode_reference"/>
+            <field name="state">code</field>
+            <field name="code">model.cron_fetch_zipcodes(batch_size=10)</field>
+            <field name="interval_number">15</field>
+            <field name="interval_type">minutes</field>
+            <field name="active">True</field>
+        </record>
+    </data>
+</odoo> 

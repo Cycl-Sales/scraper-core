@@ -1,0 +1,1626 @@
+import React, { useState, useEffect } from 'react';
+import type { ChangeEvent } from 'react';
+import {
+  TextField,
+  Button,
+  Box,
+  Typography,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
+  Chip,
+  createTheme,
+  ThemeProvider,
+  CircularProgress,
+  Alert,
+  Checkbox,
+  Link,
+  Pagination,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  OutlinedInput,
+  InputAdornment,
+  IconButton,
+  Menu,
+  RadioGroup,
+  Radio,
+  FormControlLabel,
+  ToggleButton,
+  Switch,
+} from '@mui/material';
+import type { SelectChangeEvent } from '@mui/material';
+import FilterListIcon from '@mui/icons-material/FilterList';
+import { zillowService } from './services/zillowService';
+import type { ZillowProperty, SearchParams } from './services/zillowService';
+import SearchIcon from '@mui/icons-material/Search';
+import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
+import { ArrowUpward, ArrowDownward } from '@mui/icons-material';
+import SendIcon from '@mui/icons-material/Send';
+import CheckIcon from '@mui/icons-material/CheckCircle';
+import { styled } from '@mui/material/styles';
+import type { SwitchProps } from '@mui/material/Switch';
+import TuneIcon from '@mui/icons-material/Tune';
+import Skeleton from '@mui/material/Skeleton';
+
+const theme = createTheme({
+  palette: {
+    mode: 'light',
+    background: {
+      default: '#f5f6fa',
+      paper: '#fff',
+    },
+  },
+});
+
+// MUI iOS-style Switch
+const IOSSwitch = styled((props: SwitchProps) => (
+  <Switch focusVisibleClassName=".Mui-focusVisible" disableRipple {...props} />
+))(({ theme }) => ({
+  width: 42,
+  height: 26,
+  padding: 0,
+  '& .MuiSwitch-switchBase': {
+    padding: 0,
+    margin: 2,
+    transitionDuration: '300ms',
+    '&.Mui-checked': {
+      transform: 'translateX(16px)',
+      color: '#fff',
+      '& + .MuiSwitch-track': {
+        backgroundColor: '#65C466',
+        opacity: 1,
+        border: 0,
+        ...(theme.palette.mode === 'dark' && {
+          backgroundColor: '#2ECA45',
+        }),
+      },
+      '&.Mui-disabled + .MuiSwitch-track': {
+        opacity: 0.5,
+      },
+    },
+    '&.Mui-focusVisible .MuiSwitch-thumb': {
+      color: '#33cf4d',
+      border: '6px solid #fff',
+    },
+    '&.Mui-disabled .MuiSwitch-thumb': {
+      color: theme.palette.grey[100],
+      ...(theme.palette.mode === 'dark' && {
+        color: theme.palette.grey[600],
+      }),
+    },
+    '&.Mui-disabled + .MuiSwitch-track': {
+      opacity: 0.7,
+      ...(theme.palette.mode === 'dark' && {
+        opacity: 0.3,
+      }),
+    },
+  },
+  '& .MuiSwitch-thumb': {
+    boxSizing: 'border-box',
+    width: 22,
+    height: 22,
+  },
+  '& .MuiSwitch-track': {
+    borderRadius: 26 / 2,
+    backgroundColor: '#E9E9EA',
+    opacity: 1,
+    transition: theme.transitions.create(['background-color'], {
+      duration: 500,
+    }),
+    ...(theme.palette.mode === 'dark' && {
+      backgroundColor: '#39393D',
+    }),
+  },
+}));
+
+function App() {
+  const [properties, setProperties] = useState<ZillowProperty[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [selectedProperties, setSelectedProperties] = useState<Set<string>>(new Set());
+  const [page, setPage] = useState(1);
+  const [totalResults, setTotalResults] = useState(0);
+  const [listingType, setListingType] = useState<'by_agent' | 'by_owner' | 'new_construction'>('by_agent');
+  const [priceAnchorEl, setPriceAnchorEl] = useState<null | HTMLElement>(null);
+  const [minPrice, setMinPrice] = useState('');
+  const [maxPrice, setMaxPrice] = useState('');
+  const priceOptions = [
+    '', '200', '400', '600', '800', '1000', '2000', '3000', '4000', '5000', '6000', '7000', '8000', '9000', '10000'
+  ];
+  const [listingTypeAnchorEl, setListingTypeAnchorEl] = useState<null | HTMLElement>(null);
+  const [listingTypeValue, setListingTypeValue] = useState<'for_sale' | 'for_rent' | 'sold'>('for_sale');
+  const [bedsBathsAnchorEl, setBedsBathsAnchorEl] = useState<null | HTMLElement>(null);
+  const [bedrooms, setBedrooms] = useState('');
+  const [bathrooms, setBathrooms] = useState('');
+  const [exactMatch, setExactMatch] = useState(false);
+  const bedroomOptions = ['', '1', '2', '3', '4', '5'];
+  const bathroomOptions = ['', '1', '1.5', '2', '3', '4'];
+  const [homeTypeAnchorEl, setHomeTypeAnchorEl] = useState<null | HTMLElement>(null);
+  const [selectedHomeTypes, setSelectedHomeTypes] = useState<string[]>(['house', 'apartment', 'townhome']);
+  const [selectedSpaces, setSelectedSpaces] = useState<string[]>(['entire']);
+  const homeTypeOptions = [
+    { value: 'house', label: 'Houses' },
+    { value: 'apartment', label: 'Apartments/Condos/Co-ops' },
+    { value: 'townhome', label: 'Townhomes' },
+  ];
+  const spaceOptions = [
+    { value: 'entire', label: 'Entire place' },
+    { value: 'room', label: 'Room' },
+  ];
+  const [moreAnchorEl, setMoreAnchorEl] = useState<null | HTMLElement>(null);
+  const [sqftMin, setSqftMin] = useState('');
+  const [sqftMax, setSqftMax] = useState('');
+  const [lotMin, setLotMin] = useState('');
+  const [lotMax, setLotMax] = useState('');
+  const [yearMin, setYearMin] = useState('');
+  const [yearMax, setYearMax] = useState('');
+  const [hasBasement, setHasBasement] = useState(false);
+  const [singleStory, setSingleStory] = useState(false);
+  const [tour3D, setTour3D] = useState(false);
+  const [instantTour, setInstantTour] = useState(false);
+  const [allowsLargeDogs, setAllowsLargeDogs] = useState(false);
+  const [allowsSmallDogs, setAllowsSmallDogs] = useState(false);
+  const [allowsCats, setAllowsCats] = useState(false);
+  const [noPets, setNoPets] = useState(false);
+  const [mustHaveAC, setMustHaveAC] = useState(false);
+  const [mustHavePool, setMustHavePool] = useState(false);
+  const [waterfront, setWaterfront] = useState(false);
+  const [onSiteParking, setOnSiteParking] = useState(false);
+  const [inUnitLaundry, setInUnitLaundry] = useState(false);
+  const [acceptsZillowApps, setAcceptsZillowApps] = useState(false);
+  const [incomeRestricted, setIncomeRestricted] = useState(false);
+  const [hardwoodFloors, setHardwoodFloors] = useState(false);
+  const [disabledAccess, setDisabledAccess] = useState(false);
+  const [utilitiesIncluded, setUtilitiesIncluded] = useState(false);
+  const [shortTermLease, setShortTermLease] = useState(false);
+  const [furnished, setFurnished] = useState(false);
+  const [outdoorSpace, setOutdoorSpace] = useState(false);
+  const [controlledAccess, setControlledAccess] = useState(false);
+  const [highSpeedInternet, setHighSpeedInternet] = useState(false);
+  const [elevator, setElevator] = useState(false);
+  const [apartmentCommunity, setApartmentCommunity] = useState(false);
+  const [viewCity, setViewCity] = useState(false);
+  const [viewMountain, setViewMountain] = useState(false);
+  const [viewPark, setViewPark] = useState(false);
+  const [viewWater, setViewWater] = useState(false);
+  const [commute, setCommute] = useState('');
+  const [daysOnZillow, setDaysOnZillow] = useState('');
+  const [keywords, setKeywords] = useState('');
+  const [fiftyFivePlus, setFiftyFivePlus] = useState('include');
+  const [sortColumn, setSortColumn] = useState<string>('');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [showOnlySent, setShowOnlySent] = useState(false);
+  const [filterAnchorEl, setFilterAnchorEl] = useState<null | HTMLElement>(null);
+  const [filterBeds, setFilterBeds] = useState('');
+  const [filterBaths, setFilterBaths] = useState('');
+  const [filterType, setFilterType] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
+  const [filterCity, setFilterCity] = useState('');
+  const [filterState, setFilterState] = useState('');
+  const [filterSentToCS, setFilterSentToCS] = useState(false);
+  const [pageSize, setPageSize] = useState(10);
+  const pageSizeOptions = [10, 20, 50];
+  const [dataSource, setDataSource] = useState<'db' | 'market'>('db');
+  const [hasSearched, setHasSearched] = useState(false);
+
+  const sqftOptions = ['', '500', '750', '1000', '1250', '1500', '1750', '2000', '2250', '2500', '2750', '3000', '3500', '4000', '5000', '7500'];
+  const lotOptions = ['', '1000', '2000', '3000', '4000', '5000', '7500', '10890', '21780', '43560', '87120', '217800', '435600', '871200', '2178000', '4356000'];
+  const lotLabels = ['', '1,000 sqft', '2,000 sqft', '3,000 sqft', '4,000 sqft', '5,000 sqft', '7,500 sqft', '1/4 acre/10,890 sqft', '1/2 acre', '1 acre', '2 acres', '5 acres', '10 acres', '20 acres', '50 acres', '100 acres'];
+  const yearOptions = ['', ...Array.from({ length: 2024 - 1900 + 1 }, (_, i) => (1900 + i).toString())];
+  const daysOnZillowOptions = ['', '1', '7', '14', '30', '90'];
+
+  // Map dropdown value to property status
+  const statusMap: Record<string, string> = {
+    for_sale: 'FOR_SALE',
+    for_rent: 'FOR_RENT',
+    sold: 'SOLD',
+  };
+
+  // Set page size for pagination
+  const PAGE_SIZE = 10;
+
+  // On mount, fetch from DB only once
+  useEffect(() => {
+    setDataSource('db');
+    setHasSearched(false);
+    fetchProperties('db', 1, pageSize);
+    // eslint-disable-next-line
+  }, []);
+
+  // On page/pageSize change, fetch for the current data source
+  useEffect(() => {
+    if (dataSource === 'db' && !hasSearched) {
+      fetchProperties('db', page, pageSize);
+    } else if (dataSource === 'market' && hasSearched) {
+      fetchProperties('market', page, pageSize);
+    }
+    // eslint-disable-next-line
+  }, [page, pageSize]);
+
+  // fetchProperties now takes source
+  const fetchProperties = async (source: 'db' | 'market', pageArg?: number, pageSizeArg?: number) => {
+    try {
+      setLoading(true);
+      setError(null);
+      let data;
+      if (source === 'db') {
+        const response = await fetch(`/api/zillow/properties?page=${pageArg || 1}&page_size=${pageSizeArg || pageSize}`);
+        data = await response.json();
+        setProperties(data.properties);
+        setTotalResults(data.total_results);
+        setPage(data.page);
+      } else {
+        // Market search
+        const url = buildSearchUrl();
+        const response = await fetch(`/api/zillow/search?url=${encodeURIComponent(url)}&page=${pageArg || 1}&page_size=${pageSizeArg || pageSize}`);
+        const result = await response.json();
+        if (result.success) {
+          setProperties(result.properties);
+          setTotalResults(result.total_results);
+          if (result.total_pages) setPage(result.page || 1);
+        } else {
+          setError(result.error || 'Failed to search on Zillow');
+        }
+      }
+    } catch (err) {
+      setError('Failed to fetch properties');
+      console.error('Error fetching properties:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePageChange = (event: React.ChangeEvent<unknown>, value: number) => {
+    setPage(value);
+    if (!loading) {
+      if (dataSource === 'db' && !hasSearched) fetchProperties('db', value, pageSize);
+      if (dataSource === 'market' && hasSearched) fetchProperties('market', value, pageSize);
+    }
+  };
+
+  const handleListingTypeChange = (event: SelectChangeEvent) => {
+    setListingType(event.target.value as 'by_agent' | 'by_owner' | 'new_construction');
+    setPage(1); // Reset to first page when changing listing type
+  };
+
+  const handleSelectProperty = (propertyId: string) => {
+    setSelectedProperties(prev => {
+      const newSelected = new Set(prev);
+      if (newSelected.has(propertyId)) {
+        newSelected.delete(propertyId);
+      } else {
+        newSelected.add(propertyId);
+      }
+      return newSelected;
+    });
+  };
+
+  const handleSelectAll = () => {
+    if (selectedProperties.size === properties.length) {
+      setSelectedProperties(new Set());
+    } else {
+      const allIds = properties.map(prop => String(prop.id || ''));
+      setSelectedProperties(new Set(allIds));
+    }
+  };
+
+  const handleSendToCyclSales = async () => {
+    try {
+      const selectedIds = Array.from(selectedProperties);
+      const response = await fetch('/api/zillow/property/send-to-cyclsales', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ property_ids: selectedIds }),
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        // Refresh the properties list to update sent status
+        await fetchProperties('db', 1, pageSize);
+        // Clear selection
+        setSelectedProperties(new Set());
+      } else {
+        setError(result.error || 'Failed to send properties to CyclSales');
+      }
+    } catch (err) {
+      setError('Failed to send properties to CyclSales');
+      console.error('Error sending to CyclSales:', err);
+    }
+  };
+
+  const handleFilterClick = () => {
+    // TODO: Implement filter functionality
+    console.log('Filter clicked');
+  };
+
+  const handlePriceMenuOpen = (event: React.MouseEvent<HTMLElement>) => setPriceAnchorEl(event.currentTarget);
+  const handlePriceMenuClose = () => setPriceAnchorEl(null);
+  const handleMinPriceChange = (event: SelectChangeEvent) => setMinPrice(event.target.value);
+  const handleMaxPriceChange = (event: SelectChangeEvent) => setMaxPrice(event.target.value);
+  const handleApplyPrice = () => {
+    // TODO: Use minPrice and maxPrice in your search/filter logic
+    handlePriceMenuClose();
+  };
+
+  const handleListingTypeMenuOpen = (event: React.MouseEvent<HTMLElement>) => setListingTypeAnchorEl(event.currentTarget);
+  const handleListingTypeMenuClose = () => setListingTypeAnchorEl(null);
+  const handleListingTypeRadioChange = (event: React.ChangeEvent<HTMLInputElement>) => setListingTypeValue(event.target.value as 'for_sale' | 'for_rent' | 'sold');
+  const handleApplyListingType = () => {
+    // TODO: Use listingTypeValue in your search/filter logic
+    handleListingTypeMenuClose();
+  };
+
+  const handleBedsBathsMenuOpen = (event: React.MouseEvent<HTMLElement>) => setBedsBathsAnchorEl(event.currentTarget);
+  const handleBedsBathsMenuClose = () => setBedsBathsAnchorEl(null);
+  const handleBedroomsChange = (val: string) => setBedrooms(val);
+  const handleBathroomsChange = (val: string) => setBathrooms(val);
+  const handleExactMatchChange = (event: React.ChangeEvent<HTMLInputElement>) => setExactMatch(event.target.checked);
+  const handleApplyBedsBaths = () => {
+    // TODO: Use bedrooms, bathrooms, exactMatch in your search/filter logic
+    handleBedsBathsMenuClose();
+  };
+
+  const handleHomeTypeMenuOpen = (event: React.MouseEvent<HTMLElement>) => setHomeTypeAnchorEl(event.currentTarget);
+  const handleHomeTypeMenuClose = () => setHomeTypeAnchorEl(null);
+  const handleHomeTypeChange = (value: string) => {
+    setSelectedHomeTypes(prev =>
+      prev.includes(value) ? prev.filter(v => v !== value) : [...prev, value]
+    );
+  };
+  const handleSpaceChange = (value: string) => {
+    setSelectedSpaces(prev =>
+      prev.includes(value) ? prev.filter(v => v !== value) : [...prev, value]
+    );
+  };
+  const handleDeselectAllHomeTypes = () => setSelectedHomeTypes([]);
+  const handleApplyHomeType = () => {
+    // TODO: Use selectedHomeTypes and selectedSpaces in your search/filter logic
+    handleHomeTypeMenuClose();
+  };
+
+  const handleMoreMenuOpen = (event: React.MouseEvent<HTMLElement>) => setMoreAnchorEl(event.currentTarget);
+  const handleMoreMenuClose = () => setMoreAnchorEl(null);
+  const handleResetAllFilters = () => {
+    setSqftMin(''); setSqftMax(''); setLotMin(''); setLotMax(''); setYearMin(''); setYearMax('');
+    setHasBasement(false); setSingleStory(false); setTour3D(false); setInstantTour(false);
+    setAllowsLargeDogs(false); setAllowsSmallDogs(false); setAllowsCats(false); setNoPets(false);
+    setMustHaveAC(false); setMustHavePool(false); setWaterfront(false); setOnSiteParking(false);
+    setInUnitLaundry(false); setAcceptsZillowApps(false); setIncomeRestricted(false);
+    setHardwoodFloors(false); setDisabledAccess(false); setUtilitiesIncluded(false);
+    setShortTermLease(false); setFurnished(false); setOutdoorSpace(false); setControlledAccess(false);
+    setHighSpeedInternet(false); setElevator(false); setApartmentCommunity(false);
+    setViewCity(false); setViewMountain(false); setViewPark(false); setViewWater(false);
+    setCommute(''); setDaysOnZillow(''); setKeywords(''); setFiftyFivePlus('include');
+  };
+  const handleApplyMore = () => {
+    // TODO: Use all filter values in your search/filter logic
+    handleMoreMenuClose();
+  };
+
+  // Filter properties based on search input (address, city, ZIP)
+  const filteredProperties = properties.filter((prop) => {
+    const searchLower = search.toLowerCase();
+    const matchesSearch =
+      (prop.street_address && prop.street_address.toLowerCase().includes(searchLower)) ||
+      (prop.city && prop.city.toLowerCase().includes(searchLower)) ||
+      (prop.state && prop.state.toLowerCase().includes(searchLower));
+    const matchesStatus =
+      !listingTypeValue || prop.home_status === statusMap[listingTypeValue];
+    const matchesSent = !showOnlySent || (prop.sent_to_cyclsales_count && prop.sent_to_cyclsales_count > 0);
+    return matchesSearch && matchesStatus && matchesSent;
+  });
+
+  // Sorting handler
+  const handleSort = (column: string) => {
+    if (sortColumn === column) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortColumn(column);
+      setSortDirection('asc');
+    }
+  };
+
+  // Sort filteredProperties before rendering
+  const sortedProperties = [...filteredProperties].sort((a, b) => {
+    if (!sortColumn) return 0;
+    let aValue: any = a[sortColumn as keyof typeof a];
+    let bValue: any = b[sortColumn as keyof typeof b];
+    // For address, sort by street_address
+    if (sortColumn === 'address') {
+      aValue = a.street_address ?? '';
+      bValue = b.street_address ?? '';
+    }
+    // For type, sort by home_type
+    if (sortColumn === 'type') {
+      aValue = a.home_type ?? '';
+      bValue = b.home_type ?? '';
+    }
+    // For status, sort by home_status
+    if (sortColumn === 'status') {
+      aValue = a.home_status ?? '';
+      bValue = b.home_status ?? '';
+    }
+    // For sent_to_cyclsales_count, ensure number
+    if (sortColumn === 'sent_to_cyclsales_count') {
+      aValue = a.sent_to_cyclsales_count ?? 0;
+      bValue = b.sent_to_cyclsales_count ?? 0;
+    }
+    // For numeric columns
+    if ([
+      'price', 'bedrooms', 'bathrooms', 'living_area', 'sent_to_cyclsales_count'
+    ].includes(sortColumn)) {
+      aValue = Number(aValue ?? 0);
+      bValue = Number(bValue ?? 0);
+    }
+    if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
+    if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  // Function to build the current Zillow search URL with all filters
+  const buildSearchUrl = () => {
+    const baseUrl = `https://www.zillow.com/${search ? encodeURIComponent(search) + '/' : ''}${listingTypeValue === 'for_rent' ? 'rentals/' : listingTypeValue === 'sold' ? 'sold/' : ''}`;
+    const searchQueryState: any = {
+      pagination: {
+        currentPage: page
+      },
+      mapBounds: {
+        west: -87.7266194819336, // Example: Chicago
+        east: -87.60645651806641,
+        south: 41.70463730273328,
+        north: 41.79492639691581
+      },
+      isMapVisible: true,
+      isListVisible: true,
+      filterState: {
+        sort: { value: 'globalrelevanceex' },
+      },
+      usersSearchTerm: search || '',
+    };
+
+    // Price
+    if (minPrice) searchQueryState.filterState.price = { min: parseInt(minPrice) };
+    if (maxPrice) searchQueryState.filterState.price = { ...searchQueryState.filterState.price, max: parseInt(maxPrice) };
+    // Monthly payment (mp)
+    // Add if you have UI for it
+    // Beds & Baths
+    if (bedrooms) searchQueryState.filterState.beds = { min: parseInt(bedrooms) };
+    if (bathrooms) searchQueryState.filterState.baths = { min: parseFloat(bathrooms) };
+    // Home Type
+    if (selectedHomeTypes.length > 0) {
+      // Map to Zillow's home type keys if needed
+      // Example: house -> isSingleFamily, apartment -> isApartment, townhome -> isTownhouse
+      selectedHomeTypes.forEach(type => {
+        if (type === 'house') searchQueryState.filterState.isSingleFamily = { value: true };
+        if (type === 'apartment') searchQueryState.filterState.isApartment = { value: true };
+        if (type === 'townhome') searchQueryState.filterState.isTownhouse = { value: true };
+      });
+    }
+    // Square Footage
+    if (sqftMin) searchQueryState.filterState.sqft = { ...searchQueryState.filterState.sqft, min: parseInt(sqftMin) };
+    if (sqftMax) searchQueryState.filterState.sqft = { ...searchQueryState.filterState.sqft, max: parseInt(sqftMax) };
+    // Lot Size
+    if (lotMin) searchQueryState.filterState.lot = { ...searchQueryState.filterState.lot, min: parseInt(lotMin) };
+    if (lotMax) searchQueryState.filterState.lot = { ...searchQueryState.filterState.lot, max: parseInt(lotMax) };
+    // Year Built
+    if (yearMin) searchQueryState.filterState.built = { ...searchQueryState.filterState.built, min: parseInt(yearMin) };
+    if (yearMax) searchQueryState.filterState.built = { ...searchQueryState.filterState.built, max: parseInt(yearMax) };
+    // Features
+    if (tour3D) searchQueryState.filterState['3d'] = { value: true };
+    if (mustHaveAC) searchQueryState.filterState.ac = { value: true };
+    if (hasBasement) searchQueryState.filterState.basf = { value: true };
+    if (singleStory) searchQueryState.filterState.sto = { value: true };
+    if (onSiteParking) searchQueryState.filterState.gar = { value: true };
+    if (mustHavePool) searchQueryState.filterState.pool = { value: true };
+    if (waterfront) searchQueryState.filterState.water = { value: true };
+    // Days on Zillow
+    if (daysOnZillow) searchQueryState.filterState.doz = { value: daysOnZillow + 'm' };
+    // Add more filters as needed from UI state
+
+    const params = new URLSearchParams({
+      searchQueryState: JSON.stringify(searchQueryState),
+    });
+    return `${baseUrl}?${params.toString()}`;
+  };
+
+  // Handler for Search on Zillow button
+  const handleSearchOnZillow = async (pageOverride?: number, pageSizeOverride?: number) => {
+    setDataSource('market');
+    setHasSearched(true);
+    setPage(pageOverride || 1);
+    if (pageSizeOverride) setPageSize(pageSizeOverride);
+    setLoading(true);
+    setError(null);
+    await fetchProperties('market', pageOverride || 1, pageSizeOverride || pageSize);
+  };
+
+  // PageSizeSelector with skeleton
+  const PageSizeSelector = ({ totalResults, pageSize, page, onPageSizeChange, loading }: { 
+    totalResults: number, 
+    pageSize: number, 
+    page: number,
+    onPageSizeChange: (newSize: number) => void,
+    loading: boolean
+  }) => {
+    const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+    const startRecord = ((page - 1) * pageSize) + 1;
+    const endRecord = Math.min(page * pageSize, totalResults);
+    
+    const handleClick = (event: React.MouseEvent<HTMLDivElement>) => {
+      setAnchorEl(event.currentTarget);
+    };
+
+    const handleClose = () => {
+      setAnchorEl(null);
+    };
+
+    const pageSizes = [10, 20, 50, 80, 100, 200];
+
+    if (loading) {
+      return <Skeleton variant="text" width={80} height={32} />;
+    }
+
+    return (
+      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+        <Box
+          onClick={handleClick}
+          sx={{
+            cursor: 'pointer',
+            color: '#2563eb',
+            '&:hover': { textDecoration: 'underline' },
+            fontSize: '0.875rem',
+            fontWeight: 500,
+          }}
+        >
+          {`${startRecord}-${endRecord} / ${totalResults}`}
+        </Box>
+        <Menu
+          anchorEl={anchorEl}
+          open={Boolean(anchorEl)}
+          onClose={handleClose}
+          anchorOrigin={{
+            vertical: 'bottom',
+            horizontal: 'right',
+          }}
+          transformOrigin={{
+            vertical: 'top',
+            horizontal: 'right',
+          }}
+        >
+          {pageSizes.map((size) => (
+            <MenuItem
+              key={size}
+              onClick={() => {
+                onPageSizeChange(size);
+                handleClose();
+              }}
+              selected={pageSize === size}
+            >
+              {size} records
+            </MenuItem>
+          ))}
+        </Menu>
+      </Box>
+    );
+  };
+
+  // Improved Skeleton for table rows
+  const TableSkeleton = ({ rows = 10 }: { rows?: number }) => (
+    <TableBody>
+      {Array.from({ length: rows }).map((_, rowIdx) => (
+        <TableRow key={rowIdx}>
+          {/* Checkbox */}
+          <TableCell padding="checkbox">
+            <Skeleton variant="circular" width={24} height={24} />
+          </TableCell>
+          {/* Image */}
+          <TableCell>
+            <Skeleton variant="rectangular" width={100} height={75} />
+          </TableCell>
+          {/* Address */}
+          <TableCell>
+            <Skeleton variant="text" width={120} height={24} />
+            <Skeleton variant="text" width={80} height={18} />
+          </TableCell>
+          {/* Price */}
+          <TableCell>
+            <Skeleton variant="rounded" width={60} height={32} />
+          </TableCell>
+          {/* Beds */}
+          <TableCell>
+            <Skeleton variant="rounded" width={40} height={32} />
+          </TableCell>
+          {/* Baths */}
+          <TableCell>
+            <Skeleton variant="rounded" width={40} height={32} />
+          </TableCell>
+          {/* Sq Ft */}
+          <TableCell>
+            <Skeleton variant="text" width={50} height={24} />
+          </TableCell>
+          {/* Type */}
+          <TableCell>
+            <Skeleton variant="text" width={70} height={24} />
+          </TableCell>
+          {/* Status */}
+          <TableCell>
+            <Skeleton variant="rounded" width={70} height={32} />
+          </TableCell>
+          {/* Sent to CS */}
+          <TableCell>
+            <Skeleton variant="rounded" width={60} height={24} />
+          </TableCell>
+          {/* Actions */}
+          <TableCell>
+            <Skeleton variant="rectangular" width={90} height={32} />
+          </TableCell>
+        </TableRow>
+      ))}
+    </TableBody>
+  );
+
+  return (
+    <ThemeProvider theme={theme}>
+      <Box sx={{ bgcolor: 'background.default', minHeight: '100vh', py: 6, width: '100vw' }}>
+        <Box sx={{ width: '100%', px: { xs: 1, sm: 3, md: 6, lg: 10 }, boxSizing: 'border-box' }}>
+          {/* Search UI */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 4, width: '100%' }}>
+            <OutlinedInput
+              placeholder="Address, neighborhood, city, ZIP"
+              sx={{
+                flex: 1,
+                borderRadius: '5px',
+                bgcolor: '#fff',
+                fontSize: 14,
+                height: 36,
+                minHeight: 36,
+                '.MuiOutlinedInput-input': {
+                  py: 0.5,
+                  fontSize: 14,
+                  height: 36,
+                  minHeight: 36,
+                },
+              }}
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              endAdornment={
+                <InputAdornment position="end">
+                  <IconButton edge="end" size="small" sx={{ height: 28, width: 28 }}>
+                    <SearchIcon fontSize="small" />
+                  </IconButton>
+                </InputAdornment>
+              }
+            />
+            <Button
+              variant="outlined"
+              endIcon={<ArrowDropDownIcon />}
+              sx={{
+                height: 36,
+                borderRadius: '5px',
+                fontWeight: 500,
+                fontSize: 14,
+                minWidth: 120,
+                px: 2,
+                textTransform: 'none',
+                bgcolor: '#fff',
+                color: '#222',
+                borderColor: '#d1d5db',
+                boxShadow: 'none',
+                '&:hover': {
+                  bgcolor: '#f5f6fa',
+                  borderColor: '#2563eb',
+                  color: '#2563eb',
+                },
+                '&.Mui-focused, &.Mui-active': {
+                  borderColor: '#2563eb',
+                  color: '#2563eb',
+                },
+              }}
+              onClick={handleListingTypeMenuOpen}
+            >
+              {listingTypeValue === 'for_sale' ? 'For Sale' : listingTypeValue === 'for_rent' ? 'For Rent' : 'Sold'}
+            </Button>
+            <Menu
+              anchorEl={listingTypeAnchorEl}
+              open={Boolean(listingTypeAnchorEl)}
+              onClose={handleListingTypeMenuClose}
+              anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+              transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+              PaperProps={{
+                sx: {
+                  borderRadius: 3,
+                  minWidth: 340,
+                  p: 0,
+                  boxShadow: 6,
+                  mt: 1,
+                }
+              }}
+            >
+              <Box sx={{ px: 3, py: 3 }}>
+                <RadioGroup value={listingTypeValue} onChange={handleListingTypeRadioChange}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                    <Radio value="for_sale" sx={{ color: '#b0b0b0', '&.Mui-checked': { color: '#2563eb' } }} />
+                    <Typography sx={{ fontWeight: 500, color: '#222', fontSize: 18 }}>For Sale</Typography>
+                  </Box>
+                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                    <Radio value="for_rent" sx={{ color: '#b0b0b0', '&.Mui-checked': { color: '#2563eb' } }} />
+                    <Typography sx={{ fontWeight: 500, color: listingTypeValue === 'for_rent' ? '#2563eb' : '#222', fontSize: 18 }}>For Rent</Typography>
+                  </Box>
+                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                    <Radio value="sold" sx={{ color: '#b0b0b0', '&.Mui-checked': { color: '#2563eb' } }} />
+                    <Typography sx={{ fontWeight: 500, color: listingTypeValue === 'sold' ? '#2563eb' : '#222', fontSize: 18 }}>Sold</Typography>
+                  </Box>
+                </RadioGroup>
+                <Button
+                  variant="contained"
+                  fullWidth
+                  sx={{
+                    bgcolor: '#2563eb',
+                    color: '#fff',
+                    fontWeight: 600,
+                    fontSize: 16,
+                    borderRadius: 2,
+                    height: 44,
+                    mt: 2,
+                    textTransform: 'none',
+                    boxShadow: 'none',
+                    '&:hover': { bgcolor: '#1742a0' },
+                  }}
+                  onClick={handleApplyListingType}
+                >
+                  Apply
+                </Button>
+              </Box>
+            </Menu>
+            <Button
+              variant="outlined"
+              endIcon={<ArrowDropDownIcon />}
+              sx={{
+                height: 36,
+                borderRadius: '5px',
+                fontWeight: 500,
+                fontSize: 14,
+                minWidth: 100,
+                px: 2,
+                textTransform: 'none',
+                bgcolor: '#fff',
+                color: '#222',
+                borderColor: '#d1d5db',
+                boxShadow: 'none',
+                '&:hover': {
+                  bgcolor: '#f5f6fa',
+                  borderColor: '#2563eb',
+                  color: '#2563eb',
+                },
+                '&.Mui-focused, &.Mui-active': {
+                  borderColor: '#2563eb',
+                  color: '#2563eb',
+                },
+              }}
+              onClick={handlePriceMenuOpen}
+            >
+              Price
+            </Button>
+            <Menu
+              anchorEl={priceAnchorEl}
+              open={Boolean(priceAnchorEl)}
+              onClose={handlePriceMenuClose}
+              anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+              transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+              PaperProps={{
+                sx: {
+                  borderRadius: 3,
+                  minWidth: 340,
+                  p: 0,
+                  boxShadow: 6,
+                  mt: 1,
+                }
+              }}
+            >
+              <Box sx={{ bgcolor: '#f7f8fa', px: 3, py: 2, borderTopLeftRadius: 12, borderTopRightRadius: 12 }}>
+                <Typography variant="subtitle1" fontWeight={600} color="#6e6e6e">Price Range</Typography>
+              </Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', px: 3, py: 2, gap: 2 }}>
+                <Box sx={{ flex: 1 }}>
+                  <Typography variant="subtitle2" fontWeight={700} mb={0.5}>Minimum</Typography>
+                  <FormControl fullWidth size="small">
+                    <Select value={minPrice} onChange={handleMinPriceChange} displayEmpty sx={{ bgcolor: '#f7f8fa', borderRadius: 1 }}>
+                      <MenuItem value="">No Min</MenuItem>
+                      {priceOptions.slice(1).map((price) => (
+                        <MenuItem key={price} value={price}>{`$${parseInt(price).toLocaleString()}`}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Box>
+                <Typography sx={{ mx: 1, color: '#6e6e6e' }}>-</Typography>
+                <Box sx={{ flex: 1 }}>
+                  <Typography variant="subtitle2" fontWeight={700} mb={0.5}>Maximum</Typography>
+                  <FormControl fullWidth size="small">
+                    <Select value={maxPrice} onChange={handleMaxPriceChange} displayEmpty sx={{ bgcolor: '#f7f8fa', borderRadius: 1 }}>
+                      <MenuItem value="">No Max</MenuItem>
+                      {priceOptions.slice(1).map((price) => (
+                        <MenuItem key={price} value={price}>{`$${parseInt(price).toLocaleString()}`}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Box>
+              </Box>
+              <Box sx={{ px: 3, pb: 2 }}>
+                <Button
+                  variant="contained"
+                  fullWidth
+                  sx={{
+                    bgcolor: '#2563eb',
+                    color: '#fff',
+                    fontWeight: 600,
+                    fontSize: 16,
+                    borderRadius: 2,
+                    height: 44,
+                    mt: 1,
+                    textTransform: 'none',
+                    boxShadow: 'none',
+                    '&:hover': { bgcolor: '#1742a0' },
+                  }}
+                  onClick={handleApplyPrice}
+                >
+                  Apply
+                </Button>
+              </Box>
+            </Menu>
+            <Button
+              variant="outlined"
+              endIcon={<ArrowDropDownIcon />}
+              sx={{
+                height: 36,
+                borderRadius: '5px',
+                fontWeight: 500,
+                fontSize: 14,
+                minWidth: 130,
+                px: 2,
+                textTransform: 'none',
+                bgcolor: '#fff',
+                color: '#222',
+                borderColor: '#d1d5db',
+                boxShadow: 'none',
+                '&:hover': {
+                  bgcolor: '#f5f6fa',
+                  borderColor: '#2563eb',
+                  color: '#2563eb',
+                },
+                '&.Mui-focused, &.Mui-active': {
+                  borderColor: '#2563eb',
+                  color: '#2563eb',
+                },
+              }}
+              onClick={handleBedsBathsMenuOpen}
+            >
+              Beds & Baths
+            </Button>
+            <Menu
+              anchorEl={bedsBathsAnchorEl}
+              open={Boolean(bedsBathsAnchorEl)}
+              onClose={handleBedsBathsMenuClose}
+              anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+              transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+              PaperProps={{
+                sx: {
+                  borderRadius: 3,
+                  minWidth: 420,
+                  p: 0,
+                  boxShadow: 6,
+                  mt: 1,
+                }
+              }}
+            >
+              <Box sx={{ bgcolor: '#f7f8fa', px: 3, py: 2, borderTopLeftRadius: 12, borderTopRightRadius: 12 }}>
+                <Typography variant="subtitle1" fontWeight={600} color="#6e6e6e">Number of Bedrooms</Typography>
+              </Box>
+              <Box sx={{ px: 3, pt: 2, pb: 1 }}>
+                <Typography variant="subtitle2" fontWeight={700} mb={1}>Bedrooms</Typography>
+                <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
+                  {bedroomOptions.map((val, idx) => (
+                    <Button
+                      key={val || 'any'}
+                      variant={bedrooms === val ? 'contained' : 'outlined'}
+                      sx={{
+                        minWidth: 56,
+                        bgcolor: bedrooms === val ? '#2563eb' : '#f7f8fa',
+                        color: bedrooms === val ? '#fff' : '#222',
+                        borderColor: bedrooms === val ? '#2563eb' : '#e0e0e0',
+                        fontWeight: 600,
+                        boxShadow: 'none',
+                        textTransform: 'none',
+                        '&:hover': { bgcolor: bedrooms === val ? '#1742a0' : '#e0e0e0' },
+                      }}
+                      onClick={() => handleBedroomsChange(val)}
+                    >
+                      {val === '' ? 'Any' : `${val}+`}
+                    </Button>
+                  ))}
+                </Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', mt: 1 }}>
+                  <Checkbox checked={exactMatch} onChange={handleExactMatchChange} size="small" />
+                  <Typography variant="body2">Use exact match</Typography>
+                </Box>
+              </Box>
+              <Box sx={{ bgcolor: '#f7f8fa', px: 3, py: 2, mt: 2 }}>
+                <Typography variant="subtitle1" fontWeight={600} color="#6e6e6e">Number of Bathrooms</Typography>
+              </Box>
+              <Box sx={{ px: 3, pt: 2, pb: 1 }}>
+                <Typography variant="subtitle2" fontWeight={700} mb={1}>Bathrooms</Typography>
+                <Box sx={{ display: 'flex', gap: 1 }}>
+                  {bathroomOptions.map((val, idx) => (
+                    <Button
+                      key={val || 'any'}
+                      variant={bathrooms === val ? 'contained' : 'outlined'}
+                      sx={{
+                        minWidth: 56,
+                        bgcolor: bathrooms === val ? '#2563eb' : '#f7f8fa',
+                        color: bathrooms === val ? '#fff' : '#222',
+                        borderColor: bathrooms === val ? '#2563eb' : '#e0e0e0',
+                        fontWeight: 600,
+                        boxShadow: 'none',
+                        textTransform: 'none',
+                        '&:hover': { bgcolor: bathrooms === val ? '#1742a0' : '#e0e0e0' },
+                      }}
+                      onClick={() => handleBathroomsChange(val)}
+                    >
+                      {val === '' ? 'Any' : `${val}+`}
+                    </Button>
+                  ))}
+                </Box>
+              </Box>
+              <Box sx={{ px: 3, pb: 2, pt: 1 }}>
+                <Button
+                  variant="contained"
+                  fullWidth
+                  sx={{
+                    bgcolor: '#2563eb',
+                    color: '#fff',
+                    fontWeight: 600,
+                    fontSize: 16,
+                    borderRadius: 2,
+                    height: 44,
+                    mt: 1,
+                    textTransform: 'none',
+                    boxShadow: 'none',
+                    '&:hover': { bgcolor: '#1742a0' },
+                  }}
+                  onClick={handleApplyBedsBaths}
+                >
+                  Apply
+                </Button>
+              </Box>
+            </Menu>
+            <Button
+              variant="outlined"
+              endIcon={<ArrowDropDownIcon />}
+              sx={{
+                height: 36,
+                borderRadius: '5px',
+                fontWeight: 500,
+                fontSize: 14,
+                minWidth: 120,
+                px: 2,
+                textTransform: 'none',
+                bgcolor: '#fff',
+                color: '#222',
+                borderColor: '#d1d5db',
+                boxShadow: 'none',
+                '&:hover': {
+                  bgcolor: '#f5f6fa',
+                  borderColor: '#2563eb',
+                  color: '#2563eb',
+                },
+                '&.Mui-focused, &.Mui-active': {
+                  borderColor: '#2563eb',
+                  color: '#2563eb',
+                },
+              }}
+              onClick={handleHomeTypeMenuOpen}
+            >
+              Home Type
+            </Button>
+            <Menu
+              anchorEl={homeTypeAnchorEl}
+              open={Boolean(homeTypeAnchorEl)}
+              onClose={handleHomeTypeMenuClose}
+              anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+              transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+              PaperProps={{
+                sx: {
+                  borderRadius: 3,
+                  minWidth: 340,
+                  p: 0,
+                  boxShadow: 6,
+                  mt: 1,
+                }
+              }}
+            >
+              <Box sx={{ bgcolor: '#f7f8fa', px: 3, py: 2, borderTopLeftRadius: 12, borderTopRightRadius: 12 }}>
+                <Typography variant="subtitle1" fontWeight={600} color="#6e6e6e">Home Type</Typography>
+              </Box>
+              <Box sx={{ px: 3, pt: 2, pb: 1 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                  <Checkbox
+                    checked={selectedHomeTypes.length === 0}
+                    onChange={handleDeselectAllHomeTypes}
+                    sx={{ color: '#2563eb', p: 0, mr: 1 }}
+                  />
+                  <Typography
+                    variant="subtitle1"
+                    fontWeight={700}
+                    sx={{ color: '#2563eb', cursor: 'pointer' }}
+                    onClick={handleDeselectAllHomeTypes}
+                  >
+                    Deselect All
+                  </Typography>
+                </Box>
+                {homeTypeOptions.map(opt => (
+                  <Box key={opt.value} sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                    <Checkbox
+                      checked={selectedHomeTypes.includes(opt.value)}
+                      onChange={() => handleHomeTypeChange(opt.value)}
+                      sx={{ color: '#2563eb', p: 0, mr: 1 }}
+                    />
+                    <Typography variant="body1" fontWeight={500}>{opt.label}</Typography>
+                  </Box>
+                ))}
+              </Box>
+              <Box sx={{ bgcolor: '#f7f8fa', px: 3, py: 2, mt: 2 }}>
+                <Typography variant="subtitle1" fontWeight={600} color="#6e6e6e">Space</Typography>
+              </Box>
+              <Box sx={{ px: 3, pt: 2, pb: 1 }}>
+                {spaceOptions.map(opt => (
+                  <Box key={opt.value} sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                    <Checkbox
+                      checked={selectedSpaces.includes(opt.value)}
+                      onChange={() => handleSpaceChange(opt.value)}
+                      sx={{ color: '#2563eb', p: 0, mr: 1 }}
+                    />
+                    <Typography variant="body1" fontWeight={500}>{opt.label}</Typography>
+                  </Box>
+                ))}
+              </Box>
+              <Box sx={{ px: 3, pb: 2, pt: 1 }}>
+                <Button
+                  variant="contained"
+                  fullWidth
+                  sx={{
+                    bgcolor: '#2563eb',
+                    color: '#fff',
+                    fontWeight: 600,
+                    fontSize: 16,
+                    borderRadius: 2,
+                    height: 44,
+                    mt: 1,
+                    textTransform: 'none',
+                    boxShadow: 'none',
+                    '&:hover': { bgcolor: '#1742a0' },
+                  }}
+                  onClick={handleApplyHomeType}
+                >
+                  Apply
+                </Button>
+              </Box>
+            </Menu>
+            <Button
+              variant="outlined"
+              endIcon={<ArrowDropDownIcon />}
+              sx={{
+                height: 36,
+                borderRadius: '5px',
+                fontWeight: 500,
+                fontSize: 14,
+                minWidth: 80,
+                px: 2,
+                textTransform: 'none',
+                bgcolor: '#fff',
+                color: '#222',
+                borderColor: '#d1d5db',
+                boxShadow: 'none',
+                '&:hover': {
+                  bgcolor: '#f5f6fa',
+                  borderColor: '#2563eb',
+                  color: '#2563eb',
+                },
+                '&.Mui-focused, &.Mui-active': {
+                  borderColor: '#2563eb',
+                  color: '#2563eb',
+                },
+              }}
+              onClick={handleMoreMenuOpen}
+            >
+              More
+            </Button>
+            <Button
+              variant="contained"
+              size="small"
+              sx={{
+                height: 36,
+                borderRadius: '5px',
+                bgcolor: '#2563eb',
+                color: '#fff',
+                fontWeight: 600,
+                fontSize: 14,
+                px: 2,
+                ml: 1,
+                textTransform: 'none',
+                boxShadow: 'none',
+                '&:hover': { bgcolor: '#1742a0' },
+              }}
+              onClick={() => handleSearchOnZillow()}
+            >
+              Search on Market
+            </Button>
+            <Menu
+              anchorEl={moreAnchorEl}
+              open={Boolean(moreAnchorEl)}
+              onClose={handleMoreMenuClose}
+              anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+              transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+              PaperProps={{
+                sx: {
+                  borderRadius: 3,
+                  minWidth: 520,
+                  maxWidth: 600,
+                  maxHeight: 700,
+                  p: 0,
+                  boxShadow: 6,
+                  mt: 1,
+                  overflowY: 'auto',
+                }
+              }}
+            >
+              <Box sx={{ bgcolor: '#f7f8fa', px: 3, py: 2, borderTopLeftRadius: 12, borderTopRightRadius: 12 }}>
+                <Typography variant="subtitle1" fontWeight={700} color="#6e6e6e">More Filters</Typography>
+              </Box>
+              <Box sx={{ px: 3, pt: 2, pb: 1 }}>
+                {/* Square feet */}
+                <Typography variant="subtitle2" fontWeight={700} mb={1}>Square feet</Typography>
+                <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+                  <FormControl size="small" sx={{ minWidth: 120 }}>
+                    <Select value={sqftMin} onChange={e => setSqftMin(e.target.value)} displayEmpty>
+                      <MenuItem value="">No Min</MenuItem>
+                      {sqftOptions.slice(1).map(val => (
+                        <MenuItem key={val} value={val}>{parseInt(val).toLocaleString()}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                  <Typography sx={{ mx: 1, color: '#6e6e6e', alignSelf: 'center' }}>-</Typography>
+                  <FormControl size="small" sx={{ minWidth: 120 }}>
+                    <Select value={sqftMax} onChange={e => setSqftMax(e.target.value)} displayEmpty>
+                      <MenuItem value="">No Max</MenuItem>
+                      {sqftOptions.slice(1).map(val => (
+                        <MenuItem key={val} value={val}>{parseInt(val).toLocaleString()}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Box>
+                {/* Lot size */}
+                <Typography variant="subtitle2" fontWeight={700} mb={1}>Lot size</Typography>
+                <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+                  <FormControl size="small" sx={{ minWidth: 120 }}>
+                    <Select value={lotMin} onChange={e => setLotMin(e.target.value)} displayEmpty>
+                      <MenuItem value="">No Min</MenuItem>
+                      {lotOptions.slice(1).map((val, i) => (
+                        <MenuItem key={val} value={val}>{lotLabels[i + 1]}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                  <Typography sx={{ mx: 1, color: '#6e6e6e', alignSelf: 'center' }}>-</Typography>
+                  <FormControl size="small" sx={{ minWidth: 120 }}>
+                    <Select value={lotMax} onChange={e => setLotMax(e.target.value)} displayEmpty>
+                      <MenuItem value="">No Max</MenuItem>
+                      {lotOptions.slice(1).map((val, i) => (
+                        <MenuItem key={val} value={val}>{lotLabels[i + 1]}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Box>
+                {/* Year built */}
+                <Typography variant="subtitle2" fontWeight={700} mb={1}>Year built</Typography>
+                <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+                  <FormControl size="small" sx={{ minWidth: 120 }}>
+                    <Select value={yearMin} onChange={e => setYearMin(e.target.value)} displayEmpty>
+                      <MenuItem value="">No Min</MenuItem>
+                      {yearOptions.slice(1).map(val => (
+                        <MenuItem key={val} value={val}>{val}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                  <Typography sx={{ mx: 1, color: '#6e6e6e', alignSelf: 'center' }}>-</Typography>
+                  <FormControl size="small" sx={{ minWidth: 120 }}>
+                    <Select value={yearMax} onChange={e => setYearMax(e.target.value)} displayEmpty>
+                      <MenuItem value="">No Max</MenuItem>
+                      {yearOptions.slice(1).map(val => (
+                        <MenuItem key={val} value={val}>{val}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Box>
+                {/* Basement */}
+                <Typography variant="subtitle2" fontWeight={700} mt={2}>Basement</Typography>
+                <FormControlLabel control={<Checkbox checked={hasBasement} onChange={e => setHasBasement(e.target.checked)} />} label="Has basement" />
+                {/* Number of Stories */}
+                <Typography variant="subtitle2" fontWeight={700} mt={2}>Number Of Stories</Typography>
+                <FormControlLabel control={<Checkbox checked={singleStory} onChange={e => setSingleStory(e.target.checked)} />} label="Single-story only" />
+                {/* Tours */}
+                <Typography variant="subtitle2" fontWeight={700} mt={2}>Tours</Typography>
+                <FormControlLabel control={<Checkbox checked={tour3D} onChange={e => setTour3D(e.target.checked)} />} label="Must have 3D Tour" />
+                <FormControlLabel control={<Checkbox checked={instantTour} onChange={e => setInstantTour(e.target.checked)} />} label="Instant Tour Available" />
+                {/* Pets */}
+                <Typography variant="subtitle2" fontWeight={700} mt={2}>Pets</Typography>
+                <FormControlLabel control={<Checkbox checked={allowsLargeDogs} onChange={e => setAllowsLargeDogs(e.target.checked)} />} label="Allows large dogs" />
+                <FormControlLabel control={<Checkbox checked={allowsSmallDogs} onChange={e => setAllowsSmallDogs(e.target.checked)} />} label="Allows small dogs" />
+                <FormControlLabel control={<Checkbox checked={allowsCats} onChange={e => setAllowsCats(e.target.checked)} />} label="Allows cats" />
+                <FormControlLabel control={<Checkbox checked={noPets} onChange={e => setNoPets(e.target.checked)} />} label="No pets" />
+                {/* Other Amenities */}
+                <Typography variant="subtitle2" fontWeight={700} mt={2}>Other Amenities</Typography>
+                <FormControlLabel control={<Checkbox checked={mustHaveAC} onChange={e => setMustHaveAC(e.target.checked)} />} label="Must have A/C" />
+                <FormControlLabel control={<Checkbox checked={mustHavePool} onChange={e => setMustHavePool(e.target.checked)} />} label="Must have pool" />
+                <FormControlLabel control={<Checkbox checked={waterfront} onChange={e => setWaterfront(e.target.checked)} />} label="Waterfront" />
+                <FormControlLabel control={<Checkbox checked={onSiteParking} onChange={e => setOnSiteParking(e.target.checked)} />} label="On-site Parking" />
+                <FormControlLabel control={<Checkbox checked={inUnitLaundry} onChange={e => setInUnitLaundry(e.target.checked)} />} label="In-unit Laundry" />
+                <FormControlLabel control={<Checkbox checked={acceptsZillowApps} onChange={e => setAcceptsZillowApps(e.target.checked)} />} label="Accepts Zillow Applications" />
+                <FormControlLabel control={<Checkbox checked={incomeRestricted} onChange={e => setIncomeRestricted(e.target.checked)} />} label="Income restricted" />
+                <FormControlLabel control={<Checkbox checked={hardwoodFloors} onChange={e => setHardwoodFloors(e.target.checked)} />} label="Hardwood Floors" />
+                <FormControlLabel control={<Checkbox checked={disabledAccess} onChange={e => setDisabledAccess(e.target.checked)} />} label="Disabled Access" />
+                <FormControlLabel control={<Checkbox checked={utilitiesIncluded} onChange={e => setUtilitiesIncluded(e.target.checked)} />} label="Utilities Included" />
+                <FormControlLabel control={<Checkbox checked={shortTermLease} onChange={e => setShortTermLease(e.target.checked)} />} label="Short term lease available" />
+                <FormControlLabel control={<Checkbox checked={furnished} onChange={e => setFurnished(e.target.checked)} />} label="Furnished" />
+                <FormControlLabel control={<Checkbox checked={outdoorSpace} onChange={e => setOutdoorSpace(e.target.checked)} />} label="Outdoor space" />
+                <FormControlLabel control={<Checkbox checked={controlledAccess} onChange={e => setControlledAccess(e.target.checked)} />} label="Controlled access" />
+                <FormControlLabel control={<Checkbox checked={highSpeedInternet} onChange={e => setHighSpeedInternet(e.target.checked)} />} label="High speed internet" />
+                <FormControlLabel control={<Checkbox checked={elevator} onChange={e => setElevator(e.target.checked)} />} label="Elevator" />
+                <FormControlLabel control={<Checkbox checked={apartmentCommunity} onChange={e => setApartmentCommunity(e.target.checked)} />} label="Apartment Community" />
+                {/* View */}
+                <Typography variant="subtitle2" fontWeight={700} mt={2}>View</Typography>
+                <FormControlLabel control={<Checkbox checked={viewCity} onChange={e => setViewCity(e.target.checked)} />} label="City" />
+                <FormControlLabel control={<Checkbox checked={viewMountain} onChange={e => setViewMountain(e.target.checked)} />} label="Mountain" />
+                <FormControlLabel control={<Checkbox checked={viewPark} onChange={e => setViewPark(e.target.checked)} />} label="Park" />
+                <FormControlLabel control={<Checkbox checked={viewWater} onChange={e => setViewWater(e.target.checked)} />} label="Water" />
+                {/* Commute Time */}
+                <Typography variant="subtitle2" fontWeight={700} mt={2}>Commute Time</Typography>
+                <TextField
+                  placeholder="Enter address, city, state and ZIP code"
+                  value={commute}
+                  onChange={e => setCommute(e.target.value)}
+                  size="small"
+                  fullWidth
+                  sx={{ mb: 2 }}
+                />
+                {/* Days on Zillow */}
+                <Typography variant="subtitle2" fontWeight={700} mt={2}>Days on Zillow</Typography>
+                <FormControl size="small" fullWidth sx={{ mb: 2 }}>
+                  <Select value={daysOnZillow} onChange={e => setDaysOnZillow(e.target.value)} displayEmpty>
+                    <MenuItem value="">Any</MenuItem>
+                    <MenuItem value="1">1</MenuItem>
+                    <MenuItem value="7">7</MenuItem>
+                    <MenuItem value="14">14</MenuItem>
+                    <MenuItem value="30">30</MenuItem>
+                    <MenuItem value="90">90</MenuItem>
+                  </Select>
+                </FormControl>
+                {/* Keywords */}
+                <Typography variant="subtitle2" fontWeight={700} mt={2}>Keywords</Typography>
+                <TextField
+                  placeholder="Short term, furnished, etc."
+                  value={keywords}
+                  onChange={e => setKeywords(e.target.value)}
+                  size="small"
+                  fullWidth
+                  sx={{ mb: 2 }}
+                />
+                {/* 55+ Communities */}
+                <Box sx={{ display: 'flex', alignItems: 'center', mt: 2, mb: 1 }}>
+                  <Typography variant="subtitle2" fontWeight={700} mr={1}>55+ Communities</Typography>
+                  <Box sx={{ bgcolor: '#fee2e2', color: '#b91c1c', fontWeight: 700, fontSize: 12, borderRadius: 1, px: 1, py: 0.2, ml: 1 }}>NEW</Box>
+                </Box>
+                <RadioGroup value={fiftyFivePlus} onChange={e => setFiftyFivePlus(e.target.value)}>
+                  <FormControlLabel value="include" control={<Radio sx={{ color: '#2563eb', '&.Mui-checked': { color: '#2563eb' } }} />} label="Include" />
+                  <FormControlLabel value="dont_show" control={<Radio sx={{ color: '#2563eb', '&.Mui-checked': { color: '#2563eb' } }} />} label="Don't show" />
+                  <FormControlLabel value="only_show" control={<Radio sx={{ color: '#2563eb', '&.Mui-checked': { color: '#2563eb' } }} />} label="Only show" />
+                </RadioGroup>
+              </Box>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', px: 3, py: 2, borderBottomLeftRadius: 12, borderBottomRightRadius: 12, bgcolor: '#fff', borderTop: '1px solid #e0e0e0' }}>
+                <Button
+                  onClick={handleResetAllFilters}
+                  sx={{ color: '#2563eb', fontWeight: 700, fontSize: 16, textTransform: 'none' }}
+                >
+                  Reset all filters
+                </Button>
+                <Button
+                  variant="contained"
+                  sx={{
+                    bgcolor: '#2563eb',
+                    color: '#fff',
+                    fontWeight: 600,
+                    fontSize: 16,
+                    borderRadius: 2,
+                    height: 44,
+                    minWidth: 120,
+                    textTransform: 'none',
+                    boxShadow: 'none',
+                    '&:hover': { bgcolor: '#1742a0' },
+                  }}
+                  onClick={handleApplyMore}
+                >
+                  Apply
+                </Button>
+              </Box>
+            </Menu>
+          </Box>
+
+          {/* Filter and PageSizeSelector Row */}
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+            <Button
+              variant="outlined"
+              startIcon={<TuneIcon />}
+              sx={{
+                borderRadius: '5px',
+                fontWeight: 600,
+                fontSize: 14,
+                px: 1.5,
+                py: 0.5,
+                minHeight: 32,
+                height: 32,
+                textTransform: 'none',
+                bgcolor: '#fff',
+                color: '#222',
+                borderColor: '#d1d5db',
+                boxShadow: 'none',
+                '&:hover': {
+                  bgcolor: '#f5f6fa',
+                  borderColor: '#2563eb',
+                  color: '#2563eb',
+                },
+              }}
+              onClick={e => setFilterAnchorEl(e.currentTarget)}
+            >
+              Filter
+            </Button>
+            <PageSizeSelector
+              totalResults={totalResults}
+              pageSize={pageSize}
+              page={page}
+              onPageSizeChange={(newSize) => {
+                setPageSize(newSize);
+                setPage(1);
+                // Only fetch if not loading and only for current data source
+                if (!loading) {
+                  if (dataSource === 'db' && !hasSearched) fetchProperties('db', 1, newSize);
+                  if (dataSource === 'market' && hasSearched) fetchProperties('market', 1, newSize);
+                }
+              }}
+              loading={loading}
+            />
+          </Box>
+
+          <Box sx={{ width: '100%', mt: 4 }}>
+            {/* Error Message */}
+            {error && (
+              <Alert severity="error" sx={{ mb: 2 }}>
+                {error}
+              </Alert>
+            )}
+            {/* Loading State */}
+            {loading ? (
+              <TableSkeleton rows={pageSize} />
+            ) : (
+              /* Properties Table */
+              <TableContainer component={Paper} sx={{ width: '100%', borderRadius: 4, boxShadow: 2, overflowX: 'auto' }}>
+                <Table sx={{ minWidth: 700, maxWidth: '100%' }}>
+                  <TableHead>
+                    {/* Filter button above the table, outside the table, smaller and less rounded */}
+                    <TableRow>
+                      <TableCell padding="checkbox">
+                        <Checkbox
+                          checked={selectedProperties.size === properties.length && properties.length > 0}
+                          indeterminate={selectedProperties.size > 0 && selectedProperties.size < properties.length}
+                          onChange={handleSelectAll}
+                        />
+                      </TableCell>
+                      <TableCell>Image</TableCell>
+                      <TableCell onClick={() => handleSort('address')} sx={{ cursor: 'pointer', userSelect: 'none' }}>
+                        Address {sortColumn === 'address' && (sortDirection === 'asc' ? <ArrowUpward fontSize="small" /> : <ArrowDownward fontSize="small" />)}
+                      </TableCell>
+                      <TableCell onClick={() => handleSort('price')} sx={{ cursor: 'pointer', userSelect: 'none' }}>
+                        Price {sortColumn === 'price' && (sortDirection === 'asc' ? <ArrowUpward fontSize="small" /> : <ArrowDownward fontSize="small" />)}
+                      </TableCell>
+                      <TableCell onClick={() => handleSort('bedrooms')} sx={{ cursor: 'pointer', userSelect: 'none' }}>
+                        Beds {sortColumn === 'bedrooms' && (sortDirection === 'asc' ? <ArrowUpward fontSize="small" /> : <ArrowDownward fontSize="small" />)}
+                      </TableCell>
+                      <TableCell onClick={() => handleSort('bathrooms')} sx={{ cursor: 'pointer', userSelect: 'none' }}>
+                        Baths {sortColumn === 'bathrooms' && (sortDirection === 'asc' ? <ArrowUpward fontSize="small" /> : <ArrowDownward fontSize="small" />)}
+                      </TableCell>
+                      <TableCell onClick={() => handleSort('living_area')} sx={{ cursor: 'pointer', userSelect: 'none' }}>
+                        Sq Ft {sortColumn === 'living_area' && (sortDirection === 'asc' ? <ArrowUpward fontSize="small" /> : <ArrowDownward fontSize="small" />)}
+                      </TableCell>
+                      <TableCell onClick={() => handleSort('type')} sx={{ cursor: 'pointer', userSelect: 'none' }}>
+                        Type {sortColumn === 'type' && (sortDirection === 'asc' ? <ArrowUpward fontSize="small" /> : <ArrowDownward fontSize="small" />)}
+                      </TableCell>
+                      <TableCell onClick={() => handleSort('status')} sx={{ cursor: 'pointer', userSelect: 'none' }}>
+                        Status {sortColumn === 'status' && (sortDirection === 'asc' ? <ArrowUpward fontSize="small" /> : <ArrowDownward fontSize="small" />)}
+                      </TableCell>
+                      <TableCell onClick={() => handleSort('sent_to_cyclsales_count')} sx={{ cursor: 'pointer', userSelect: 'none' }}>
+                        Sent to CS {sortColumn === 'sent_to_cyclsales_count' && (sortDirection === 'asc' ? <ArrowUpward fontSize="small" /> : <ArrowDownward fontSize="small" />)}
+                      </TableCell>
+                      <TableCell>Actions</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {properties.length > 0 ? (
+                      properties.map((prop, idx) => (
+                        <TableRow
+                          key={prop.id || idx}
+                          hover
+                          selected={selectedProperties.has(String(prop.id || ''))}
+                        >
+                          <TableCell padding="checkbox">
+                            <Checkbox
+                              checked={selectedProperties.has(String(prop.id || ''))}
+                              onChange={() => handleSelectProperty(String(prop.id || ''))}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            {prop.hi_res_image_link ? (
+                              <Box
+                                component="img"
+                                src={prop.hi_res_image_link}
+                                alt={prop.street_address}
+                                sx={{
+                                  width: 100,
+                                  height: 75,
+                                  objectFit: 'cover',
+                                  borderRadius: 1,
+                                }}
+                              />
+                            ) : (
+                              <Box
+                                sx={{
+                                  width: 100,
+                                  height: 75,
+                                  bgcolor: 'grey.200',
+                                  borderRadius: 1,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                }}
+                              >
+                                <Typography variant="caption" color="text.secondary">
+                                  No image
+                                </Typography>
+                              </Box>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <Link
+                              href={`https://www.zillow.com${prop.hdp_url}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              sx={{
+                                color: 'primary.main',
+                                textDecoration: 'none',
+                                '&:hover': {
+                                  textDecoration: 'underline',
+                                },
+                              }}
+                            >
+                              <Typography variant="subtitle2">{prop.street_address}</Typography>
+                              <Typography variant="body2" color="text.secondary">
+                                {`${prop.city}, ${prop.state}`}
+                              </Typography>
+                            </Link>
+                          </TableCell>
+                          <TableCell>
+                            <Chip
+                              label={`$${prop.price?.toLocaleString() || 'N/A'}`}
+                              color="primary"
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Chip
+                              label={prop.bedrooms || 'N/A'}
+                              sx={{ bgcolor: '#10b981', color: '#fff' }}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <Chip
+                              label={prop.bathrooms || 'N/A'}
+                              sx={{ bgcolor: '#f59e42', color: '#fff' }}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            {prop.living_area?.toLocaleString() || 'N/A'}
+                          </TableCell>
+                          <TableCell>{prop.home_type || 'N/A'}</TableCell>
+                          <TableCell>
+                            <Chip
+                              label={prop.home_status || 'N/A'}
+                              sx={{
+                                bgcolor: prop.home_status === 'Active' ? '#22c55e' : '#64748b',
+                                color: '#fff',
+                              }}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            {prop.sent_by_current_user ? (
+                              <Chip
+                                label="Sent"
+                                color="success"
+                                size="small"
+                              />
+                            ) : (
+                              <Chip
+                                label={`${prop.sent_to_cyclsales_count || 0} sent`}
+                                color="default"
+                                size="small"
+                              />
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <Button
+                              variant="outlined"
+                              size="small"
+                              sx={{
+                                textTransform: 'none',
+                                fontSize: 13,
+                                py: 0.5,
+                                px: 1.5,
+                              }}
+                            >
+                              More details
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={10} align="center">
+                          <Typography variant="body1" color="text.secondary">
+                            No properties found
+                          </Typography>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )}
+          </Box>
+
+          {/* Pagination */}
+          <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', mt: 4, gap: 2 }}>
+            <Pagination
+              count={Math.ceil(totalResults / pageSize)}
+              page={page}
+              onChange={handlePageChange}
+              color="primary"
+              showFirstButton
+              showLastButton
+            />
+            <FormControl size="small" sx={{ minWidth: 80 }}>
+              <Select value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1); if (hasSearched) fetchProperties('db', 1, Number(e.target.value)); }}>
+                {pageSizeOptions.map(size => (
+                  <MenuItem key={size} value={size}>{size} / page</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Box>
+        </Box>
+      </Box>
+    </ThemeProvider>
+  );
+}
+
+export default App;

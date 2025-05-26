@@ -1,0 +1,12 @@
+<odoo>
+    <template id="zillow_property_controlpanel" inherit_id="web.ControlPanel">
+        <xpath expr="//div[@class='o_cp_buttons']" position="inside">
+            <button type="button"
+                    class="btn btn-primary"
+                    t-if="widget.action.context.get('search_property_wizard')"
+                    t-on-click="widget.do_action('web_scraper.action_zillow_property_search_wizard')">
+                <i class="fa fa-search"/> Search Property
+            </button>
+        </xpath>
+    </template>
+</odoo> 

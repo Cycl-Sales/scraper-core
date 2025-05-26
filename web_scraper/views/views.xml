@@ -1,0 +1,17 @@
+<odoo>
+  <data> 
+    <record id="action_zcta_map" model="ir.actions.act_url">
+        <field name="name">US ZCTA Map</field>
+        <field name="url">/zcta/map</field>
+        <field name="target">self</field>
+    </record>
+    <menuitem id="menu_zillow_configurations" name="Configurations" parent="menu_zillow_root" sequence="30"/>
+    <menuitem id="menu_market_size" name="Market Size" parent="menu_zillow_configurations" action="action_market_size" sequence="10"/>
+    <menuitem id="menu_market_location" name="Market Location" parent="menu_zillow_configurations" action="action_market_location" sequence="20"/>
+    <menuitem id="menu_zcta_map"
+              name="US ZCTA Map"
+              parent="menu_zillow_configurations"
+              sequence="30"
+              action="action_zcta_map"/>
+  </data>
+</odoo>
