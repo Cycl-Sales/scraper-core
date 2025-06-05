@@ -33,6 +33,10 @@ import {
   FormControlLabel,
   ToggleButton,
   Switch,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from '@mui/material';
 import type { SelectChangeEvent } from '@mui/material';
 import FilterListIcon from '@mui/icons-material/FilterList';
@@ -47,6 +51,7 @@ import { styled } from '@mui/material/styles';
 import type { SwitchProps } from '@mui/material/Switch';
 import TuneIcon from '@mui/icons-material/Tune';
 import Skeleton from '@mui/material/Skeleton';
+import PropertyPopup from './PropertyPopup';
 
 const theme = createTheme({
   palette: {
@@ -132,7 +137,32 @@ function App() {
   const [minPrice, setMinPrice] = useState('');
   const [maxPrice, setMaxPrice] = useState('');
   const priceOptions = [
-    '', '200', '400', '600', '800', '1000', '2000', '3000', '4000', '5000', '6000', '7000', '8000', '9000', '10000'
+    '', '0', '50000', '100000', '150000', '200000', '250000', '300000', '350000', '400000', '450000', '500000',
+    '550000', '600000', '650000', '700000', '750000', '800000', '850000', '900000', '950000',
+    '1000000', '1250000', '1500000', '1750000', '2000000', '2500000', '2750000', '3000000', '3250000', '3500000',
+    '3750000', '4000000', '4250000', '4500000', '4750000', '5000000', '5500000', '6000000', '6500000', '7000000',
+    '7500000', '8000000', '8500000', '9000000', '9500000', '10000000', '11000000', '12000000', '13000000', '14000000'
+  ];
+  const priceLabels = [
+    'No Min', '$0', '$50,000', '$100,000', '$150,000', '$200,000', '$250,000', '$300,000', '$350,000', '$400,000', '$450,000', '$500,000',
+    '$550,000', '$600,000', '$650,000', '$700,000', '$750,000', '$800,000', '$850,000', '$900,000', '$950,000',
+    '$1M', '$1.25M', '$1.5M', '$1.75M', '$2M', '$2.5M', '$2.75M', '$3M', '$3.25M', '$3.5M',
+    '$3.75M', '$4M', '$4.25M', '$4.5M', '$4.75M', '$5M', '$5.5M', '$6M', '$6.5M', '$7M',
+    '$7.5M', '$8M', '$8.5M', '$9M', '$9.5M', '$10M', '$11M', '$12M', '$13M', '$14M'
+  ];
+  const maxPriceOptions = [
+    '', '50000', '100000', '150000', '200000', '250000', '300000', '350000', '400000', '450000', '500000',
+    '550000', '600000', '650000', '700000', '750000', '800000', '850000', '900000', '950000',
+    '1000000', '1250000', '1500000', '1750000', '2000000', '2500000', '2750000', '3000000', '3250000', '3500000',
+    '3750000', '4000000', '4250000', '4500000', '4750000', '5000000', '5500000', '6000000', '6500000', '7000000',
+    '7500000', '8000000', '8500000', '9000000', '9500000', '10000000', '11000000', '12000000', '13000000', '14000000'
+  ];
+  const maxPriceLabels = [
+    'Any Price', '$50,000', '$100,000', '$150,000', '$200,000', '$250,000', '$300,000', '$350,000', '$400,000', '$450,000', '$500,000',
+    '$550,000', '$600,000', '$650,000', '$700,000', '$750,000', '$800,000', '$850,000', '$900,000', '$950,000',
+    '$1M', '$1.25M', '$1.5M', '$1.75M', '$2M', '$2.5M', '$2.75M', '$3M', '$3.25M', '$3.5M',
+    '$3.75M', '$4M', '$4.25M', '$4.5M', '$4.75M', '$5M', '$5.5M', '$6M', '$6.5M', '$7M',
+    '$7.5M', '$8M', '$8.5M', '$9M', '$9.5M', '$10M', '$11M', '$12M', '$13M', '$14M'
   ];
   const [listingTypeAnchorEl, setListingTypeAnchorEl] = useState<null | HTMLElement>(null);
   const [listingTypeValue, setListingTypeValue] = useState<'for_sale' | 'for_rent' | 'sold'>('for_sale');
@@ -194,7 +224,7 @@ function App() {
   const [daysOnZillow, setDaysOnZillow] = useState('');
   const [keywords, setKeywords] = useState('');
   const [fiftyFivePlus, setFiftyFivePlus] = useState('include');
-  const [sortColumn, setSortColumn] = useState<string>('');
+  const [sortColumn, setSortColumn] = useState<string>('street_address');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [showOnlySent, setShowOnlySent] = useState(false);
   const [filterAnchorEl, setFilterAnchorEl] = useState<null | HTMLElement>(null);
@@ -209,6 +239,12 @@ function App() {
   const pageSizeOptions = [10, 20, 50];
   const [dataSource, setDataSource] = useState<'db' | 'market'>('db');
   const [hasSearched, setHasSearched] = useState(false);
+  const [selectedZpid, setSelectedZpid] = useState<string | null>(null);
+  const [filteredProperties, setFilteredProperties] = useState<ZillowProperty[]>([]);
+  const [showSendToCyclSalesPopup, setShowSendToCyclSalesPopup] = useState(false);
+  const [loadingSendToCS, setLoadingSendToCS] = useState(false);
+  const [fadingProperties, setFadingProperties] = useState<Set<string>>(new Set());
+  const [locationId, setLocationId] = useState<string | null>(null);
 
   const sqftOptions = ['', '500', '750', '1000', '1250', '1500', '1750', '2000', '2250', '2500', '2750', '3000', '3500', '4000', '5000', '7500'];
   const lotOptions = ['', '1000', '2000', '3000', '4000', '5000', '7500', '10890', '21780', '43560', '87120', '217800', '435600', '871200', '2178000', '4356000'];
@@ -226,47 +262,158 @@ function App() {
   // Set page size for pagination
   const PAGE_SIZE = 10;
 
+  // Add a filters object to hold all filter values
+  const filters = {
+    listingTypeValue,
+    minPrice,
+    maxPrice,
+    bedrooms,
+    bathrooms,
+    selectedHomeTypes,
+    sqftMin,
+    sqftMax,
+    lotMin,
+    lotMax,
+    yearMin,
+    yearMax,
+    hasBasement,
+    singleStory,
+    tour3D,
+    instantTour,
+    allowsLargeDogs,
+    allowsSmallDogs,
+    allowsCats,
+    noPets,
+    mustHaveAC,
+    mustHavePool,
+    waterfront,
+    onSiteParking,
+    inUnitLaundry,
+    acceptsZillowApps,
+    incomeRestricted,
+    hardwoodFloors,
+    disabledAccess,
+    utilitiesIncluded,
+    shortTermLease,
+    furnished,
+    outdoorSpace,
+    controlledAccess,
+    highSpeedInternet,
+    elevator,
+    apartmentCommunity,
+    viewCity,
+    viewMountain,
+    viewPark,
+    viewWater,
+    commute,
+    daysOnZillow,
+    keywords,
+    fiftyFivePlus,
+  };
+
   // On mount, fetch from DB only once
   useEffect(() => {
-    setDataSource('db');
-    setHasSearched(false);
-    fetchProperties('db', 1, pageSize);
-    // eslint-disable-next-line
-  }, []);
-
-  // On page/pageSize change, fetch for the current data source
-  useEffect(() => {
-    if (dataSource === 'db' && !hasSearched) {
-      fetchProperties('db', page, pageSize);
-    } else if (dataSource === 'market' && hasSearched) {
-      fetchProperties('market', page, pageSize);
+    if (locationId) {
+      setDataSource('db');
+      setHasSearched(false);
+      fetchProperties('db', 1, pageSize);
     }
     // eslint-disable-next-line
-  }, [page, pageSize]);
+  }, [locationId]);
 
-  // fetchProperties now takes source
-  const fetchProperties = async (source: 'db' | 'market', pageArg?: number, pageSizeArg?: number) => {
+  useEffect(() => {
+    // Try to get from query string
+    const params = new URLSearchParams(window.location.search);
+    let locId = params.get("locationId");
+    // If not found, try from pathname (e.g. /locationId=xxxx)
+    if (!locId) {
+      const match = window.location.pathname.match(/locationId=([^\/]+)/);
+      if (match) locId = match[1];
+    }
+    setLocationId(locId);
+  }, []);
+
+  // When properties change, update filteredProperties
+  useEffect(() => {
+    setFilteredProperties(
+      properties.filter((prop) => {
+        const searchLower = search.toLowerCase();
+        return (
+          (prop.street_address && prop.street_address.toLowerCase().includes(searchLower)) ||
+          (prop.city && prop.city.toLowerCase().includes(searchLower)) ||
+          (prop.state && prop.state.toLowerCase().includes(searchLower)) ||
+          (((prop.zip_code || prop.zipcode)?.toLowerCase() ?? '').includes(searchLower))
+        );
+      })
+    );
+  }, [properties, search]);
+
+  // On search input change, update search and filteredProperties
+  const handleSearchInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearch(e.target.value);
+    setFilteredProperties(
+      properties.filter((prop) => {
+        const searchLower = e.target.value.toLowerCase();
+        return (
+          (prop.street_address && prop.street_address.toLowerCase().includes(searchLower)) ||
+          (prop.city && prop.city.toLowerCase().includes(searchLower)) ||
+          (prop.state && prop.state.toLowerCase().includes(searchLower)) ||
+          (((prop.zip_code || prop.zipcode)?.toLowerCase() ?? '').includes(searchLower))
+        );
+      })
+    );
+  };
+
+  // When fetching from market, update both properties and filteredProperties
+  const fetchProperties = async (
+    source: 'db' | 'market',
+    pageArg?: number,
+    pageSizeArg?: number,
+    sortCol?: string,
+    sortDir?: 'asc' | 'desc',
+    filterObj?: any
+  ) => {
+    if (!locationId) {
+      // Do not fetch if locationId is not set
+      return;
+    }
     try {
       setLoading(true);
       setError(null);
       let data;
       if (source === 'db') {
-        const response = await fetch(`/api/zillow/properties?page=${pageArg || 1}&page_size=${pageSizeArg || pageSize}`);
+        // Only send parameters expected by backend
+        const url = `/api/zillow/properties?page=${pageArg || 1}&page_size=${pageSizeArg || pageSize}&sort_column=${sortCol || sortColumn}&sort_direction=${sortDir || sortDirection}${locationId ? `&locationId=${encodeURIComponent(locationId)}` : ''}`;
+        const response = await fetch(url);
         data = await response.json();
-        setProperties(data.properties);
-        setTotalResults(data.total_results);
-        setPage(data.page);
+        if (data.error) {
+          setError(data.error);
+          setProperties([]);
+          setFilteredProperties([]);
+          setTotalResults(0);
+          setPage(1);
+          return;
+        }
+        setProperties(Array.isArray(data.properties) ? data.properties : []);
+        setFilteredProperties(Array.isArray(data.properties) ? data.properties : []);
+        setTotalResults(data.total_results || 0);
+        setPage(data.page || 1);
       } else {
-        // Market search
+        // Market search (local sort fallback)
         const url = buildSearchUrl();
-        const response = await fetch(`/api/zillow/search?url=${encodeURIComponent(url)}&page=${pageArg || 1}&page_size=${pageSizeArg || pageSize}`);
+        const response = await fetch(`/api/zillow/search?url=${encodeURIComponent(url)}&page=${pageArg || 1}&page_size=${pageSizeArg || pageSize}${locationId ? `&locationId=${encodeURIComponent(locationId)}` : ''}`);
         const result = await response.json();
         if (result.success) {
           setProperties(result.properties);
+          setFilteredProperties(result.properties);
           setTotalResults(result.total_results);
           if (result.total_pages) setPage(result.page || 1);
         } else {
           setError(result.error || 'Failed to search on Zillow');
+          setProperties([]);
+          setFilteredProperties([]);
+          setTotalResults(0);
+          setPage(1);
         }
       }
     } catch (err) {
@@ -312,28 +459,27 @@ function App() {
   };
 
   const handleSendToCyclSales = async () => {
+    setLoadingSendToCS(true);
     try {
-      const selectedIds = Array.from(selectedProperties);
-      const response = await fetch('/api/zillow/property/send-to-cyclsales', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ property_ids: selectedIds }),
-      });
-
-      const result = await response.json();
+      const selectedIds = Array.from(selectedProperties).map(id => Number(id));
+      const result = await zillowService.sendToCyclSales(selectedIds, locationId || undefined);
       if (result.success) {
-        // Refresh the properties list to update sent status
-        await fetchProperties('db', 1, pageSize);
-        // Clear selection
-        setSelectedProperties(new Set());
+        // Fade out sent properties
+        setFadingProperties(new Set(selectedProperties));
+        setTimeout(() => {
+          setProperties(prev => prev.filter(prop => !selectedProperties.has(String(prop.id || ''))));
+          setFilteredProperties(prev => prev.filter(prop => !selectedProperties.has(String(prop.id || ''))));
+          setSelectedProperties(new Set());
+          setFadingProperties(new Set());
+        }, 500); // 500ms fade duration
+        setShowSendToCyclSalesPopup(false);
       } else {
         setError(result.error || 'Failed to send properties to CyclSales');
       }
     } catch (err) {
       setError('Failed to send properties to CyclSales');
-      console.error('Error sending to CyclSales:', err);
+    } finally {
+      setLoadingSendToCS(false);
     }
   };
 
@@ -406,65 +552,61 @@ function App() {
     handleMoreMenuClose();
   };
 
-  // Filter properties based on search input (address, city, ZIP)
-  const filteredProperties = properties.filter((prop) => {
-    const searchLower = search.toLowerCase();
-    const matchesSearch =
-      (prop.street_address && prop.street_address.toLowerCase().includes(searchLower)) ||
-      (prop.city && prop.city.toLowerCase().includes(searchLower)) ||
-      (prop.state && prop.state.toLowerCase().includes(searchLower));
-    const matchesStatus =
-      !listingTypeValue || prop.home_status === statusMap[listingTypeValue];
-    const matchesSent = !showOnlySent || (prop.sent_to_cyclsales_count && prop.sent_to_cyclsales_count > 0);
-    return matchesSearch && matchesStatus && matchesSent;
-  });
-
   // Sorting handler
   const handleSort = (column: string) => {
+    let newDirection: 'asc' | 'desc' = 'asc';
     if (sortColumn === column) {
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+      newDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+    }
+    setSortColumn(column);
+    setSortDirection(newDirection);
+    if (dataSource === 'db' && !hasSearched) {
+      fetchProperties('db', 1, pageSize, column, newDirection);
     } else {
+      // For market data, just update state and let local sort apply
       setSortColumn(column);
-      setSortDirection('asc');
+      setSortDirection(newDirection);
     }
   };
 
   // Sort filteredProperties before rendering
-  const sortedProperties = [...filteredProperties].sort((a, b) => {
-    if (!sortColumn) return 0;
-    let aValue: any = a[sortColumn as keyof typeof a];
-    let bValue: any = b[sortColumn as keyof typeof b];
-    // For address, sort by street_address
-    if (sortColumn === 'address') {
-      aValue = a.street_address ?? '';
-      bValue = b.street_address ?? '';
-    }
-    // For type, sort by home_type
-    if (sortColumn === 'type') {
-      aValue = a.home_type ?? '';
-      bValue = b.home_type ?? '';
-    }
-    // For status, sort by home_status
-    if (sortColumn === 'status') {
-      aValue = a.home_status ?? '';
-      bValue = b.home_status ?? '';
-    }
-    // For sent_to_cyclsales_count, ensure number
-    if (sortColumn === 'sent_to_cyclsales_count') {
-      aValue = a.sent_to_cyclsales_count ?? 0;
-      bValue = b.sent_to_cyclsales_count ?? 0;
-    }
-    // For numeric columns
-    if ([
-      'price', 'bedrooms', 'bathrooms', 'living_area', 'sent_to_cyclsales_count'
-    ].includes(sortColumn)) {
-      aValue = Number(aValue ?? 0);
-      bValue = Number(bValue ?? 0);
-    }
-    if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
-    if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
-    return 0;
-  });
+  const sortedProperties = (dataSource === 'market' && hasSearched)
+    ? [...filteredProperties].sort((a, b) => {
+      if (!sortColumn) return 0;
+      let aValue: any = a[sortColumn as keyof typeof a];
+      let bValue: any = b[sortColumn as keyof typeof b];
+      // For address, sort by street_address
+      if (sortColumn === 'address') {
+        aValue = a.street_address ?? '';
+        bValue = b.street_address ?? '';
+      }
+      // For type, sort by home_type
+      if (sortColumn === 'type') {
+        aValue = a.home_type ?? '';
+        bValue = b.home_type ?? '';
+      }
+      // For status, sort by home_status
+      if (sortColumn === 'status') {
+        aValue = a.home_status ?? '';
+        bValue = b.home_status ?? '';
+      }
+      // For sent_to_cyclsales_count, ensure number
+      if (sortColumn === 'sent_to_cyclsales_count') {
+        aValue = a.sent_to_cyclsales_count ?? 0;
+        bValue = b.sent_to_cyclsales_count ?? 0;
+      }
+      // For numeric columns
+      if ([
+        'price', 'bedrooms', 'bathrooms', 'living_area', 'sent_to_cyclsales_count'
+      ].includes(sortColumn)) {
+        aValue = Number(aValue ?? 0);
+        bValue = Number(bValue ?? 0);
+      }
+      if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
+      if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    })
+    : filteredProperties;
 
   // Function to build the current Zillow search URL with all filters
   const buildSearchUrl = () => {
@@ -532,7 +674,61 @@ function App() {
     return `${baseUrl}?${params.toString()}`;
   };
 
-  // Handler for Search on Zillow button
+  // useEffect to watch all filter states and trigger fetchProperties for DB data
+  useEffect(() => {
+    if (dataSource === 'db' && !hasSearched) {
+      fetchProperties('db', 1, pageSize, sortColumn, sortDirection, filters);
+    }
+    // eslint-disable-next-line
+  }, [
+    listingTypeValue,
+    minPrice,
+    maxPrice,
+    bedrooms,
+    bathrooms,
+    selectedHomeTypes,
+    sqftMin,
+    sqftMax,
+    lotMin,
+    lotMax,
+    yearMin,
+    yearMax,
+    hasBasement,
+    singleStory,
+    tour3D,
+    instantTour,
+    allowsLargeDogs,
+    allowsSmallDogs,
+    allowsCats,
+    noPets,
+    mustHaveAC,
+    mustHavePool,
+    waterfront,
+    onSiteParking,
+    inUnitLaundry,
+    acceptsZillowApps,
+    incomeRestricted,
+    hardwoodFloors,
+    disabledAccess,
+    utilitiesIncluded,
+    shortTermLease,
+    furnished,
+    outdoorSpace,
+    controlledAccess,
+    highSpeedInternet,
+    elevator,
+    apartmentCommunity,
+    viewCity,
+    viewMountain,
+    viewPark,
+    viewWater,
+    commute,
+    daysOnZillow,
+    keywords,
+    fiftyFivePlus
+  ]);
+
+  // Only call fetchProperties('market', ...) when Search on Market is clicked
   const handleSearchOnZillow = async (pageOverride?: number, pageSizeOverride?: number) => {
     setDataSource('market');
     setHasSearched(true);
@@ -544,9 +740,9 @@ function App() {
   };
 
   // PageSizeSelector with skeleton
-  const PageSizeSelector = ({ totalResults, pageSize, page, onPageSizeChange, loading }: { 
-    totalResults: number, 
-    pageSize: number, 
+  const PageSizeSelector = ({ totalResults, pageSize, page, onPageSizeChange, loading }: {
+    totalResults: number,
+    pageSize: number,
     page: number,
     onPageSizeChange: (newSize: number) => void,
     loading: boolean
@@ -554,7 +750,7 @@ function App() {
     const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
     const startRecord = ((page - 1) * pageSize) + 1;
     const endRecord = Math.min(page * pageSize, totalResults);
-    
+
     const handleClick = (event: React.MouseEvent<HTMLDivElement>) => {
       setAnchorEl(event.currentTarget);
     };
@@ -668,6 +864,18 @@ function App() {
     </TableBody>
   );
 
+  if (!locationId) {
+    return (
+      <ThemeProvider theme={theme}>
+        <Box sx={{ p: 4 }}>
+          <Alert severity="error">
+            No locationId provided in the URL. Please access this app from the authorized menu.
+          </Alert>
+        </Box>
+      </ThemeProvider>
+    );
+  }
+
   return (
     <ThemeProvider theme={theme}>
       <Box sx={{ bgcolor: 'background.default', minHeight: '100vh', py: 6, width: '100vw' }}>
@@ -691,7 +899,7 @@ function App() {
                 },
               }}
               value={search}
-              onChange={e => setSearch(e.target.value)}
+              onChange={handleSearchInputChange}
               endAdornment={
                 <InputAdornment position="end">
                   <IconButton edge="end" size="small" sx={{ height: 28, width: 28 }}>
@@ -834,9 +1042,8 @@ function App() {
                   <Typography variant="subtitle2" fontWeight={700} mb={0.5}>Minimum</Typography>
                   <FormControl fullWidth size="small">
                     <Select value={minPrice} onChange={handleMinPriceChange} displayEmpty sx={{ bgcolor: '#f7f8fa', borderRadius: 1 }}>
-                      <MenuItem value="">No Min</MenuItem>
-                      {priceOptions.slice(1).map((price) => (
-                        <MenuItem key={price} value={price}>{`$${parseInt(price).toLocaleString()}`}</MenuItem>
+                      {priceOptions.map((price, idx) => (
+                        <MenuItem key={price} value={price}>{priceLabels[idx]}</MenuItem>
                       ))}
                     </Select>
                   </FormControl>
@@ -846,9 +1053,8 @@ function App() {
                   <Typography variant="subtitle2" fontWeight={700} mb={0.5}>Maximum</Typography>
                   <FormControl fullWidth size="small">
                     <Select value={maxPrice} onChange={handleMaxPriceChange} displayEmpty sx={{ bgcolor: '#f7f8fa', borderRadius: 1 }}>
-                      <MenuItem value="">No Max</MenuItem>
-                      {priceOptions.slice(1).map((price) => (
-                        <MenuItem key={price} value={price}>{`$${parseInt(price).toLocaleString()}`}</MenuItem>
+                      {maxPriceOptions.map((price, idx) => (
+                        <MenuItem key={price} value={price}>{maxPriceLabels[idx]}</MenuItem>
                       ))}
                     </Select>
                   </FormControl>
@@ -1142,26 +1348,51 @@ function App() {
             >
               More
             </Button>
-            <Button
-              variant="contained"
-              size="small"
-              sx={{
-                height: 36,
-                borderRadius: '5px',
-                bgcolor: '#2563eb',
-                color: '#fff',
-                fontWeight: 600,
-                fontSize: 14,
-                px: 2,
-                ml: 1,
-                textTransform: 'none',
-                boxShadow: 'none',
-                '&:hover': { bgcolor: '#1742a0' },
-              }}
-              onClick={() => handleSearchOnZillow()}
-            >
-              Search on Market
-            </Button>
+            {/* Send to Cycl Sales Button (replaces Search on Market when items are selected) */}
+            {selectedProperties.size > 0 ? (
+              <Button
+                variant="contained"
+                size="small"
+                sx={{
+                  height: 36,
+                  borderRadius: '5px',
+                  bgcolor: '#2563eb',
+                  color: '#fff',
+                  fontWeight: 600,
+                  fontSize: 14,
+                  px: 2,
+                  ml: 1,
+                  textTransform: 'none',
+                  boxShadow: 'none',
+                  '&:hover': { bgcolor: '#1742a0' },
+                }}
+                startIcon={<SendIcon />}
+                onClick={() => setShowSendToCyclSalesPopup(true)}
+              >
+                Send to Cycl Sales
+              </Button>
+            ) : (
+              <Button
+                variant="contained"
+                size="small"
+                sx={{
+                  height: 36,
+                  borderRadius: '5px',
+                  bgcolor: '#2563eb',
+                  color: '#fff',
+                  fontWeight: 600,
+                  fontSize: 14,
+                  px: 2,
+                  ml: 1,
+                  textTransform: 'none',
+                  boxShadow: 'none',
+                  '&:hover': { bgcolor: '#1742a0' },
+                }}
+                onClick={() => handleSearchOnZillow()}
+              >
+                Search on Market
+              </Button>
+            )}
             <Menu
               anchorEl={moreAnchorEl}
               open={Boolean(moreAnchorEl)}
@@ -1413,58 +1644,60 @@ function App() {
                 {error}
               </Alert>
             )}
-            {/* Loading State */}
-            {loading ? (
-              <TableSkeleton rows={pageSize} />
-            ) : (
-              /* Properties Table */
-              <TableContainer component={Paper} sx={{ width: '100%', borderRadius: 4, boxShadow: 2, overflowX: 'auto' }}>
-                <Table sx={{ minWidth: 700, maxWidth: '100%' }}>
-                  <TableHead>
-                    {/* Filter button above the table, outside the table, smaller and less rounded */}
-                    <TableRow>
-                      <TableCell padding="checkbox">
-                        <Checkbox
-                          checked={selectedProperties.size === properties.length && properties.length > 0}
-                          indeterminate={selectedProperties.size > 0 && selectedProperties.size < properties.length}
-                          onChange={handleSelectAll}
-                        />
-                      </TableCell>
-                      <TableCell>Image</TableCell>
-                      <TableCell onClick={() => handleSort('address')} sx={{ cursor: 'pointer', userSelect: 'none' }}>
-                        Address {sortColumn === 'address' && (sortDirection === 'asc' ? <ArrowUpward fontSize="small" /> : <ArrowDownward fontSize="small" />)}
-                      </TableCell>
-                      <TableCell onClick={() => handleSort('price')} sx={{ cursor: 'pointer', userSelect: 'none' }}>
-                        Price {sortColumn === 'price' && (sortDirection === 'asc' ? <ArrowUpward fontSize="small" /> : <ArrowDownward fontSize="small" />)}
-                      </TableCell>
-                      <TableCell onClick={() => handleSort('bedrooms')} sx={{ cursor: 'pointer', userSelect: 'none' }}>
-                        Beds {sortColumn === 'bedrooms' && (sortDirection === 'asc' ? <ArrowUpward fontSize="small" /> : <ArrowDownward fontSize="small" />)}
-                      </TableCell>
-                      <TableCell onClick={() => handleSort('bathrooms')} sx={{ cursor: 'pointer', userSelect: 'none' }}>
-                        Baths {sortColumn === 'bathrooms' && (sortDirection === 'asc' ? <ArrowUpward fontSize="small" /> : <ArrowDownward fontSize="small" />)}
-                      </TableCell>
-                      <TableCell onClick={() => handleSort('living_area')} sx={{ cursor: 'pointer', userSelect: 'none' }}>
-                        Sq Ft {sortColumn === 'living_area' && (sortDirection === 'asc' ? <ArrowUpward fontSize="small" /> : <ArrowDownward fontSize="small" />)}
-                      </TableCell>
-                      <TableCell onClick={() => handleSort('type')} sx={{ cursor: 'pointer', userSelect: 'none' }}>
-                        Type {sortColumn === 'type' && (sortDirection === 'asc' ? <ArrowUpward fontSize="small" /> : <ArrowDownward fontSize="small" />)}
-                      </TableCell>
-                      <TableCell onClick={() => handleSort('status')} sx={{ cursor: 'pointer', userSelect: 'none' }}>
-                        Status {sortColumn === 'status' && (sortDirection === 'asc' ? <ArrowUpward fontSize="small" /> : <ArrowDownward fontSize="small" />)}
-                      </TableCell>
-                      <TableCell onClick={() => handleSort('sent_to_cyclsales_count')} sx={{ cursor: 'pointer', userSelect: 'none' }}>
-                        Sent to CS {sortColumn === 'sent_to_cyclsales_count' && (sortDirection === 'asc' ? <ArrowUpward fontSize="small" /> : <ArrowDownward fontSize="small" />)}
-                      </TableCell>
-                      <TableCell>Actions</TableCell>
-                    </TableRow>
-                  </TableHead>
+            <TableContainer component={Paper} sx={{ width: '100%', borderRadius: 4, boxShadow: 2, overflowX: 'auto' }}>
+              <Table sx={{ minWidth: 700, maxWidth: '100%' }}>
+                <TableHead>
+                  {/* Filter button above the table, outside the table, smaller and less rounded */}
+                  <TableRow>
+                    <TableCell padding="checkbox">
+                      <Checkbox
+                        checked={selectedProperties.size === properties.length && properties.length > 0}
+                        indeterminate={selectedProperties.size > 0 && selectedProperties.size < properties.length}
+                        onChange={handleSelectAll}
+                      />
+                    </TableCell>
+                    <TableCell>Image</TableCell>
+                    <TableCell onClick={() => handleSort('address')} sx={{ cursor: 'pointer', userSelect: 'none' }}>
+                      Address {sortColumn === 'address' && (sortDirection === 'asc' ? <ArrowUpward fontSize="small" /> : <ArrowDownward fontSize="small" />)}
+                    </TableCell>
+                    <TableCell onClick={() => handleSort('price')} sx={{ cursor: 'pointer', userSelect: 'none' }}>
+                      Price {sortColumn === 'price' && (sortDirection === 'asc' ? <ArrowUpward fontSize="small" /> : <ArrowDownward fontSize="small" />)}
+                    </TableCell>
+                    <TableCell onClick={() => handleSort('bedrooms')} sx={{ cursor: 'pointer', userSelect: 'none' }}>
+                      Beds {sortColumn === 'bedrooms' && (sortDirection === 'asc' ? <ArrowUpward fontSize="small" /> : <ArrowDownward fontSize="small" />)}
+                    </TableCell>
+                    <TableCell onClick={() => handleSort('bathrooms')} sx={{ cursor: 'pointer', userSelect: 'none' }}>
+                      Baths {sortColumn === 'bathrooms' && (sortDirection === 'asc' ? <ArrowUpward fontSize="small" /> : <ArrowDownward fontSize="small" />)}
+                    </TableCell>
+                    <TableCell onClick={() => handleSort('living_area')} sx={{ cursor: 'pointer', userSelect: 'none' }}>
+                      Sq Ft {sortColumn === 'living_area' && (sortDirection === 'asc' ? <ArrowUpward fontSize="small" /> : <ArrowDownward fontSize="small" />)}
+                    </TableCell>
+                    <TableCell onClick={() => handleSort('type')} sx={{ cursor: 'pointer', userSelect: 'none' }}>
+                      Type {sortColumn === 'type' && (sortDirection === 'asc' ? <ArrowUpward fontSize="small" /> : <ArrowDownward fontSize="small" />)}
+                    </TableCell>
+                    <TableCell onClick={() => handleSort('status')} sx={{ cursor: 'pointer', userSelect: 'none' }}>
+                      Status {sortColumn === 'status' && (sortDirection === 'asc' ? <ArrowUpward fontSize="small" /> : <ArrowDownward fontSize="small" />)}
+                    </TableCell>
+                    <TableCell onClick={() => handleSort('sent_to_cyclsales_count')} sx={{ cursor: 'pointer', userSelect: 'none' }}>
+                      Sent to CS {sortColumn === 'sent_to_cyclsales_count' && (sortDirection === 'asc' ? <ArrowUpward fontSize="small" /> : <ArrowDownward fontSize="small" />)}
+                    </TableCell>
+                    <TableCell onClick={() => handleSort('listingAgent')} sx={{ cursor: 'pointer', userSelect: 'none' }}>
+                      Listing Agent {sortColumn === 'listingAgent' && (sortDirection === 'asc' ? <ArrowUpward fontSize="small" /> : <ArrowDownward fontSize="small" />)}
+                    </TableCell>
+                  </TableRow>
+                </TableHead>
+                {loading ? (
+                  <TableSkeleton rows={pageSize} />
+                ) : (
                   <TableBody>
-                    {properties.length > 0 ? (
-                      properties.map((prop, idx) => (
+                    {sortedProperties.length > 0 ? (
+                      sortedProperties.map((prop, idx) => (
                         <TableRow
-                          key={prop.id || idx}
+                          key={prop.id}
                           hover
-                          selected={selectedProperties.has(String(prop.id || ''))}
+                          selected={Array.isArray(selectedProperties) && selectedProperties.includes(String(prop.id ?? ''))}
+                          className={fadingProperties.has(String(prop.id || '')) ? 'fade-out' : ''}
+                          style={{ transition: 'opacity 0.5s', opacity: fadingProperties.has(String(prop.id || '')) ? 0 : 1 }}
                         >
                           <TableCell padding="checkbox">
                             <Checkbox
@@ -1504,23 +1737,28 @@ function App() {
                             )}
                           </TableCell>
                           <TableCell>
-                            <Link
-                              href={`https://www.zillow.com${prop.hdp_url}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
+                            <Button
+                              variant="text"
                               sx={{
                                 color: 'primary.main',
-                                textDecoration: 'none',
-                                '&:hover': {
-                                  textDecoration: 'underline',
-                                },
+                                textAlign: 'left',
+                                textTransform: 'none',
+                                p: 0,
+                                minWidth: 0,
+                                '&:hover': { textDecoration: 'underline', background: 'none' },
+                                display: 'block',
+                                width: '100%',
+                                alignItems: 'flex-start',
                               }}
+                              onClick={() => setSelectedZpid(prop.zpid || null)}
                             >
-                              <Typography variant="subtitle2">{prop.street_address}</Typography>
-                              <Typography variant="body2" color="text.secondary">
-                                {`${prop.city}, ${prop.state}`}
+                              <Typography variant="subtitle2" sx={{ display: 'block', lineHeight: 1.2 }}>
+                                {prop.street_address}
                               </Typography>
-                            </Link>
+                              <Typography variant="body2" color="text.secondary" sx={{ display: 'block', lineHeight: 1.2 }}>
+                                {`${prop.city}, ${prop.state}${(prop.zip_code || prop.zipcode) ? ' ' + (prop.zip_code || prop.zipcode) : ''}`}
+                              </Typography>
+                            </Button>
                           </TableCell>
                           <TableCell>
                             <Chip
@@ -1554,33 +1792,18 @@ function App() {
                             />
                           </TableCell>
                           <TableCell>
-                            {prop.sent_by_current_user ? (
-                              <Chip
-                                label="Sent"
-                                color="success"
-                                size="small"
-                              />
-                            ) : (
-                              <Chip
-                                label={`${prop.sent_to_cyclsales_count || 0} sent`}
-                                color="default"
-                                size="small"
-                              />
-                            )}
+                            {prop.sent_to_cyclsales_count ?? 0}
                           </TableCell>
                           <TableCell>
-                            <Button
-                              variant="outlined"
-                              size="small"
-                              sx={{
-                                textTransform: 'none',
-                                fontSize: 13,
-                                py: 0.5,
-                                px: 1.5,
-                              }}
-                            >
-                              More details
-                            </Button>
+                            {prop.listingAgent && prop.listingAgent.name ? (
+                              <Typography variant="subtitle2" sx={{ display: 'block', lineHeight: 1.2 }}>
+                                {prop.listingAgent.name}
+                              </Typography>
+                            ) : (
+                              <Typography variant="body2" color="text.secondary">
+                                No agent info
+                              </Typography>
+                            )}
                           </TableCell>
                         </TableRow>
                       ))
@@ -1594,9 +1817,9 @@ function App() {
                       </TableRow>
                     )}
                   </TableBody>
-                </Table>
-              </TableContainer>
-            )}
+                )}
+              </Table>
+            </TableContainer>
           </Box>
 
           {/* Pagination */}
@@ -1619,6 +1842,34 @@ function App() {
           </Box>
         </Box>
       </Box>
+      <PropertyPopup
+        zpid={selectedZpid}
+        isOpen={!!selectedZpid}
+        onClose={() => setSelectedZpid(null)}
+        viewOnMarketUrl={selectedZpid ? `https://www.zillow.com/homes/${selectedZpid}_zpid/` : undefined}
+      />
+      {/* Send to Cycl Sales Popup */}
+      {showSendToCyclSalesPopup && (
+        <Dialog open={showSendToCyclSalesPopup} onClose={() => !loadingSendToCS && setShowSendToCyclSalesPopup(false)}>
+          <DialogTitle>Send to Cycl Sales</DialogTitle>
+          <DialogContent>
+            <Typography>Are you sure you want to send the selected properties to Cycl Sales?</Typography>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setShowSendToCyclSalesPopup(false)} color="secondary" disabled={loadingSendToCS}>Cancel</Button>
+            <Button onClick={handleSendToCyclSales} color="primary" variant="contained" disabled={loadingSendToCS} startIcon={loadingSendToCS ? <CircularProgress size={18} /> : <SendIcon />}>
+              {loadingSendToCS ? 'Sending...' : 'Send'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+      )}
+      {/* Add fade-out CSS */}
+      <style>{`
+      .fade-out {
+        opacity: 0 !important;
+        transition: opacity 0.5s !important;
+      }
+      `}</style>
     </ThemeProvider>
   );
 }

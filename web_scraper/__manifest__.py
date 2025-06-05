@@ -20,6 +20,9 @@
         'views/res_config_settings_views.xml',
         'views/views.xml',
         'views/templates.xml',
+        'views/ghl_templates.xml',
+        'views/ghl_location_views.xml',
+        'data/ghl_cron.xml',
     ],
     # 'assets': {
     #     'web.assets_backend': [

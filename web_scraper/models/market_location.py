@@ -13,6 +13,7 @@ class MarketLocation(models.Model):
     zipcode_ids = fields.One2many('us.zipcode', 'market_location_id', string='ZIP Codes')
     population = fields.Integer(string='Population', compute='_compute_population', store=True)
     name = fields.Char(string='Name', compute='_compute_name', store=True)
+    ghl_location_ids = fields.One2many('ghl.location', 'market_location_id', string='GHL Locations')
 
     @api.depends('city_address', 'market_size_id')
     def _compute_name(self):

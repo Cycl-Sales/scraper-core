@@ -64,7 +64,7 @@ class ZillowPropertyListingAgent(models.Model):
     _name = 'zillow.property.listing.agent'
     _description = 'Zillow Property Listing Agent'
 
-    property_id = fields.Many2one('zillow.property.detail', string='Property')
+    property_id = fields.Many2one('zillow.property.detail', string='Property', required=True, ondelete='cascade')
     agent_reason = fields.Integer(string='Agent Reason')
     badge_type = fields.Char(string='Badge Type')
     business_name = fields.Char(string='Business Name')
@@ -86,6 +86,9 @@ class ZillowPropertyListingAgent(models.Model):
     username = fields.Char(string='Username')
     write_review_url = fields.Char(string='Write Review URL')
     is_zpro = fields.Boolean(string='Is ZPRO')
+    email = fields.Char(string='Email')
+    license_number = fields.Char(string='License Number')
+    license_state = fields.Char(string='License State')
 
 class ZillowPropertyNearbyCity(models.Model):
     _name = 'zillow.property.nearby.city'

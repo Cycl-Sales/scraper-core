@@ -42,6 +42,7 @@
                     <field name="market_size_id"/>
                     <field name="zipcode_ids"  widget="many2many_tags"/>
                     <field name="population"/>
+                    <field name="ghl_location_ids"/>
                 </list>
             </field>
         </record>
@@ -56,11 +57,12 @@
                             <field name="market_size_id"/> 
                         </group>
                         <group>
-                            <field name="user_ids" widget="many2many_tags"/>
+                            <field name="ghl_location_ids" widget="many2many_tags"
+                                   domain="['|', ('market_location_id','=',False), ('market_location_id','=',id)]"/>
                         </group>
                         <group>
                             <field name="zipcode_ids"  widget="many2many_tags"/>
-                        </group>
+                        </group> 
                     </sheet>
                 </form>
             </field>

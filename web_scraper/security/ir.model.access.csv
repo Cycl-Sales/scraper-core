@@ -22,3 +22,9 @@ access_zillow_property_onsite_message_user,zillow.property.onsite.message.user,m
 access_zillow_property_tax_history_user,zillow.property.tax.history.user,model_zillow_property_tax_history,base.group_user,1,1,1,1
 access_zillow_property_virtual_tour_user,zillow.property.virtual.tour.user,model_zillow_property_virtual_tour,base.group_user,1,1,1,1
 access_zillow_property_tour_eligibility_user,zillow.property.tour.eligibility.user,model_zillow_property_tour_eligibility,base.group_user,1,1,1,1
+access_ghl_location_user,ghl.location.user,model_ghl_location,base.group_user,1,0,0,0
+access_ghl_location_manager,ghl.location.manager,model_ghl_location,base.group_system,1,1,1,1
+access_ghl_token_staging_user,ghl.token.staging.user,model_ghl_token_staging,base.group_user,1,0,0,0
+access_ghl_token_staging_manager,ghl.token.staging.manager,model_ghl_token_staging,base.group_system,1,1,1,1
+access_ghl_agency_token_user,ghl.agency.token.user,model_ghl_agency_token,base.group_user,1,0,0,0
+access_ghl_agency_token_manager,ghl.agency.token.manager,model_ghl_agency_token,base.group_system,1,1,1,1
