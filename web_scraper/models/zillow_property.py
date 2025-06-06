@@ -205,11 +205,8 @@ class ZillowProperty(models.Model):
             response.raise_for_status()
             data = response.json()
 
-            _logger.info(f"API response JSON: {data}")
-
             # Update record with API data
             if data:
-                print(f"Propert Data is: {data}")
                 # Extract address data
                 address = data.get('address', {})
 
@@ -260,56 +257,10 @@ class ZillowProperty(models.Model):
 
                 if not res:
                     raise models.UserError('Failed to write data')
-
-                # --- Listing Agent ---
-                listing_agent_data = data.get('listing_agent') or data.get('listingAgent')
-                listing_agent_id = False
-                property_detail = self.env['zillow.property.detail'].search([('zpid', '=', self.zpid)], limit=1)
-                if not property_detail:
-                    property_detail = self.env['zillow.property.detail'].search([('property_id', '=', self.id)], limit=1)
-                if listing_agent_data and isinstance(listing_agent_data, dict) and property_detail:
-                    agent_vals = {
-                        'property_id': property_detail.id,
-                        'agent_reason': listing_agent_data.get('agent_reason'),
-                        'badge_type': listing_agent_data.get('badge_type'),
-                        'business_name': listing_agent_data.get('business_name'),
-                        'display_name': listing_agent_data.get('display_name'),
-                        'encoded_zuid': listing_agent_data.get('encoded_zuid'),
-                        'first_name': listing_agent_data.get('first_name'),
-                        'image_url': listing_agent_data.get('image_data', {}).get('url') if listing_agent_data.get('image_data') else '',
-                        'image_height': listing_agent_data.get('image_data', {}).get('height') if listing_agent_data.get('image_data') else None,
-                        'image_width': listing_agent_data.get('image_data', {}).get('width') if listing_agent_data.get('image_data') else None,
-                        'phone_area_code': listing_agent_data.get('phone', {}).get('area_code') if listing_agent_data.get('phone') else '',
-                        'phone_prefix': listing_agent_data.get('phone', {}).get('prefix') if listing_agent_data.get('phone') else '',
-                        'phone_number': listing_agent_data.get('phone', {}).get('number') if listing_agent_data.get('phone') else '',
-                        'profile_url': listing_agent_data.get('profile_url'),
-                        'rating_average': listing_agent_data.get('rating_average'),
-                        'recent_sales': listing_agent_data.get('recent_sales'),
-                        'review_count': listing_agent_data.get('review_count'),
-                        'reviews_url': listing_agent_data.get('reviews_url'),
-                        'services_offered': json.dumps(listing_agent_data.get('services_offered', [])),
-                        'username': listing_agent_data.get('username'),
-                        'write_review_url': listing_agent_data.get('write_review_url'),
-                        'is_zpro': listing_agent_data.get('zpro'),
-                        'email': listing_agent_data.get('email', ''),
-                        'license_number': listing_agent_data.get('license_number', ''),
-                        'license_state': listing_agent_data.get('license_state', ''),
-                    }
-                    agent_rec = self.env['zillow.property.listing.agent'].sudo().search([
-                        ('display_name', '=', agent_vals['display_name']),
-                        ('business_name', '=', agent_vals['business_name']),
-                        ('property_id', '=', property_detail.id),
-                    ], limit=1)
-                    if agent_rec:
-                        agent_rec.write(agent_vals)
-                    else:
-                        agent_rec = self.env['zillow.property.listing.agent'].sudo().create(agent_vals)
-                    listing_agent_id = agent_rec.id
-
                 # Prepare detail_vals for zillow.property.detail (only valid fields)
                 attribution_info = data.get('attributionInfo', {})
                 _logger.info(f"[ATTRIBUTION] Raw attribution info: {attribution_info}")
-                
+
                 detail_vals = {
                     'zpid': self.zpid,
                     'property_id': self.id,
@@ -467,37 +418,37 @@ class ZillowProperty(models.Model):
                     'zipcode': data.get('zipcode'),
                     'zipcode_id': int(data['zipcodeId']) if data.get('zipcodeId') else False,
                     'zipcode_search_url_path': data.get('zipcodeSearchUrlPath'),
-                    'listing_agent_id': listing_agent_id,
                 }
-                
-                _logger.info(f"[ATTRIBUTION] Mapped attribution fields: {detail_vals}")
+
+                # _logger.info(f"[ATTRIBUTION] Mapped attribution fields: {detail_vals}")
 
                 # Create or update property detail record
                 property_detail = self.env['zillow.property.detail'].search([('zpid', '=', self.zpid)], limit=1)
                 if not property_detail:
-                    property_detail = self.env['zillow.property.detail'].search([('property_id', '=', self.id)], limit=1)
-                print(f"Creating/updating property detail for property {self.id} with vals: {detail_vals}")
+                    property_detail = self.env['zillow.property.detail'].search([('property_id', '=', self.id)],
+                                                                                limit=1)
+                # print(f"Creating/updating property detail for property {self.id} with vals: {detail_vals}")
                 if property_detail:
-                    property_detail.write(detail_vals)
+                    try:
+                        property_detail.write(detail_vals)
+                    except Exception as e:
+                        _logger.error(f"Failed to write property_detail: {e}")
+                        raise
                 else:
-                    property_detail = self.env['zillow.property.detail'].create(detail_vals)
-
-                self.env.cr.commit()  # Force commit to ensure property_detail is saved
-
+                    property_detail = self.env['zillow.property.detail'].create([detail_vals])
                 # Handle listingAgents array (under attributionInfo)
                 listing_agents = data.get('attributionInfo', {}).get('listingAgents', [])
-                _logger.info(f"listing_agents for property_detail {property_detail.id}: {listing_agents}")
-                if property_detail:
-                    # Remove old agents for this property detail
-                    property_detail.agent_ids.unlink()
-                    for agent in listing_agents:
-                        _logger.info(f"Creating agent for property_detail {property_detail.id}: {agent}")
-                        self.env['zillow.property.agent'].create({
-                            'property_id': property_detail.id,
-                            'associated_agent_type': agent.get('associatedAgentType'),
-                            'member_full_name': agent.get('memberFullName'),
-                            'member_state_license': agent.get('memberStateLicense'),
-                        })
+                # Remove old agents for this property detail
+                property_detail.agent_ids.unlink()
+                for agent in listing_agents:
+                    _logger.info(f"Creating agent for property_detail {property_detail.id}: {agent}")
+                    self.env['zillow.property.agent'].create([{
+                        'property_id': property_detail.id,
+                        'associated_agent_type': agent.get('associatedAgentType'),
+                        'member_full_name': agent.get('memberFullName'),
+                        'member_state_license': agent.get('memberStateLicense'),
+                    }])
+                self.env.cr.commit()  # Force commit to ensure property_detail is saved
 
                 return {
                     'type': 'ir.actions.client',
@@ -511,7 +462,7 @@ class ZillowProperty(models.Model):
                 }
             else:
                 raise models.UserError('Invalid data received from API')
-            
+
         except requests.exceptions.RequestException as e:
             _logger.error('Error fetching property data: %s', str(e))
             raise models.UserError(f'Error fetching property data: {str(e)}')
@@ -625,6 +576,16 @@ class ZillowProperty(models.Model):
                 _logger.info(f"[GHL TEST] Webhook response: {resp.status_code} {resp.text}")
             except Exception as e:
                 _logger.error(f"[GHL TEST] Webhook error: {e}")
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        # Ensure vals_list is always a list
+        if isinstance(vals_list, dict):
+            vals_list = [vals_list]
+        records = super(ZillowProperty, self).create(vals_list)
+        for record in records:
+            record.action_fetch_property_data(ignore_last_fetched=True)
+        return records
 
 
 class ZillowHomeType(models.Model):

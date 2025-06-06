@@ -41,7 +41,7 @@ class ZillowPropertyAPI(http.Controller):
                     'year_built': detail.year_built,
                     'lot_area_value': detail.lot_area_value,
                     'lot_area_units': detail.lot_area_units,
-                    'home_type': property_obj.home_type,
+                    'home_type': property_obj.home_type.replace('_', ' ').title() if property_obj.home_type else '',
                     'home_status': property_obj.home_status,
                     'description': detail.description or '',
                     'images': images,

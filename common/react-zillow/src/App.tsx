@@ -1,57 +1,47 @@
-import React, { useState, useEffect } from 'react';
-import type { ChangeEvent } from 'react';
+import { ArrowDownward, ArrowUpward } from '@mui/icons-material';
+import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
+import SearchIcon from '@mui/icons-material/Search';
+import SendIcon from '@mui/icons-material/Send';
+import type { SelectChangeEvent } from '@mui/material';
 import {
-  TextField,
-  Button,
+  Alert,
   Box,
-  Typography,
+  Button,
+  Checkbox,
+  Chip,
+  CircularProgress,
+  createTheme,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  FormControl,
+  FormControlLabel,
+  IconButton,
+  InputAdornment,
+  Menu,
+  MenuItem,
+  OutlinedInput,
+  Pagination,
+  Paper,
+  Radio,
+  RadioGroup,
+  Select,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
-  Paper,
-  Chip,
-  createTheme,
+  TextField,
   ThemeProvider,
-  CircularProgress,
-  Alert,
-  Checkbox,
-  Link,
-  Pagination,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
-  OutlinedInput,
-  InputAdornment,
-  IconButton,
-  Menu,
-  RadioGroup,
-  Radio,
-  FormControlLabel,
-  ToggleButton,
-  Switch,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
+  Typography
 } from '@mui/material';
-import type { SelectChangeEvent } from '@mui/material';
-import FilterListIcon from '@mui/icons-material/FilterList';
-import { zillowService } from './services/zillowService';
-import type { ZillowProperty, SearchParams } from './services/zillowService';
-import SearchIcon from '@mui/icons-material/Search';
-import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
-import { ArrowUpward, ArrowDownward } from '@mui/icons-material';
-import SendIcon from '@mui/icons-material/Send';
-import CheckIcon from '@mui/icons-material/CheckCircle';
-import { styled } from '@mui/material/styles';
-import type { SwitchProps } from '@mui/material/Switch';
-import TuneIcon from '@mui/icons-material/Tune';
 import Skeleton from '@mui/material/Skeleton';
+import React, { useEffect, useState } from 'react';
 import PropertyPopup from './PropertyPopup';
+import type { ZillowProperty } from './services/zillowService';
+import { zillowService } from './services/zillowService';
 
 const theme = createTheme({
   palette: {
@@ -63,66 +53,6 @@ const theme = createTheme({
   },
 });
 
-// MUI iOS-style Switch
-const IOSSwitch = styled((props: SwitchProps) => (
-  <Switch focusVisibleClassName=".Mui-focusVisible" disableRipple {...props} />
-))(({ theme }) => ({
-  width: 42,
-  height: 26,
-  padding: 0,
-  '& .MuiSwitch-switchBase': {
-    padding: 0,
-    margin: 2,
-    transitionDuration: '300ms',
-    '&.Mui-checked': {
-      transform: 'translateX(16px)',
-      color: '#fff',
-      '& + .MuiSwitch-track': {
-        backgroundColor: '#65C466',
-        opacity: 1,
-        border: 0,
-        ...(theme.palette.mode === 'dark' && {
-          backgroundColor: '#2ECA45',
-        }),
-      },
-      '&.Mui-disabled + .MuiSwitch-track': {
-        opacity: 0.5,
-      },
-    },
-    '&.Mui-focusVisible .MuiSwitch-thumb': {
-      color: '#33cf4d',
-      border: '6px solid #fff',
-    },
-    '&.Mui-disabled .MuiSwitch-thumb': {
-      color: theme.palette.grey[100],
-      ...(theme.palette.mode === 'dark' && {
-        color: theme.palette.grey[600],
-      }),
-    },
-    '&.Mui-disabled + .MuiSwitch-track': {
-      opacity: 0.7,
-      ...(theme.palette.mode === 'dark' && {
-        opacity: 0.3,
-      }),
-    },
-  },
-  '& .MuiSwitch-thumb': {
-    boxSizing: 'border-box',
-    width: 22,
-    height: 22,
-  },
-  '& .MuiSwitch-track': {
-    borderRadius: 26 / 2,
-    backgroundColor: '#E9E9EA',
-    opacity: 1,
-    transition: theme.transitions.create(['background-color'], {
-      duration: 500,
-    }),
-    ...(theme.palette.mode === 'dark' && {
-      backgroundColor: '#39393D',
-    }),
-  },
-}));
 
 function App() {
   const [properties, setProperties] = useState<ZillowProperty[]>([]);
@@ -132,7 +62,6 @@ function App() {
   const [selectedProperties, setSelectedProperties] = useState<Set<string>>(new Set());
   const [page, setPage] = useState(1);
   const [totalResults, setTotalResults] = useState(0);
-  const [listingType, setListingType] = useState<'by_agent' | 'by_owner' | 'new_construction'>('by_agent');
   const [priceAnchorEl, setPriceAnchorEl] = useState<null | HTMLElement>(null);
   const [minPrice, setMinPrice] = useState('');
   const [maxPrice, setMaxPrice] = useState('');
@@ -192,7 +121,6 @@ function App() {
   const [yearMin, setYearMin] = useState('');
   const [yearMax, setYearMax] = useState('');
   const [hasBasement, setHasBasement] = useState(false);
-  const [singleStory, setSingleStory] = useState(false);
   const [tour3D, setTour3D] = useState(false);
   const [instantTour, setInstantTour] = useState(false);
   const [allowsLargeDogs, setAllowsLargeDogs] = useState(false);
@@ -226,15 +154,6 @@ function App() {
   const [fiftyFivePlus, setFiftyFivePlus] = useState('include');
   const [sortColumn, setSortColumn] = useState<string>('street_address');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
-  const [showOnlySent, setShowOnlySent] = useState(false);
-  const [filterAnchorEl, setFilterAnchorEl] = useState<null | HTMLElement>(null);
-  const [filterBeds, setFilterBeds] = useState('');
-  const [filterBaths, setFilterBaths] = useState('');
-  const [filterType, setFilterType] = useState('');
-  const [filterStatus, setFilterStatus] = useState('');
-  const [filterCity, setFilterCity] = useState('');
-  const [filterState, setFilterState] = useState('');
-  const [filterSentToCS, setFilterSentToCS] = useState(false);
   const [pageSize, setPageSize] = useState(10);
   const pageSizeOptions = [10, 20, 50];
   const [dataSource, setDataSource] = useState<'db' | 'market'>('db');
@@ -250,74 +169,15 @@ function App() {
   const lotOptions = ['', '1000', '2000', '3000', '4000', '5000', '7500', '10890', '21780', '43560', '87120', '217800', '435600', '871200', '2178000', '4356000'];
   const lotLabels = ['', '1,000 sqft', '2,000 sqft', '3,000 sqft', '4,000 sqft', '5,000 sqft', '7,500 sqft', '1/4 acre/10,890 sqft', '1/2 acre', '1 acre', '2 acres', '5 acres', '10 acres', '20 acres', '50 acres', '100 acres'];
   const yearOptions = ['', ...Array.from({ length: 2024 - 1900 + 1 }, (_, i) => (1900 + i).toString())];
-  const daysOnZillowOptions = ['', '1', '7', '14', '30', '90'];
 
-  // Map dropdown value to property status
-  const statusMap: Record<string, string> = {
-    for_sale: 'FOR_SALE',
-    for_rent: 'FOR_RENT',
-    sold: 'SOLD',
-  };
 
-  // Set page size for pagination
-  const PAGE_SIZE = 10;
-
-  // Add a filters object to hold all filter values
-  const filters = {
-    listingTypeValue,
-    minPrice,
-    maxPrice,
-    bedrooms,
-    bathrooms,
-    selectedHomeTypes,
-    sqftMin,
-    sqftMax,
-    lotMin,
-    lotMax,
-    yearMin,
-    yearMax,
-    hasBasement,
-    singleStory,
-    tour3D,
-    instantTour,
-    allowsLargeDogs,
-    allowsSmallDogs,
-    allowsCats,
-    noPets,
-    mustHaveAC,
-    mustHavePool,
-    waterfront,
-    onSiteParking,
-    inUnitLaundry,
-    acceptsZillowApps,
-    incomeRestricted,
-    hardwoodFloors,
-    disabledAccess,
-    utilitiesIncluded,
-    shortTermLease,
-    furnished,
-    outdoorSpace,
-    controlledAccess,
-    highSpeedInternet,
-    elevator,
-    apartmentCommunity,
-    viewCity,
-    viewMountain,
-    viewPark,
-    viewWater,
-    commute,
-    daysOnZillow,
-    keywords,
-    fiftyFivePlus,
-  };
 
   // On mount, fetch from DB only once
   useEffect(() => {
-    if (locationId) {
-      setDataSource('db');
-      setHasSearched(false);
-      fetchProperties('db', 1, pageSize);
-    }
+    if (!locationId) return; // Do not fetch if locationId is not set
+    setDataSource('db');
+    setHasSearched(false);
+    fetchProperties('db', 1, pageSize);
     // eslint-disable-next-line
   }, [locationId]);
 
@@ -371,7 +231,6 @@ function App() {
     pageSizeArg?: number,
     sortCol?: string,
     sortDir?: 'asc' | 'desc',
-    filterObj?: any
   ) => {
     if (!locationId) {
       // Do not fetch if locationId is not set
@@ -424,19 +283,13 @@ function App() {
     }
   };
 
-  const handlePageChange = (event: React.ChangeEvent<unknown>, value: number) => {
+  const handlePageChange = (_: React.ChangeEvent<unknown>, value: number) => {
     setPage(value);
     if (!loading) {
       if (dataSource === 'db' && !hasSearched) fetchProperties('db', value, pageSize);
       if (dataSource === 'market' && hasSearched) fetchProperties('market', value, pageSize);
     }
   };
-
-  const handleListingTypeChange = (event: SelectChangeEvent) => {
-    setListingType(event.target.value as 'by_agent' | 'by_owner' | 'new_construction');
-    setPage(1); // Reset to first page when changing listing type
-  };
-
   const handleSelectProperty = (propertyId: string) => {
     setSelectedProperties(prev => {
       const newSelected = new Set(prev);
@@ -481,11 +334,6 @@ function App() {
     } finally {
       setLoadingSendToCS(false);
     }
-  };
-
-  const handleFilterClick = () => {
-    // TODO: Implement filter functionality
-    console.log('Filter clicked');
   };
 
   const handlePriceMenuOpen = (event: React.MouseEvent<HTMLElement>) => setPriceAnchorEl(event.currentTarget);
@@ -537,7 +385,7 @@ function App() {
   const handleMoreMenuClose = () => setMoreAnchorEl(null);
   const handleResetAllFilters = () => {
     setSqftMin(''); setSqftMax(''); setLotMin(''); setLotMax(''); setYearMin(''); setYearMax('');
-    setHasBasement(false); setSingleStory(false); setTour3D(false); setInstantTour(false);
+    setHasBasement(false); setTour3D(false); setInstantTour(false);
     setAllowsLargeDogs(false); setAllowsSmallDogs(false); setAllowsCats(false); setNoPets(false);
     setMustHaveAC(false); setMustHavePool(false); setWaterfront(false); setOnSiteParking(false);
     setInUnitLaundry(false); setAcceptsZillowApps(false); setIncomeRestricted(false);
@@ -561,6 +409,7 @@ function App() {
     setSortColumn(column);
     setSortDirection(newDirection);
     if (dataSource === 'db' && !hasSearched) {
+      if (!locationId) return; // Do not fetch if locationId is not set
       fetchProperties('db', 1, pageSize, column, newDirection);
     } else {
       // For market data, just update state and let local sort apply
@@ -660,7 +509,6 @@ function App() {
     if (tour3D) searchQueryState.filterState['3d'] = { value: true };
     if (mustHaveAC) searchQueryState.filterState.ac = { value: true };
     if (hasBasement) searchQueryState.filterState.basf = { value: true };
-    if (singleStory) searchQueryState.filterState.sto = { value: true };
     if (onSiteParking) searchQueryState.filterState.gar = { value: true };
     if (mustHavePool) searchQueryState.filterState.pool = { value: true };
     if (waterfront) searchQueryState.filterState.water = { value: true };
@@ -676,8 +524,9 @@ function App() {
 
   // useEffect to watch all filter states and trigger fetchProperties for DB data
   useEffect(() => {
+    if (!locationId) return; // Do not fetch if locationId is not set
     if (dataSource === 'db' && !hasSearched) {
-      fetchProperties('db', 1, pageSize, sortColumn, sortDirection, filters);
+      fetchProperties('db', 1, pageSize, sortColumn, sortDirection);
     }
     // eslint-disable-next-line
   }, [
@@ -694,7 +543,6 @@ function App() {
     yearMin,
     yearMax,
     hasBasement,
-    singleStory,
     tour3D,
     instantTour,
     allowsLargeDogs,
@@ -730,12 +578,45 @@ function App() {
 
   // Only call fetchProperties('market', ...) when Search on Market is clicked
   const handleSearchOnZillow = async (pageOverride?: number, pageSizeOverride?: number) => {
+    // Always get locationId from the URL before searching
+    let locId = null;
+    const params = new URLSearchParams(window.location.search);
+    locId = params.get("locationId");
+    if (!locId) {
+      const match = window.location.pathname.match(/locationId=([^\/]+)/);
+      if (match) locId = match[1];
+    }
+    if (!locId) {
+      setError('No locationId provided in the URL. Please access this app from the authorized menu.');
+      return;
+    }
+    setLocationId(locId);
     setDataSource('market');
     setHasSearched(true);
     setPage(pageOverride || 1);
     if (pageSizeOverride) setPageSize(pageSizeOverride);
     setLoading(true);
     setError(null);
+    // Address detection: contains a number and at least two words
+    const addressLike = /\d+\s+\w+/.test(search.trim());
+    if (addressLike) {
+      try {
+        const response = await fetch(`/api/zillow/search?address=${encodeURIComponent(search.trim())}&locationId=${encodeURIComponent(locId)}`);
+        const result = await response.json();
+        if (result.success && result.properties && result.properties.length > 0) {
+          setProperties(result.properties);
+          setFilteredProperties(result.properties);
+          setTotalResults(result.properties.length);
+          setPage(1);
+          setLoading(false);
+          return;
+        }
+        // If no result, fall through to normal market search
+      } catch (err) {
+        // If address search fails, fall through to normal market search
+      }
+    }
+    // For general search, always include locationId
     await fetchProperties('market', pageOverride || 1, pageSizeOverride || pageSize);
   };
 
@@ -1133,7 +1014,7 @@ function App() {
               <Box sx={{ px: 3, pt: 2, pb: 1 }}>
                 <Typography variant="subtitle2" fontWeight={700} mb={1}>Bedrooms</Typography>
                 <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
-                  {bedroomOptions.map((val, idx) => (
+                  {bedroomOptions.map((val, _) => (
                     <Button
                       key={val || 'any'}
                       variant={bedrooms === val ? 'contained' : 'outlined'}
@@ -1164,7 +1045,7 @@ function App() {
               <Box sx={{ px: 3, pt: 2, pb: 1 }}>
                 <Typography variant="subtitle2" fontWeight={700} mb={1}>Bathrooms</Typography>
                 <Box sx={{ display: 'flex', gap: 1 }}>
-                  {bathroomOptions.map((val, idx) => (
+                  {bathroomOptions.map((val, _) => (
                     <Button
                       key={val || 'any'}
                       variant={bathrooms === val ? 'contained' : 'outlined'}
@@ -1484,7 +1365,7 @@ function App() {
                 <FormControlLabel control={<Checkbox checked={hasBasement} onChange={e => setHasBasement(e.target.checked)} />} label="Has basement" />
                 {/* Number of Stories */}
                 <Typography variant="subtitle2" fontWeight={700} mt={2}>Number Of Stories</Typography>
-                <FormControlLabel control={<Checkbox checked={singleStory} onChange={e => setSingleStory(e.target.checked)} />} label="Single-story only" />
+                {/* <FormControlLabel control={<Checkbox checked={singleStory} onChange={e => setSingleStory(e.target.checked)} />} label="Single-story only" /> */}
                 {/* Tours */}
                 <Typography variant="subtitle2" fontWeight={700} mt={2}>Tours</Typography>
                 <FormControlLabel control={<Checkbox checked={tour3D} onChange={e => setTour3D(e.target.checked)} />} label="Must have 3D Tour" />
@@ -1594,7 +1475,7 @@ function App() {
 
           {/* Filter and PageSizeSelector Row */}
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-            <Button
+            {/* <Button
               variant="outlined"
               startIcon={<TuneIcon />}
               sx={{
@@ -1619,7 +1500,7 @@ function App() {
               onClick={e => setFilterAnchorEl(e.currentTarget)}
             >
               Filter
-            </Button>
+            </Button> */}
             <PageSizeSelector
               totalResults={totalResults}
               pageSize={pageSize}
@@ -1629,7 +1510,10 @@ function App() {
                 setPage(1);
                 // Only fetch if not loading and only for current data source
                 if (!loading) {
-                  if (dataSource === 'db' && !hasSearched) fetchProperties('db', 1, newSize);
+                  if (dataSource === 'db' && !hasSearched) {
+                    if (!locationId) return; // Do not fetch if locationId is not set
+                    fetchProperties('db', 1, newSize);
+                  }
                   if (dataSource === 'market' && hasSearched) fetchProperties('market', 1, newSize);
                 }
               }}
@@ -1691,7 +1575,7 @@ function App() {
                 ) : (
                   <TableBody>
                     {sortedProperties.length > 0 ? (
-                      sortedProperties.map((prop, idx) => (
+                      sortedProperties.map((prop, _) => (
                         <TableRow
                           key={prop.id}
                           hover
@@ -1767,16 +1651,20 @@ function App() {
                             />
                           </TableCell>
                           <TableCell>
-                            <Chip
-                              label={prop.bedrooms || 'N/A'}
+                            {prop.bedrooms ? <Chip
+                              label={prop.bedrooms}
                               sx={{ bgcolor: '#10b981', color: '#fff' }}
-                            />
+                            /> : <Typography variant="body2" color="text.secondary" sx={{
+                              textAlign: 'center',
+                            }}>--</Typography>}
                           </TableCell>
                           <TableCell>
-                            <Chip
-                              label={prop.bathrooms || 'N/A'}
+                            {prop.bathrooms ? <Chip
+                              label={prop.bathrooms}
                               sx={{ bgcolor: '#f59e42', color: '#fff' }}
-                            />
+                            /> : <Typography variant="body2" color="text.secondary" sx={{
+                              textAlign: 'center',
+                            }}>--</Typography>}
                           </TableCell>
                           <TableCell>
                             {prop.living_area?.toLocaleString() || 'N/A'}

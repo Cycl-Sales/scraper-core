@@ -7,20 +7,28 @@ from odoo.fields import Datetime
 
 _logger = logging.getLogger(__name__)
 
+
 class ZillowPropertyController(http.Controller):
-    
+
     @http.route('/api/zillow/properties', type='http', auth='public', methods=['GET'], csrf=False)
     def get_zillow_properties(self, **kwargs):
         try:
             # Get all Zillow property records with listing agent data
-            properties = request.env['zillow.property.detail'].sudo().search_read([], 
-                fields=['id','name', 'street', 'city', 'state', 'zip_code', 'price', 'bedrooms', 
-                       'bathrooms', 'square_feet', 'property_type', 'listing_status', 
-                       'hi_res_image_link', 'listing_agent_id', 'zpid', 'sent_by_current_user',
-                       'sent_to_cyclsales_count'])
-            
+            properties = request.env['zillow.property.detail'].sudo().search_read([],
+                                                                                  fields=['id', 'name', 'street',
+                                                                                          'city', 'state', 'zip_code',
+                                                                                          'price', 'bedrooms',
+                                                                                          'bathrooms', 'square_feet',
+                                                                                          'property_type',
+                                                                                          'listing_status',
+                                                                                          'hi_res_image_link',
+                                                                                          'listing_agent_id', 'zpid',
+                                                                                          'sent_by_current_user',
+                                                                                          'sent_to_cyclsales_count'])
+
             # Add agent info to each property
             for prop in properties:
+                prop['home_type'] = prop.get('home_type').replace('_', ' ').title() if prop.get('home_type') else ''
                 agent = prop.get('listing_agent_id')
                 agent_id = None
                 if agent:
@@ -59,24 +67,25 @@ class ZillowPropertyController(http.Controller):
                             'is_zpro': agent_rec.is_zpro,
                         }
                         if prop.get('id') == 2:
-                            _logger.info(f"[DEBUG] Attached agent info for property id=2: {json.dumps(prop['listingAgent'], default=str)}")
+                            _logger.info(
+                                f"[DEBUG] Attached agent info for property id=2: {json.dumps(prop['listingAgent'], default=str)}")
                     else:
                         prop['listingAgent'] = None
                 else:
                     prop['listingAgent'] = None
-            
+
             # Format the response
             response = {
                 'status': 'success',
                 'data': properties
             }
-            
+
             return http.Response(
                 json.dumps(response),
                 content_type='application/json',
                 status=200
             )
-            
+
         except Exception as e:
             _logger.error(f"Error in get_zillow_properties: {str(e)}")
             return http.Response(
@@ -92,18 +101,18 @@ class ZillowPropertyController(http.Controller):
     def send_to_cyclsales(self, **kwargs):
         try:
             _logger.info("=== Starting send_to_cyclsales process ===")
-            
+
             # Get the raw request data
             raw_data = request.httprequest.get_data(as_text=True)
             _logger.info(f"[REQUEST] Raw request data: {raw_data}")
-            
+
             # Parse the JSON data
             data = json.loads(raw_data)
             _logger.info(f"[REQUEST] Parsed request data: {data}")
-            
+
             property_ids = data.get('property_ids', [])
             _logger.info(f"[REQUEST] Received property_ids: {property_ids}")
-            
+
             if not property_ids:
                 _logger.warning("[VALIDATION] No property IDs provided")
                 return http.Response(
@@ -111,23 +120,23 @@ class ZillowPropertyController(http.Controller):
                     content_type='application/json',
                     status=400
                 )
-            
+
             # Fetch properties from zillow.property model
             _logger.info(f"[FETCH] Attempting to fetch properties with IDs: {property_ids}")
             properties = request.env['zillow.property'].sudo().browse(property_ids)
             _logger.info(f"[FETCH] Found {len(properties)} properties")
-            
+
             webhook_url = "https://services.leadconnectorhq.com/hooks/N1D3b2rc7RAqs4k7qdFY/webhook-trigger/47dabb25-a458-43ec-a0e6-8832251239a5"
-            
+
             results = []
             for prop in properties:
                 _logger.info(f"[PROCESS] Processing property ID: {prop.id}")
-                
+
                 # Get property detail
                 detail = request.env['zillow.property.detail'].sudo().search([
                     ('property_id', '=', prop.id)
                 ], limit=1)
-                
+
                 if not detail:
                     _logger.warning(f"[PROCESS] No detail found for property {prop.id}")
                     results.append({
@@ -136,13 +145,14 @@ class ZillowPropertyController(http.Controller):
                         'response': 'No property detail found'
                     })
                     continue
-                
+
                 _logger.info(f"[PROCESS] Found property detail ID: {detail.id}")
-                
+
                 # Get agent info
                 agent = detail.listing_agent_id
-                _logger.info(f"[PROCESS] Agent info for property {prop.id}: {agent.display_name if agent else 'No agent'}")
-                
+                _logger.info(
+                    f"[PROCESS] Agent info for property {prop.id}: {agent.display_name if agent else 'No agent'}")
+
                 payload = {
                     "listing_agent": agent.display_name if agent else '',
                     "baths": detail.bathrooms,
@@ -172,14 +182,15 @@ class ZillowPropertyController(http.Controller):
                     "co_agent_name": detail.co_agent_name,
                     "co_agent_number": detail.co_agent_number,
                 }
-                
+
                 _logger.info(f"[WEBHOOK] Preparing payload for property {prop.id}: {json.dumps(payload, default=str)}")
-                
+
                 try:
                     _logger.info(f"[WEBHOOK] Sending request to webhook for property {prop.id}")
                     resp = requests.post(webhook_url, json=payload, timeout=10)
-                    _logger.info(f"[WEBHOOK] Response for property {prop.id}: Status={resp.status_code}, Body={resp.text}")
-                    
+                    _logger.info(
+                        f"[WEBHOOK] Response for property {prop.id}: Status={resp.status_code}, Body={resp.text}")
+
                     # If webhook call was successful, mark the property as sent
                     if resp.status_code == 200:
                         current_user = request.env.user
@@ -187,8 +198,9 @@ class ZillowPropertyController(http.Controller):
                             'sent_to_cyclsales_by': [(4, current_user.id)],
                             'last_sent_to_cyclsales': Datetime.now()
                         })
-                        _logger.info(f"[UPDATE] Marked property {prop.id} as sent to CyclSales by user {current_user.id}")
-                    
+                        _logger.info(
+                            f"[UPDATE] Marked property {prop.id} as sent to CyclSales by user {current_user.id}")
+
                     results.append({
                         'property_id': prop.id,
                         'status': resp.status_code,
@@ -201,7 +213,7 @@ class ZillowPropertyController(http.Controller):
                         'status': 'error',
                         'response': str(e)
                     })
-            
+
             _logger.info(f"[COMPLETE] Processed {len(results)} properties")
             return http.Response(
                 json.dumps({
@@ -212,7 +224,7 @@ class ZillowPropertyController(http.Controller):
                 content_type='application/json',
                 status=200
             )
-            
+
         except json.JSONDecodeError as e:
             _logger.error(f"[ERROR] JSON parsing error: {str(e)}")
             return http.Response(
@@ -226,4 +238,4 @@ class ZillowPropertyController(http.Controller):
                 json.dumps({'success': False, 'error': str(e)}),
                 content_type='application/json',
                 status=500
-            ) 
+            )

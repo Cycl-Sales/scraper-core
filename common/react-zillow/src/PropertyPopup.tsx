@@ -1,15 +1,15 @@
-import React, { useEffect, useState } from 'react';
 import {
+  Box,
+  Button,
+  CircularProgress,
   Dialog,
   DialogContent,
-  Box,
-  Typography,
-  Button,
+  Divider,
   IconButton,
-  CircularProgress,
   Paper,
+  Typography,
 } from '@mui/material';
-import CloseIcon from '@mui/icons-material/Close';
+import { useEffect, useState } from 'react';
 import logoFull from './assets/logo-full.webp';
 import { zillowService } from './services/zillowService';
 
@@ -52,37 +52,27 @@ interface PropertyData {
 }
 
 export default function PropertyPopup({ zpid, isOpen, onClose, viewOnMarketUrl, onSentAndClose }: PropertyPopupProps) {
-  const [property, setProperty] = useState<PropertyData | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [property, setProperty] = useState<PropertyData | null>(null); 
   const [loadingSend, setLoadingSend] = useState(false);
   const [showGlobalLoading, setShowGlobalLoading] = useState(false);
   const [resultDialog, setResultDialog] = useState<{ open: boolean; success: boolean; message: string }>({ open: false, success: false, message: '' });
 
   const fetchProperty = () => {
-    if (isOpen && zpid) {
-      setLoading(true);
-      setError(null);
+    if (isOpen && zpid) { 
       fetch(`/api/zillow/property/${zpid}`)
         .then(res => res.json())
         .then(data => {
-          if (!data.success) {
-            setError(data.error || 'Property not found.');
+          if (!data.success) { 
             setProperty(null);
           } else {
-            setProperty(data);
-            setError(null);
-          }
-          setLoading(false);
+            setProperty(data); 
+          } 
         })
-        .catch(() => {
-          setError('Failed to fetch property details.');
-          setProperty(null);
-          setLoading(false);
+        .catch(() => { 
+          setProperty(null); 
         });
     } else {
-      setProperty(null);
-      setError(null);
+      setProperty(null); 
     }
   };
 
@@ -124,18 +114,7 @@ export default function PropertyPopup({ zpid, isOpen, onClose, viewOnMarketUrl, 
   useEffect(() => {
     fetchProperty();
     // eslint-disable-next-line
-  }, [zpid, isOpen]);
-
-  // Helper for price per sqft
-  const pricePerSqft = property && property.price && property.living_area ? (property.price / property.living_area).toFixed(0) : null;
-  // Helper for lot size
-  const lotSize = property && property.lot_area_value ? `${property.lot_area_value.toLocaleString()}${property.lot_area_units ? ' ' + property.lot_area_units : ''}` : '--';
-  // Helper for Zestimate
-  const zestimate = property && property.zestimate ? `$${property.zestimate.toLocaleString()}` : '--';
-  // Helper for HOA
-  const hoa = property && property.hoa ? `$${property.hoa}` : '--';
-  // Helper for price change
-  const priceChange = property && property.price_change ? property.price_change : null;
+  }, [zpid, isOpen]); 
 
   return (
     <Dialog
@@ -173,7 +152,7 @@ export default function PropertyPopup({ zpid, isOpen, onClose, viewOnMarketUrl, 
               zIndex: 1300,
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center',
+              justifyContent: 'center', 
             }}
           >
             <CircularProgress size={72} thickness={5} color="inherit" sx={{ color: '#fff' }} />
@@ -231,7 +210,7 @@ export default function PropertyPopup({ zpid, isOpen, onClose, viewOnMarketUrl, 
 
                   {/* Listing Provided by */}
                   <Typography variant="body2" sx={{ color: '#555', mb: 0.5, mt: 1, fontSize: 15 }}>
-                    Listing Provided by: {property?.listingAgent?.name ?? '--'}{property?.listingAgent?.license ? ` ${property.listingAgent.license}` : ''}{property?.listingAgent?.email ? ` ${property.listingAgent.email}` : ''}{property?.listingAgent?.brokerage ? `, ${property.listingAgent.brokerage}` : ''}
+                    Listing Provided by:
                   </Typography>
                   {/* Price cut */}
                   {property?.price_change && (
@@ -239,6 +218,7 @@ export default function PropertyPopup({ zpid, isOpen, onClose, viewOnMarketUrl, 
                       Price cut: {property.price_change}
                     </Box>
                   )}
+
                   <Box sx={{ display: 'flex', flexDirection: 'row', gap: 2, mb: 2 }}>
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mb: 2 }}>
                       {/* Price and address */}
@@ -248,22 +228,21 @@ export default function PropertyPopup({ zpid, isOpen, onClose, viewOnMarketUrl, 
                       <Typography variant="h6" sx={{ color: '#222', fontWeight: 400, mb: 1, fontSize: 20, lineHeight: 1.2 }}>
                         {property?.address}, {property?.city}, {property?.state} {property?.zipcode}
                       </Typography>
-
-
                       {/* Monthly estimate bar */}
                       <Box sx={{ display: 'flex', alignItems: 'center', bgcolor: '#f1f6fb', borderRadius: 2, px: 2, py: 1, width: 'fit-content', mb: 2 }}>
-                        <Typography variant="subtitle1" sx={{ color: '#2563eb', fontWeight: 700, mr: 1, fontSize: 18 }}>Est.: $3,017/mo</Typography>
-                        <Typography variant="body2" sx={{ color: '#2563eb', fontWeight: 500, textDecoration: 'underline', cursor: 'pointer', fontSize: 16 }}>Get pre-qualified</Typography>
+                        <Typography variant="subtitle1" sx={{ color: '#2563eb', fontWeight: 400, mr: 1 }}>Listing Provided by:</Typography>
+                        <Typography variant="body2" sx={{ color: '#2563eb', fontWeight: 600, cursor: 'pointer', fontSize: 18 }}>{property?.listingAgent?.name ?? '--'}{property?.listingAgent?.license ? ` ${property.listingAgent.license}` : ''}{property?.listingAgent?.email ? ` ${property.listingAgent.email}` : ''}{property?.listingAgent?.brokerage ? `, ${property.listingAgent.brokerage}` : ''}</Typography>
                       </Box>
                     </Box>
+
                     {/* Summary facts row */}
                     <Box sx={{ display: 'flex', gap: 8, alignItems: 'center', mb: 2, mt: 2 }}>
                       <Box sx={{ textAlign: 'center', minWidth: 80 }}>
-                        <Typography variant="h4" sx={{ fontWeight: 700, fontSize: 32 }}>{property?.beds ?? '--'}</Typography>
+                        <Typography variant="h4" sx={{ fontWeight: 700, fontSize: 32 }}>{property?.beds ? property.beds : '--'}</Typography>
                         <Typography variant="body2" sx={{ color: '#555', fontSize: 18 }}>beds</Typography>
                       </Box>
                       <Box sx={{ textAlign: 'center', minWidth: 80 }}>
-                        <Typography variant="h4" sx={{ fontWeight: 700, fontSize: 32 }}>{property?.baths ?? '--'}</Typography>
+                        <Typography variant="h4" sx={{ fontWeight: 700, fontSize: 32 }}>{property?.baths ? property.baths : '--'}</Typography>
                         <Typography variant="body2" sx={{ color: '#555', fontSize: 18 }}>baths</Typography>
                       </Box>
                       <Box sx={{ textAlign: 'center', minWidth: 80 }}>
@@ -271,7 +250,8 @@ export default function PropertyPopup({ zpid, isOpen, onClose, viewOnMarketUrl, 
                         <Typography variant="body2" sx={{ color: '#555', fontSize: 18 }}>sqft</Typography>
                       </Box>
                     </Box>
-                    <Paper elevation={2} sx={{ width: '100%', maxWidth: 300, borderRadius: 2, p: 3, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+
+                    <Paper elevation={0} variant='outlined' sx={{ width: '100%', maxWidth: 300, borderRadius: 2, p: 3, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
                       <Button
                         variant="contained"
                         size='small'
@@ -280,12 +260,12 @@ export default function PropertyPopup({ zpid, isOpen, onClose, viewOnMarketUrl, 
                         disabled={loadingSend}
                         startIcon={loadingSend ? <CircularProgress size={20} color="inherit" /> : null}
                       >
-                        {loadingSend ? 'Sending...' : 'Send  to Cycl Sales'}
+                        {loadingSend ? 'Sending...' : 'Send to Cycl Sales'}
                       </Button>
 
                       {viewOnMarketUrl && (
                         <Button
-                          variant="contained" size='small' sx={{ mt: 2, bgcolor: '#2563eb', color: '#fff', borderRadius: 2, height: 44, fontSize: 16, width: '100%', textTransform: 'none', boxShadow: 'none', '&:hover': { bgcolor: '#1742a0' } }}
+                          variant="outlined" size='small' sx={{ mt: 2, bgcolor: '#fff', borderRadius: 2, height: 44, fontSize: 16, width: '100%', textTransform: 'none', boxShadow: 'none', '&:hover': { bgcolor: '#1742a0', color: '#fff' } }}
                           onClick={() => window.open(viewOnMarketUrl, '_blank')}
                         >
                           View on Market
@@ -293,33 +273,41 @@ export default function PropertyPopup({ zpid, isOpen, onClose, viewOnMarketUrl, 
                       )}
                     </Paper>
                   </Box>
+
                   {/* Secondary facts grid: 2 rows of 3, card style, icons */}
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mb: 2 }}>
-                    <Paper elevation={0} sx={{ flex: '1 1 30%', minWidth: 200, bgcolor: '#f7f8fa', borderRadius: 2, p: 2, display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                    <Paper elevation={0} sx={{ flex: '1 1 30%', bgcolor: '#f7f8fa', borderRadius: 2, p: 1, display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                       <Box component="span" sx={{ mr: 1, color: '#888', fontSize: 22 }}>🏠</Box>
-                      <Typography sx={{ fontSize: 17 }}>Single Family Residence</Typography>
+                      <Typography sx={{ fontSize: 17 }}>{property?.home_type}</Typography>
                     </Paper>
-                    <Paper elevation={0} sx={{ flex: '1 1 30%', minWidth: 200, bgcolor: '#f7f8fa', borderRadius: 2, p: 2, display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                    <Paper elevation={0} sx={{ flex: '1 1 30%', bgcolor: '#f7f8fa', borderRadius: 2, p: 1, display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                       <Box component="span" sx={{ mr: 1, color: '#888', fontSize: 22 }}>🏗️</Box>
-                      <Typography sx={{ fontSize: 17 }}>Built in 1928</Typography>
+                      <Typography sx={{ fontSize: 17 }}>Built in {property?.year_built ? property.year_built : '--'}</Typography>
                     </Paper>
-                    <Paper elevation={0} sx={{ flex: '1 1 30%', minWidth: 200, bgcolor: '#f7f8fa', borderRadius: 2, p: 2, display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                    <Paper elevation={0} sx={{ flex: '1 1 30%', bgcolor: '#f7f8fa', borderRadius: 2, p: 1, display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                       <Box component="span" sx={{ mr: 1, color: '#888', fontSize: 22 }}>📏</Box>
-                      <Typography sx={{ fontSize: 17 }}>5,875 Square Feet Lot</Typography>
+                      <Typography sx={{ fontSize: 17 }}>{property?.lot_area_value ? `${property.lot_area_value.toLocaleString()} ${property.lot_area_units}` : '--'} {property?.lot_area_units === 'ac' ? 'acres' : 'sqft'}</Typography>
                     </Paper>
-                    <Paper elevation={0} sx={{ flex: '1 1 30%', minWidth: 200, bgcolor: '#f7f8fa', borderRadius: 2, p: 2, display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                    <Paper elevation={0} sx={{ flex: '1 1 30%', bgcolor: '#f7f8fa', borderRadius: 2, p: 1, display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                       <Box component="span" sx={{ mr: 1, color: '#888', fontSize: 22 }}>💲</Box>
-                      <Typography sx={{ fontSize: 17 }}>$467,300 Zestimate®</Typography>
+                      <Typography sx={{ fontSize: 17 }}>{property?.zestimate ? property.zestimate.toLocaleString() : '--'} Zestimate®</Typography>
                     </Paper>
-                    <Paper elevation={0} sx={{ flex: '1 1 30%', minWidth: 200, bgcolor: '#f7f8fa', borderRadius: 2, p: 2, display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                    <Paper elevation={0} sx={{ flex: '1 1 30%', bgcolor: '#f7f8fa', borderRadius: 2, p: 1, display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                       <Box component="span" sx={{ mr: 1, color: '#888', fontSize: 22 }}>💲</Box>
                       <Typography sx={{ fontSize: 17 }}>$372/sqft</Typography>
                     </Paper>
-                    <Paper elevation={0} sx={{ flex: '1 1 30%', minWidth: 200, bgcolor: '#f7f8fa', borderRadius: 2, p: 2, display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                    <Paper elevation={0} sx={{ flex: '1 1 30%', bgcolor: '#f7f8fa', borderRadius: 2, p: 1, display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                       <Box component="span" sx={{ mr: 1, color: '#888', fontSize: 22 }}>🏢</Box>
                       <Typography sx={{ fontSize: 17 }}>$-- HOA</Typography>
                     </Paper>
                   </Box>
+                  <Divider sx={{ width: '100%', my: 2 }} />
+                  <Typography variant="h4" sx={{ fontWeight: 700, color: '#222', mb: 0.5, fontSize: 38, lineHeight: 1.1 }}>
+                    Description
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: '#222', fontSize: 16, lineHeight: 1.5, mb: 10 }}>
+                    {property?.description}
+                  </Typography>
                 </Box>
               </Box>
             </Box>

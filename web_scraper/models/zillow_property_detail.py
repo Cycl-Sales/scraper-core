@@ -1,5 +1,6 @@
 from odoo import models, fields, api
 
+
 class ZillowPropertyAddress(models.Model):
     _name = 'zillow.property.address'
     _description = 'Zillow Property Address'
@@ -13,19 +14,16 @@ class ZillowPropertyAddress(models.Model):
     subdivision = fields.Char(string='Subdivision')
     zipcode = fields.Char(string='Zipcode')
 
+
 class ZillowPropertyAgent(models.Model):
     _name = 'zillow.property.agent'
     _description = 'Zillow Property Agent'
 
     property_id = fields.Many2one('zillow.property.detail', string='Property', ondelete='cascade')
-    associated_agent_type = fields.Selection([
-        ('listAgent', 'Listing Agent'),
-        ('buyerAgent', 'Buyer Agent'),
-        ('coAgent', 'Co-Agent'),
-        ('coListAgent', 'Co-Listing Agent'),  # <-- Add this
-    ], string='Agent Type')
+    associated_agent_type = fields.Char(string='Agent Type')
     member_full_name = fields.Char(string='Full Name')
     member_state_license = fields.Char(string='State License')
+
 
 class ZillowPropertyOffice(models.Model):
     _name = 'zillow.property.office'
@@ -37,6 +35,7 @@ class ZillowPropertyOffice(models.Model):
         ('buyerOffice', 'Buyer Office')
     ], string='Office Type')
     office_name = fields.Char(string='Office Name')
+
 
 class ZillowPropertyListingSubType(models.Model):
     _name = 'zillow.property.listing.subtype'
@@ -51,6 +50,7 @@ class ZillowPropertyListingSubType(models.Model):
     is_foreclosure = fields.Boolean(string='Foreclosure')
     is_new_home = fields.Boolean(string='New Home')
 
+
 class ZillowPropertyInsight(models.Model):
     _name = 'zillow.property.insight'
     _description = 'Zillow Property Insight'
@@ -59,6 +59,7 @@ class ZillowPropertyInsight(models.Model):
     model_id = fields.Char(string='Model ID')
     treatment_id = fields.Char(string='Treatment ID')
     phrases = fields.Text(string='Phrases')
+
 
 class ZillowPropertyListingAgent(models.Model):
     _name = 'zillow.property.listing.agent'
@@ -90,6 +91,7 @@ class ZillowPropertyListingAgent(models.Model):
     license_number = fields.Char(string='License Number')
     license_state = fields.Char(string='License State')
 
+
 class ZillowPropertyNearbyCity(models.Model):
     _name = 'zillow.property.nearby.city'
     _description = 'Zillow Property Nearby City'
@@ -98,12 +100,14 @@ class ZillowPropertyNearbyCity(models.Model):
     name = fields.Char(string='City Name')
     region_url = fields.Char(string='Region URL')
 
+
 class ZillowPropertyMiniCardPhoto(models.Model):
     _name = 'zillow.property.mini.card.photo'
     _description = 'Zillow Property Mini Card Photo'
 
     property_id = fields.Many2one('zillow.property.detail', string='Property')
     url = fields.Char(string='Photo URL')
+
 
 class ZillowPropertyNearbyRegion(models.Model):
     _name = 'zillow.property.nearby.region'
@@ -117,6 +121,7 @@ class ZillowPropertyNearbyRegion(models.Model):
         ('neighborhood', 'Neighborhood'),
         ('zipcode', 'Zipcode')
     ], string='Region Type')
+
 
 class ZillowPropertyOnsiteMessage(models.Model):
     _name = 'zillow.property.onsite.message'
@@ -134,6 +139,7 @@ class ZillowPropertyOnsiteMessage(models.Model):
     placement_name = fields.Char(string='Placement Name')
     qualified_treatments = fields.Text(string='Qualified Treatments')
 
+
 class ZillowPropertyTaxHistory(models.Model):
     _name = 'zillow.property.tax.history'
     _description = 'Zillow Property Tax History'
@@ -145,6 +151,7 @@ class ZillowPropertyTaxHistory(models.Model):
     value = fields.Float(string='Value')
     value_increase_rate = fields.Float(string='Value Increase Rate')
 
+
 class ZillowPropertyVirtualTour(models.Model):
     _name = 'zillow.property.virtual.tour'
     _description = 'Zillow Property Virtual Tour'
@@ -155,6 +162,7 @@ class ZillowPropertyVirtualTour(models.Model):
     lightbox_url = fields.Char(string='Lightbox URL')
     provider_key = fields.Char(string='Provider Key')
     static_url = fields.Char(string='Static URL')
+
 
 class ZillowPropertyTourEligibility(models.Model):
     _name = 'zillow.property.tour.eligibility'
@@ -169,6 +177,7 @@ class ZillowPropertyTourEligibility(models.Model):
         ('IN_PERSON', 'In Person')
     ], string='Tour Type')
 
+
 class ZillowPropertyDetail(models.Model):
     _name = 'zillow.property.detail'
     _description = 'Zillow Property Details'
@@ -176,14 +185,14 @@ class ZillowPropertyDetail(models.Model):
     # Basic Information
     zpid = fields.Char(string='ZPID', required=True, index=True)
     property_id = fields.Many2one('zillow.property', string='Property', required=True, ondelete='cascade')
-    
+
     # Address Information
     abbreviated_address = fields.Char(string='Abbreviated Address')
     address_ids = fields.One2many('zillow.property.address', 'property_id', string='Addresses')
-    
+
     # Rental Information
     apartments_for_rent_path = fields.Char(string='Apartments for Rent Path')
-    
+
     # Attribution Information
     agent_email = fields.Char(string='Agent Email')
     agent_license_number = fields.Char(string='Agent License Number')
@@ -198,27 +207,27 @@ class ZillowPropertyDetail(models.Model):
     co_agent_license_number = fields.Char(string='Co-Agent License Number')
     co_agent_name = fields.Char(string='Co-Agent Name')
     co_agent_number = fields.Char(string='Co-Agent Number')
-    
+
     # MLS Information
     mls_id = fields.Char(string='MLS ID')
     mls_name = fields.Char(string='MLS Name')
     mls_disclaimer = fields.Text(string='MLS Disclaimer')
     provider_logo = fields.Char(string='Provider Logo')
     true_status = fields.Char(string='True Status')
-    
+
     # Listing Information
     last_checked = fields.Datetime(string='Last Checked')
     last_updated = fields.Datetime(string='Last Updated')
-    
+
     # Property Details
     bathrooms = fields.Float(string='Bathrooms')
     bedrooms = fields.Integer(string='Bedrooms')
-    
+
     # Agent and Office Relationships
     agent_ids = fields.One2many('zillow.property.agent', 'property_id', string='Agents')
     office_ids = fields.One2many('zillow.property.office', 'property_id', string='Offices')
     listing_sub_type_ids = fields.One2many('zillow.property.listing.subtype', 'property_id', string='Listing Sub Types')
-    
+
     # Additional Information
     info_string_3 = fields.Char(string='Info String 3')
     info_string_5 = fields.Char(string='Info String 5')
@@ -231,7 +240,8 @@ class ZillowPropertyDetail(models.Model):
         ('ForRent', 'For Rent'),
         ('Sold', 'Sold'),
         ('RecentlySold', 'Recently Sold'),
-        ('Zestimate', 'Zestimate')
+        ('Zestimate', 'Zestimate'),
+        ('Pending', 'Pending')
     ], string='HDP Type')
     hdp_url = fields.Char(string='HDP URL')
     home_status = fields.Selection([
@@ -247,7 +257,8 @@ class ZillowPropertyDetail(models.Model):
         ('MULTI_FAMILY', 'Multi Family'),
         ('CONDO', 'Condo'),
         ('TOWNHOUSE', 'Townhouse'),
-        ('LAND', 'Land')
+        ('LAND', 'Land'),
+        ('MANUFACTURED', 'Manufactured')
     ], string='Home Type')
     is_premier_builder = fields.Boolean(string='Is Premier Builder')
     is_showcase_listing = fields.Boolean(string='Is Showcase Listing')
@@ -397,5 +408,3 @@ class ZillowPropertyDetail(models.Model):
     _sql_constraints = [
         ('zpid_uniq', 'unique(zpid)', 'ZPID must be unique!')
     ]
-
-   
