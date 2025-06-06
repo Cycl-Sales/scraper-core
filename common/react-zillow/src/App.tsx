@@ -1363,19 +1363,7 @@ function App() {
                 {/* Basement */}
                 <Typography variant="subtitle2" fontWeight={700} mt={2}>Basement</Typography>
                 <FormControlLabel control={<Checkbox checked={hasBasement} onChange={e => setHasBasement(e.target.checked)} />} label="Has basement" />
-                {/* Number of Stories */}
-                <Typography variant="subtitle2" fontWeight={700} mt={2}>Number Of Stories</Typography>
                 {/* <FormControlLabel control={<Checkbox checked={singleStory} onChange={e => setSingleStory(e.target.checked)} />} label="Single-story only" /> */}
-                {/* Tours */}
-                <Typography variant="subtitle2" fontWeight={700} mt={2}>Tours</Typography>
-                <FormControlLabel control={<Checkbox checked={tour3D} onChange={e => setTour3D(e.target.checked)} />} label="Must have 3D Tour" />
-                <FormControlLabel control={<Checkbox checked={instantTour} onChange={e => setInstantTour(e.target.checked)} />} label="Instant Tour Available" />
-                {/* Pets */}
-                <Typography variant="subtitle2" fontWeight={700} mt={2}>Pets</Typography>
-                <FormControlLabel control={<Checkbox checked={allowsLargeDogs} onChange={e => setAllowsLargeDogs(e.target.checked)} />} label="Allows large dogs" />
-                <FormControlLabel control={<Checkbox checked={allowsSmallDogs} onChange={e => setAllowsSmallDogs(e.target.checked)} />} label="Allows small dogs" />
-                <FormControlLabel control={<Checkbox checked={allowsCats} onChange={e => setAllowsCats(e.target.checked)} />} label="Allows cats" />
-                <FormControlLabel control={<Checkbox checked={noPets} onChange={e => setNoPets(e.target.checked)} />} label="No pets" />
                 {/* Other Amenities */}
                 <Typography variant="subtitle2" fontWeight={700} mt={2}>Other Amenities</Typography>
                 <FormControlLabel control={<Checkbox checked={mustHaveAC} onChange={e => setMustHaveAC(e.target.checked)} />} label="Must have A/C" />
@@ -1402,7 +1390,7 @@ function App() {
                 <FormControlLabel control={<Checkbox checked={viewPark} onChange={e => setViewPark(e.target.checked)} />} label="Park" />
                 <FormControlLabel control={<Checkbox checked={viewWater} onChange={e => setViewWater(e.target.checked)} />} label="Water" />
                 {/* Commute Time */}
-                <Typography variant="subtitle2" fontWeight={700} mt={2}>Commute Time</Typography>
+                {/* <Typography variant="subtitle2" fontWeight={700} mt={2}>Commute Time</Typography>
                 <TextField
                   placeholder="Enter address, city, state and ZIP code"
                   value={commute}
@@ -1410,7 +1398,7 @@ function App() {
                   size="small"
                   fullWidth
                   sx={{ mb: 2 }}
-                />
+                /> */}
                 {/* Days on Zillow */}
                 <Typography variant="subtitle2" fontWeight={700} mt={2}>Days on Zillow</Typography>
                 <FormControl size="small" fullWidth sx={{ mb: 2 }}>
@@ -1434,7 +1422,7 @@ function App() {
                   sx={{ mb: 2 }}
                 />
                 {/* 55+ Communities */}
-                <Box sx={{ display: 'flex', alignItems: 'center', mt: 2, mb: 1 }}>
+                {/* <Box sx={{ display: 'flex', alignItems: 'center', mt: 2, mb: 1 }}>
                   <Typography variant="subtitle2" fontWeight={700} mr={1}>55+ Communities</Typography>
                   <Box sx={{ bgcolor: '#fee2e2', color: '#b91c1c', fontWeight: 700, fontSize: 12, borderRadius: 1, px: 1, py: 0.2, ml: 1 }}>NEW</Box>
                 </Box>
@@ -1442,7 +1430,7 @@ function App() {
                   <FormControlLabel value="include" control={<Radio sx={{ color: '#2563eb', '&.Mui-checked': { color: '#2563eb' } }} />} label="Include" />
                   <FormControlLabel value="dont_show" control={<Radio sx={{ color: '#2563eb', '&.Mui-checked': { color: '#2563eb' } }} />} label="Don't show" />
                   <FormControlLabel value="only_show" control={<Radio sx={{ color: '#2563eb', '&.Mui-checked': { color: '#2563eb' } }} />} label="Only show" />
-                </RadioGroup>
+                </RadioGroup> */}
               </Box>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', px: 3, py: 2, borderBottomLeftRadius: 12, borderBottomRightRadius: 12, bgcolor: '#fff', borderTop: '1px solid #e0e0e0' }}>
                 <Button
