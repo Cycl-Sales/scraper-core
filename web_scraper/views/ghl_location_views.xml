@@ -24,6 +24,10 @@
             <form string="GHL Location">
                 <header>
                     <button name="get_location_contacts" type="object" string="Get Location Contacts" class="btn-secondary"/>
+                    <button name="sync_installed_locations"
+                        type="object"
+                        string="Sync Installed Locations"
+                        class="oe_highlight"/>
                 </header>
                 <sheet>
                     <div class="oe_button_box" name="button_box">

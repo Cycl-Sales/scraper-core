@@ -46,6 +46,7 @@ interface PropertyData {
     name: string;
     license: string;
     email: string;
+    phone: string;
     brokerage?: string;
   };
   [key: string]: any;
@@ -231,7 +232,27 @@ export default function PropertyPopup({ zpid, isOpen, onClose, viewOnMarketUrl, 
                       {/* Monthly estimate bar */}
                       <Box sx={{ display: 'flex', alignItems: 'center', bgcolor: '#f1f6fb', borderRadius: 2, px: 2, py: 1, width: 'fit-content', mb: 2 }}>
                         <Typography variant="subtitle1" sx={{ color: '#2563eb', fontWeight: 400, mr: 1 }}>Listing Provided by:</Typography>
-                        <Typography variant="body2" sx={{ color: '#2563eb', fontWeight: 600, cursor: 'pointer', fontSize: 18 }}>{property?.listingAgent?.name ?? '--'}{property?.listingAgent?.license ? ` ${property.listingAgent.license}` : ''}{property?.listingAgent?.email ? ` ${property.listingAgent.email}` : ''}{property?.listingAgent?.brokerage ? `, ${property.listingAgent.brokerage}` : ''}</Typography>
+                        <Box>
+                          <Typography variant="body2" sx={{ color: '#2563eb', fontWeight: 600, cursor: 'pointer', fontSize: 18 }}>
+                            {property?.listingAgent?.name ?? '--'}
+                            {property?.listingAgent?.license ? ` ${property.listingAgent.license}` : ''}
+                          </Typography>
+                          {property?.listingAgent?.email && (
+                            <Typography variant="body2" sx={{ color: '#666', fontSize: 14 }}>
+                              Email: {property.listingAgent.email}
+                            </Typography>
+                          )}
+                          {property?.listingAgent?.phone && (
+                            <Typography variant="body2" sx={{ color: '#666', fontSize: 14 }}>
+                              Phone: {property.listingAgent.phone}
+                            </Typography>
+                          )}
+                          {property?.listingAgent?.brokerage && (
+                            <Typography variant="body2" sx={{ color: '#666', fontSize: 14 }}>
+                              Brokerage: {property.listingAgent.brokerage}
+                            </Typography>
+                          )}
+                        </Box>
                       </Box>
                     </Box>
 

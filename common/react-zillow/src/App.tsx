@@ -38,7 +38,7 @@ import {
   Typography
 } from '@mui/material';
 import Skeleton from '@mui/material/Skeleton';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import PropertyPopup from './PropertyPopup';
 import type { ZillowProperty } from './services/zillowService';
 import { zillowService } from './services/zillowService';
@@ -53,6 +53,66 @@ const theme = createTheme({
   },
 });
 
+// Add useDebounce hook at the top level
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [value, delay]);
+
+  return debouncedValue;
+}
+
+// New: FilterSummaryDialog component
+function FilterSummaryDialog({
+  open,
+  onClose,
+  onContinue,
+  filters
+}: {
+  open: boolean,
+  onClose: () => void,
+  onContinue: () => void,
+  filters: Record<string, any>
+}) {
+  // Helper to format filter values
+  const formatValue = (val: any) => {
+    if (Array.isArray(val)) return val.join(', ');
+    if (typeof val === 'boolean') return val ? 'Yes' : 'No';
+    if (val === '' || val === undefined || val === null) return 'Any';
+    return val;
+  };
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle>Current Filter Selections</DialogTitle>
+      <DialogContent>
+        <Box sx={{ mb: 2 }}>
+          <Typography variant="subtitle1" sx={{ mb: 1 }}>You are about to search the market with these filters:</Typography>
+          <Box component="ul" sx={{ pl: 3, mb: 0 }}>
+            {Object.entries(filters).map(([key, value]) => (
+              <li key={key}>
+                <Typography variant="body1">
+                  <strong>{key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}:</strong> {formatValue(value)}
+                </Typography>
+              </li>
+            ))}
+          </Box>
+        </Box>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose} color="secondary">Cancel</Button>
+        <Button onClick={onContinue} color="primary" variant="contained">Continue Search</Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
 
 function App() {
   const [properties, setProperties] = useState<ZillowProperty[]>([]);
@@ -65,34 +125,6 @@ function App() {
   const [priceAnchorEl, setPriceAnchorEl] = useState<null | HTMLElement>(null);
   const [minPrice, setMinPrice] = useState('');
   const [maxPrice, setMaxPrice] = useState('');
-  const priceOptions = [
-    '', '0', '50000', '100000', '150000', '200000', '250000', '300000', '350000', '400000', '450000', '500000',
-    '550000', '600000', '650000', '700000', '750000', '800000', '850000', '900000', '950000',
-    '1000000', '1250000', '1500000', '1750000', '2000000', '2500000', '2750000', '3000000', '3250000', '3500000',
-    '3750000', '4000000', '4250000', '4500000', '4750000', '5000000', '5500000', '6000000', '6500000', '7000000',
-    '7500000', '8000000', '8500000', '9000000', '9500000', '10000000', '11000000', '12000000', '13000000', '14000000'
-  ];
-  const priceLabels = [
-    'No Min', '$0', '$50,000', '$100,000', '$150,000', '$200,000', '$250,000', '$300,000', '$350,000', '$400,000', '$450,000', '$500,000',
-    '$550,000', '$600,000', '$650,000', '$700,000', '$750,000', '$800,000', '$850,000', '$900,000', '$950,000',
-    '$1M', '$1.25M', '$1.5M', '$1.75M', '$2M', '$2.5M', '$2.75M', '$3M', '$3.25M', '$3.5M',
-    '$3.75M', '$4M', '$4.25M', '$4.5M', '$4.75M', '$5M', '$5.5M', '$6M', '$6.5M', '$7M',
-    '$7.5M', '$8M', '$8.5M', '$9M', '$9.5M', '$10M', '$11M', '$12M', '$13M', '$14M'
-  ];
-  const maxPriceOptions = [
-    '', '50000', '100000', '150000', '200000', '250000', '300000', '350000', '400000', '450000', '500000',
-    '550000', '600000', '650000', '700000', '750000', '800000', '850000', '900000', '950000',
-    '1000000', '1250000', '1500000', '1750000', '2000000', '2500000', '2750000', '3000000', '3250000', '3500000',
-    '3750000', '4000000', '4250000', '4500000', '4750000', '5000000', '5500000', '6000000', '6500000', '7000000',
-    '7500000', '8000000', '8500000', '9000000', '9500000', '10000000', '11000000', '12000000', '13000000', '14000000'
-  ];
-  const maxPriceLabels = [
-    'Any Price', '$50,000', '$100,000', '$150,000', '$200,000', '$250,000', '$300,000', '$350,000', '$400,000', '$450,000', '$500,000',
-    '$550,000', '$600,000', '$650,000', '$700,000', '$750,000', '$800,000', '$850,000', '$900,000', '$950,000',
-    '$1M', '$1.25M', '$1.5M', '$1.75M', '$2M', '$2.5M', '$2.75M', '$3M', '$3.25M', '$3.5M',
-    '$3.75M', '$4M', '$4.25M', '$4.5M', '$4.75M', '$5M', '$5.5M', '$6M', '$6.5M', '$7M',
-    '$7.5M', '$8M', '$8.5M', '$9M', '$9.5M', '$10M', '$11M', '$12M', '$13M', '$14M'
-  ];
   const [listingTypeAnchorEl, setListingTypeAnchorEl] = useState<null | HTMLElement>(null);
   const [listingTypeValue, setListingTypeValue] = useState<'for_sale' | 'for_rent' | 'sold'>('for_sale');
   const [bedsBathsAnchorEl, setBedsBathsAnchorEl] = useState<null | HTMLElement>(null);
@@ -164,13 +196,147 @@ function App() {
   const [loadingSendToCS, setLoadingSendToCS] = useState(false);
   const [fadingProperties, setFadingProperties] = useState<Set<string>>(new Set());
   const [locationId, setLocationId] = useState<string | null>(null);
+  const [showFilterSummary, setShowFilterSummary] = useState(false);
 
   const sqftOptions = ['', '500', '750', '1000', '1250', '1500', '1750', '2000', '2250', '2500', '2750', '3000', '3500', '4000', '5000', '7500'];
   const lotOptions = ['', '1000', '2000', '3000', '4000', '5000', '7500', '10890', '21780', '43560', '87120', '217800', '435600', '871200', '2178000', '4356000'];
   const lotLabels = ['', '1,000 sqft', '2,000 sqft', '3,000 sqft', '4,000 sqft', '5,000 sqft', '7,500 sqft', '1/4 acre/10,890 sqft', '1/2 acre', '1 acre', '2 acres', '5 acres', '10 acres', '20 acres', '50 acres', '100 acres'];
   const yearOptions = ['', ...Array.from({ length: 2024 - 1900 + 1 }, (_, i) => (1900 + i).toString())];
 
+  // Add debounced values for filters
+  const debouncedSearch = useDebounce(search, 500);
+  const debouncedMinPrice = useDebounce(minPrice, 500);
+  const debouncedMaxPrice = useDebounce(maxPrice, 500);
+  const debouncedBedrooms = useDebounce(bedrooms, 500);
+  const debouncedBathrooms = useDebounce(bathrooms, 500);
+  const debouncedSelectedHomeTypes = useDebounce(selectedHomeTypes, 500);
+  const debouncedSqftMin = useDebounce(sqftMin, 500);
+  const debouncedSqftMax = useDebounce(sqftMax, 500);
+  const debouncedLotMin = useDebounce(lotMin, 500);
+  const debouncedLotMax = useDebounce(lotMax, 500);
+  const debouncedYearMin = useDebounce(yearMin, 500);
+  const debouncedYearMax = useDebounce(yearMax, 500);
 
+  // Define price options for sale and for rent
+  const priceOptionsForSale = [
+    '', '0', '50000', '100000', '150000', '200000', '250000', '300000', '350000', '400000', '450000', '500000',
+    '550000', '600000', '650000', '700000', '750000', '800000', '850000', '900000', '950000',
+    '1000000', '1250000', '1500000', '1750000', '2000000', '2500000', '2750000', '3000000', '3250000', '3500000',
+    '3750000', '4000000', '4250000', '4500000', '4750000', '5000000', '5500000', '6000000', '6500000', '7000000',
+    '7500000', '8000000', '8500000', '9000000', '9500000', '10000000', '11000000', '12000000', '13000000', '14000000'
+  ];
+  const priceLabelsForSale = [
+    'No Min', '$0', '$50,000', '$100,000', '$150,000', '$200,000', '$250,000', '$300,000', '$350,000', '$400,000', '$450,000', '$500,000',
+    '$550,000', '$600,000', '$650,000', '$700,000', '$750,000', '$800,000', '$850,000', '$900,000', '$950,000',
+    '$1M', '$1.25M', '$1.5M', '$1.75M', '$2M', '$2.5M', '$2.75M', '$3M', '$3.25M', '$3.5M',
+    '$3.75M', '$4M', '$4.25M', '$4.5M', '$4.75M', '$5M', '$5.5M', '$6M', '$6.5M', '$7M',
+    '$7.5M', '$8M', '$8.5M', '$9M', '$9.5M', '$10M', '$11M', '$12M', '$13M', '$14M'
+  ];
+  const maxPriceOptionsForSale = [
+    '', '50000', '100000', '150000', '200000', '250000', '300000', '350000', '400000', '450000', '500000',
+    '550000', '600000', '650000', '700000', '750000', '800000', '850000', '900000', '950000',
+    '1000000', '1250000', '1500000', '1750000', '2000000', '2500000', '2750000', '3000000', '3250000', '3500000',
+    '3750000', '4000000', '4250000', '4500000', '4750000', '5000000', '5500000', '6000000', '6500000', '7000000',
+    '7500000', '8000000', '8500000', '9000000', '9500000', '10000000', '11000000', '12000000', '13000000', '14000000'
+  ];
+  const maxPriceLabelsForSale = [
+    'Any Price', '$50,000', '$100,000', '$150,000', '$200,000', '$250,000', '$300,000', '$350,000', '$400,000', '$450,000', '$500,000',
+    '$550,000', '$600,000', '$650,000', '$700,000', '$750,000', '$800,000', '$850,000', '$900,000', '$950,000',
+    '$1M', '$1.25M', '$1.5M', '$1.75M', '$2M', '$2.5M', '$2.75M', '$3M', '$3.25M', '$3.5M',
+    '$3.75M', '$4M', '$4.25M', '$4.5M', '$4.75M', '$5M', '$5.5M', '$6M', '$6.5M', '$7M',
+    '$7.5M', '$8M', '$8.5M', '$9M', '$9.5M', '$10M', '$11M', '$12M', '$13M', '$14M'
+  ];
+
+  const priceOptionsForRent = [
+    '', '0', '200', '400', '600', '800', '1000', '1200', '1400', '1600', '1800', '2000', '2200', '2400', '2600', '2800', '3000', '3500', '4000', '4500', '5000', '5500', '6000', '7000', '8000', '9000', '10000'
+  ];
+  const priceLabelsForRent = [
+    'No Min', '$0', '$200', '$400', '$600', '$800', '$1,000', '$1,200', '$1,400', '$1,600', '$1,800', '$2,000', '$2,200', '$2,400', '$2,600', '$2,800', '$3,000', '$3,500', '$4,000', '$4,500', '$5,000', '$5,500', '$6,000', '$7,000', '$8,000', '$9,000', '$10,000'
+  ];
+  const maxPriceOptionsForRent = [
+    '', '200', '400', '600', '800', '1000', '1200', '1400', '1600', '1800', '2000', '2200', '2400', '2600', '2800', '3000', '3500', '4000', '4500', '5000', '5500', '6000', '7000', '8000', '9000', '10000'
+  ];
+  const maxPriceLabelsForRent = [
+    'Any Price', '$200', '$400', '$600', '$800', '$1,000', '$1,200', '$1,400', '$1,600', '$1,800', '$2,000', '$2,200', '$2,400', '$2,600', '$2,800', '$3,000', '$3,500', '$4,000', '$4,500', '$5,000', '$5,500', '$6,000', '$7,000', '$8,000', '$9,000', '$10,000'
+  ];
+
+  const priceOptions = listingTypeValue === 'for_rent' ? priceOptionsForRent : priceOptionsForSale;
+  const priceLabels = listingTypeValue === 'for_rent' ? priceLabelsForRent : priceLabelsForSale;
+  const maxPriceOptions = listingTypeValue === 'for_rent' ? maxPriceOptionsForRent : maxPriceOptionsForSale;
+  const maxPriceLabels = listingTypeValue === 'for_rent' ? maxPriceLabelsForRent : maxPriceLabelsForSale;
+
+  // Memoize the fetchProperties function
+  const debouncedFetchProperties = useCallback(
+    async (
+      source: 'db' | 'market',
+      pageArg?: number,
+      pageSizeArg?: number,
+      sortCol?: string,
+      sortDir?: 'asc' | 'desc',
+    ) => {
+      if (!locationId) return;
+      try {
+        setLoading(true);
+        setError(null);
+        let data;
+        if (source === 'db') {
+          // Build query string with all filters
+          let url = `/api/zillow/properties?page=${pageArg || 1}` +
+            `&page_size=${pageSizeArg || pageSize}` +
+            `&sort_column=${sortCol || sortColumn}` +
+            `&sort_direction=${sortDir || sortDirection}` +
+            `${locationId ? `&locationId=${encodeURIComponent(locationId)}` : ''}` +
+            `&listing_type=${listingTypeValue}` +
+            (minPrice ? `&min_price=${minPrice}` : '') +
+            (maxPrice ? `&max_price=${maxPrice}` : '') +
+            (bedrooms ? `&bedrooms=${bedrooms}` : '') +
+            (bathrooms ? `&bathrooms=${bathrooms}` : '') +
+            (sqftMin ? `&sqft_min=${sqftMin}` : '') +
+            (sqftMax ? `&sqft_max=${sqftMax}` : '') +
+            (lotMin ? `&lot_min=${lotMin}` : '') +
+            (lotMax ? `&lot_max=${lotMax}` : '') +
+            (yearMin ? `&year_min=${yearMin}` : '') +
+            (yearMax ? `&year_max=${yearMax}` : '');
+          const response = await fetch(url);
+          data = await response.json();
+          if (data.error) {
+            setError(data.error);
+            setProperties([]);
+            setFilteredProperties([]);
+            setTotalResults(0);
+            setPage(1);
+            return;
+          }
+          setProperties(Array.isArray(data.properties) ? data.properties : []);
+          setFilteredProperties(Array.isArray(data.properties) ? data.properties : []);
+          setTotalResults(data.total_results || 0);
+          setPage(data.page || 1);
+        } else {
+          const url = buildSearchUrl();
+          const response = await fetch(`/api/zillow/search?url=${encodeURIComponent(url)}&page=${pageArg || 1}&page_size=${pageSizeArg || pageSize}${locationId ? `&locationId=${encodeURIComponent(locationId)}` : ''}`);
+          const result = await response.json();
+          if (result.success) {
+            setProperties(result.properties);
+            setFilteredProperties(result.properties);
+            setTotalResults(result.total_results);
+            if (result.total_pages) setPage(result.page || 1);
+          } else {
+            setError(result.error || 'Failed to search on Zillow');
+            setProperties([]);
+            setFilteredProperties([]);
+            setTotalResults(0);
+            setPage(1);
+          }
+        }
+      } catch (err) {
+        setError('Failed to fetch properties');
+        console.error('Error fetching properties:', err);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [locationId, pageSize, sortColumn, sortDirection, listingTypeValue, minPrice, maxPrice, bedrooms, bathrooms, sqftMin, sqftMax, lotMin, lotMax, yearMin, yearMax]
+  );
 
   // On mount, fetch from DB only once
   useEffect(() => {
@@ -241,8 +407,23 @@ function App() {
       setError(null);
       let data;
       if (source === 'db') {
-        // Only send parameters expected by backend
-        const url = `/api/zillow/properties?page=${pageArg || 1}&page_size=${pageSizeArg || pageSize}&sort_column=${sortCol || sortColumn}&sort_direction=${sortDir || sortDirection}${locationId ? `&locationId=${encodeURIComponent(locationId)}` : ''}`;
+        // Build query string with all filters
+        let url = `/api/zillow/properties?page=${pageArg || 1}` +
+          `&page_size=${pageSizeArg || pageSize}` +
+          `&sort_column=${sortCol || sortColumn}` +
+          `&sort_direction=${sortDir || sortDirection}` +
+          `${locationId ? `&locationId=${encodeURIComponent(locationId)}` : ''}` +
+          `&listing_type=${listingTypeValue}` +
+          (minPrice ? `&min_price=${minPrice}` : '') +
+          (maxPrice ? `&max_price=${maxPrice}` : '') +
+          (bedrooms ? `&bedrooms=${bedrooms}` : '') +
+          (bathrooms ? `&bathrooms=${bathrooms}` : '') +
+          (sqftMin ? `&sqft_min=${sqftMin}` : '') +
+          (sqftMax ? `&sqft_max=${sqftMax}` : '') +
+          (lotMin ? `&lot_min=${lotMin}` : '') +
+          (lotMax ? `&lot_max=${lotMax}` : '') +
+          (yearMin ? `&year_min=${yearMin}` : '') +
+          (yearMax ? `&year_max=${yearMax}` : '');
         const response = await fetch(url);
         data = await response.json();
         if (data.error) {
@@ -338,8 +519,14 @@ function App() {
 
   const handlePriceMenuOpen = (event: React.MouseEvent<HTMLElement>) => setPriceAnchorEl(event.currentTarget);
   const handlePriceMenuClose = () => setPriceAnchorEl(null);
-  const handleMinPriceChange = (event: SelectChangeEvent) => setMinPrice(event.target.value);
-  const handleMaxPriceChange = (event: SelectChangeEvent) => setMaxPrice(event.target.value);
+  const handleMinPriceChange = (event: SelectChangeEvent) => {
+    setMinPrice(event.target.value);
+    fetchProperties(dataSource, 1, pageSize);
+  };
+  const handleMaxPriceChange = (event: SelectChangeEvent) => {
+    setMaxPrice(event.target.value);
+    fetchProperties(dataSource, 1, pageSize);
+  };
   const handleApplyPrice = () => {
     // TODO: Use minPrice and maxPrice in your search/filter logic
     handlePriceMenuClose();
@@ -347,7 +534,10 @@ function App() {
 
   const handleListingTypeMenuOpen = (event: React.MouseEvent<HTMLElement>) => setListingTypeAnchorEl(event.currentTarget);
   const handleListingTypeMenuClose = () => setListingTypeAnchorEl(null);
-  const handleListingTypeRadioChange = (event: React.ChangeEvent<HTMLInputElement>) => setListingTypeValue(event.target.value as 'for_sale' | 'for_rent' | 'sold');
+  const handleListingTypeRadioChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setListingTypeValue(event.target.value as 'for_sale' | 'for_rent' | 'sold');
+    fetchProperties(dataSource, 1, pageSize);
+  };
   const handleApplyListingType = () => {
     // TODO: Use listingTypeValue in your search/filter logic
     handleListingTypeMenuClose();
@@ -355,9 +545,18 @@ function App() {
 
   const handleBedsBathsMenuOpen = (event: React.MouseEvent<HTMLElement>) => setBedsBathsAnchorEl(event.currentTarget);
   const handleBedsBathsMenuClose = () => setBedsBathsAnchorEl(null);
-  const handleBedroomsChange = (val: string) => setBedrooms(val);
-  const handleBathroomsChange = (val: string) => setBathrooms(val);
-  const handleExactMatchChange = (event: React.ChangeEvent<HTMLInputElement>) => setExactMatch(event.target.checked);
+  const handleBedroomsChange = (val: string) => {
+    setBedrooms(val);
+    fetchProperties(dataSource, 1, pageSize);
+  };
+  const handleBathroomsChange = (val: string) => {
+    setBathrooms(val);
+    fetchProperties(dataSource, 1, pageSize);
+  };
+  const handleExactMatchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setExactMatch(event.target.checked);
+    fetchProperties(dataSource, 1, pageSize);
+  };
   const handleApplyBedsBaths = () => {
     // TODO: Use bedrooms, bathrooms, exactMatch in your search/filter logic
     handleBedsBathsMenuClose();
@@ -366,16 +565,23 @@ function App() {
   const handleHomeTypeMenuOpen = (event: React.MouseEvent<HTMLElement>) => setHomeTypeAnchorEl(event.currentTarget);
   const handleHomeTypeMenuClose = () => setHomeTypeAnchorEl(null);
   const handleHomeTypeChange = (value: string) => {
-    setSelectedHomeTypes(prev =>
-      prev.includes(value) ? prev.filter(v => v !== value) : [...prev, value]
-    );
+    setSelectedHomeTypes(prev => {
+      const updated = prev.includes(value) ? prev.filter(v => v !== value) : [...prev, value];
+      setTimeout(() => fetchProperties(dataSource, 1, pageSize), 0);
+      return updated;
+    });
   };
   const handleSpaceChange = (value: string) => {
-    setSelectedSpaces(prev =>
-      prev.includes(value) ? prev.filter(v => v !== value) : [...prev, value]
-    );
+    setSelectedSpaces(prev => {
+      const updated = prev.includes(value) ? prev.filter(v => v !== value) : [...prev, value];
+      setTimeout(() => fetchProperties(dataSource, 1, pageSize), 0);
+      return updated;
+    });
   };
-  const handleDeselectAllHomeTypes = () => setSelectedHomeTypes([]);
+  const handleDeselectAllHomeTypes = () => {
+    setSelectedHomeTypes([]);
+    fetchProperties(dataSource, 1, pageSize);
+  };
   const handleApplyHomeType = () => {
     // TODO: Use selectedHomeTypes and selectedSpaces in your search/filter logic
     handleHomeTypeMenuClose();
@@ -474,6 +680,14 @@ function App() {
       isListVisible: true,
       filterState: {
         sort: { value: 'globalrelevanceex' },
+        // Set listing type filters
+        fr: { value: listingTypeValue === 'for_rent' },
+        fsba: { value: listingTypeValue === 'for_sale' },
+        fsbo: { value: false },
+        nc: { value: false },
+        cmsn: { value: false },
+        auc: { value: false },
+        fore: { value: false }
       },
       usersSearchTerm: search || '',
     };
@@ -522,26 +736,25 @@ function App() {
     return `${baseUrl}?${params.toString()}`;
   };
 
-  // useEffect to watch all filter states and trigger fetchProperties for DB data
+  // Update useEffect to use debounced values
   useEffect(() => {
-    if (!locationId) return; // Do not fetch if locationId is not set
+    if (!locationId) return;
     if (dataSource === 'db' && !hasSearched) {
-      fetchProperties('db', 1, pageSize, sortColumn, sortDirection);
+      debouncedFetchProperties('db', 1, pageSize, sortColumn, sortDirection);
     }
-    // eslint-disable-next-line
   }, [
-    listingTypeValue,
-    minPrice,
-    maxPrice,
-    bedrooms,
-    bathrooms,
-    selectedHomeTypes,
-    sqftMin,
-    sqftMax,
-    lotMin,
-    lotMax,
-    yearMin,
-    yearMax,
+    debouncedSearch,
+    debouncedMinPrice,
+    debouncedMaxPrice,
+    debouncedBedrooms,
+    debouncedBathrooms,
+    debouncedSelectedHomeTypes,
+    debouncedSqftMin,
+    debouncedSqftMax,
+    debouncedLotMin,
+    debouncedLotMax,
+    debouncedYearMin,
+    debouncedYearMax,
     hasBasement,
     tour3D,
     instantTour,
@@ -573,51 +786,110 @@ function App() {
     commute,
     daysOnZillow,
     keywords,
-    fiftyFivePlus
+    fiftyFivePlus,
+    debouncedFetchProperties,
+    dataSource,
+    hasSearched,
+    pageSize,
+    sortColumn,
+    sortDirection
   ]);
 
-  // Only call fetchProperties('market', ...) when Search on Market is clicked
+  // Helper to collect current filters for summary
+  const getCurrentFilters = () => ({
+    Listing_Type: listingTypeValue === 'for_sale' ? 'For Sale' : listingTypeValue === 'for_rent' ? 'For Rent' : 'Sold',
+    Min_Price: minPrice,
+    Max_Price: maxPrice,
+    Bedrooms: bedrooms,
+    Bathrooms: bathrooms,
+    Sqft_Min: sqftMin,
+    Sqft_Max: sqftMax,
+    Lot_Min: lotMin,
+    Lot_Max: lotMax,
+    Year_Min: yearMin,
+    Year_Max: yearMax,
+    Home_Types: selectedHomeTypes,
+    Spaces: selectedSpaces,
+    Has_Basement: hasBasement,
+    Must_Have_AC: mustHaveAC,
+    Must_Have_Pool: mustHavePool,
+    Waterfront: waterfront,
+    On_Site_Parking: onSiteParking,
+    In_Unit_Laundry: inUnitLaundry,
+    Accepts_Zillow_Apps: acceptsZillowApps,
+    Income_Restricted: incomeRestricted,
+    Hardwood_Floors: hardwoodFloors,
+    Disabled_Access: disabledAccess,
+    Utilities_Included: utilitiesIncluded,
+    Short_Term_Lease: shortTermLease,
+    Furnished: furnished,
+    Outdoor_Space: outdoorSpace,
+    Controlled_Access: controlledAccess,
+    High_Speed_Internet: highSpeedInternet,
+    Elevator: elevator,
+    Apartment_Community: apartmentCommunity,
+    View_City: viewCity,
+    View_Mountain: viewMountain,
+    View_Park: viewPark,
+    View_Water: viewWater,
+    Days_On_Zillow: daysOnZillow,
+    Keywords: keywords,
+    Fifty_Five_Plus: fiftyFivePlus,
+  });
+
+  // Update handleSearchOnZillow to always pass address and location
   const handleSearchOnZillow = async (pageOverride?: number, pageSizeOverride?: number) => {
-    // Always get locationId from the URL before searching
-    let locId = null;
-    const params = new URLSearchParams(window.location.search);
-    locId = params.get("locationId");
-    if (!locId) {
-      const match = window.location.pathname.match(/locationId=([^\/]+)/);
-      if (match) locId = match[1];
-    }
-    if (!locId) {
+    if (!locationId) {
       setError('No locationId provided in the URL. Please access this app from the authorized menu.');
       return;
     }
-    setLocationId(locId);
     setDataSource('market');
     setHasSearched(true);
-    setPage(pageOverride || 1);
+    if (pageOverride) setPage(pageOverride);
     if (pageSizeOverride) setPageSize(pageSizeOverride);
     setLoading(true);
     setError(null);
-    // Address detection: contains a number and at least two words
-    const addressLike = /\d+\s+\w+/.test(search.trim());
-    if (addressLike) {
-      try {
-        const response = await fetch(`/api/zillow/search?address=${encodeURIComponent(search.trim())}&locationId=${encodeURIComponent(locId)}`);
-        const result = await response.json();
-        if (result.success && result.properties && result.properties.length > 0) {
-          setProperties(result.properties);
-          setFilteredProperties(result.properties);
-          setTotalResults(result.properties.length);
-          setPage(1);
-          setLoading(false);
-          return;
-        }
-        // If no result, fall through to normal market search
-      } catch (err) {
-        // If address search fails, fall through to normal market search
+
+    // Always use 'by_agent' for the API call
+    let url = `/api/zillow/search?search_on_market=1` +
+      `&locationId=${encodeURIComponent(locationId)}` +
+      `&page=${pageOverride || 1}` +
+      `&page_size=${pageSizeOverride || pageSize}` +
+      `&listing_type=by_agent` +
+      (minPrice ? `&min_price=${minPrice}` : '') +
+      (maxPrice ? `&max_price=${maxPrice}` : '') +
+      (bedrooms ? `&bedrooms=${bedrooms}` : '') +
+      (bathrooms ? `&bathrooms=${bathrooms}` : '') +
+      (sqftMin ? `&sqft_min=${sqftMin}` : '') +
+      (sqftMax ? `&sqft_max=${sqftMax}` : '') +
+      (lotMin ? `&lot_min=${lotMin}` : '') +
+      (lotMax ? `&lot_max=${lotMax}` : '') +
+      (yearMin ? `&year_min=${yearMin}` : '') +
+      (yearMax ? `&year_max=${yearMax}` : '') +
+      `&address=${encodeURIComponent(search || '')}` +
+      `&location=${encodeURIComponent(search || locationId)}`;
+
+    try {
+      const response = await fetch(url);
+      const result = await response.json();
+      if (result.success || result.properties) {
+        setProperties(result.properties);
+        setFilteredProperties(result.properties);
+        setTotalResults(result.total_results);
+        if (result.total_pages) setPage(result.page || 1);
+      } else {
+        setError(result.error || 'Failed to search on Zillow');
+        setProperties([]);
+        setFilteredProperties([]);
+        setTotalResults(0);
+        setPage(1);
       }
+    } catch (err) {
+      setError('Failed to fetch properties');
+      console.error('Error fetching properties:', err);
+    } finally {
+      setLoading(false);
     }
-    // For general search, always include locationId
-    await fetchProperties('market', pageOverride || 1, pageSizeOverride || pageSize);
   };
 
   // PageSizeSelector with skeleton
@@ -744,6 +1016,36 @@ function App() {
       ))}
     </TableBody>
   );
+
+  const handleCheckboxChange = (setter: React.Dispatch<React.SetStateAction<boolean>>) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    setter(e.target.checked);
+    fetchProperties(dataSource, 1, pageSize);
+  };
+
+  const handleSqftMinChange = (e: SelectChangeEvent) => {
+    setSqftMin(e.target.value);
+    fetchProperties(dataSource, 1, pageSize);
+  };
+  const handleSqftMaxChange = (e: SelectChangeEvent) => {
+    setSqftMax(e.target.value);
+    fetchProperties(dataSource, 1, pageSize);
+  };
+  const handleLotMinChange = (e: SelectChangeEvent) => {
+    setLotMin(e.target.value);
+    fetchProperties(dataSource, 1, pageSize);
+  };
+  const handleLotMaxChange = (e: SelectChangeEvent) => {
+    setLotMax(e.target.value);
+    fetchProperties(dataSource, 1, pageSize);
+  };
+  const handleYearMinChange = (e: SelectChangeEvent) => {
+    setYearMin(e.target.value);
+    fetchProperties(dataSource, 1, pageSize);
+  };
+  const handleYearMaxChange = (e: SelectChangeEvent) => {
+    setYearMax(e.target.value);
+    fetchProperties(dataSource, 1, pageSize);
+  };
 
   if (!locationId) {
     return (
@@ -1269,7 +1571,7 @@ function App() {
                   boxShadow: 'none',
                   '&:hover': { bgcolor: '#1742a0' },
                 }}
-                onClick={() => handleSearchOnZillow()}
+                onClick={() => setShowFilterSummary(true)}
               >
                 Search on Market
               </Button>
@@ -1301,7 +1603,7 @@ function App() {
                 <Typography variant="subtitle2" fontWeight={700} mb={1}>Square feet</Typography>
                 <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
                   <FormControl size="small" sx={{ minWidth: 120 }}>
-                    <Select value={sqftMin} onChange={e => setSqftMin(e.target.value)} displayEmpty>
+                    <Select value={sqftMin} onChange={handleSqftMinChange} displayEmpty>
                       <MenuItem value="">No Min</MenuItem>
                       {sqftOptions.slice(1).map(val => (
                         <MenuItem key={val} value={val}>{parseInt(val).toLocaleString()}</MenuItem>
@@ -1310,7 +1612,7 @@ function App() {
                   </FormControl>
                   <Typography sx={{ mx: 1, color: '#6e6e6e', alignSelf: 'center' }}>-</Typography>
                   <FormControl size="small" sx={{ minWidth: 120 }}>
-                    <Select value={sqftMax} onChange={e => setSqftMax(e.target.value)} displayEmpty>
+                    <Select value={sqftMax} onChange={handleSqftMaxChange} displayEmpty>
                       <MenuItem value="">No Max</MenuItem>
                       {sqftOptions.slice(1).map(val => (
                         <MenuItem key={val} value={val}>{parseInt(val).toLocaleString()}</MenuItem>
@@ -1322,7 +1624,7 @@ function App() {
                 <Typography variant="subtitle2" fontWeight={700} mb={1}>Lot size</Typography>
                 <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
                   <FormControl size="small" sx={{ minWidth: 120 }}>
-                    <Select value={lotMin} onChange={e => setLotMin(e.target.value)} displayEmpty>
+                    <Select value={lotMin} onChange={handleLotMinChange} displayEmpty>
                       <MenuItem value="">No Min</MenuItem>
                       {lotOptions.slice(1).map((val, i) => (
                         <MenuItem key={val} value={val}>{lotLabels[i + 1]}</MenuItem>
@@ -1331,7 +1633,7 @@ function App() {
                   </FormControl>
                   <Typography sx={{ mx: 1, color: '#6e6e6e', alignSelf: 'center' }}>-</Typography>
                   <FormControl size="small" sx={{ minWidth: 120 }}>
-                    <Select value={lotMax} onChange={e => setLotMax(e.target.value)} displayEmpty>
+                    <Select value={lotMax} onChange={handleLotMaxChange} displayEmpty>
                       <MenuItem value="">No Max</MenuItem>
                       {lotOptions.slice(1).map((val, i) => (
                         <MenuItem key={val} value={val}>{lotLabels[i + 1]}</MenuItem>
@@ -1343,7 +1645,7 @@ function App() {
                 <Typography variant="subtitle2" fontWeight={700} mb={1}>Year built</Typography>
                 <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
                   <FormControl size="small" sx={{ minWidth: 120 }}>
-                    <Select value={yearMin} onChange={e => setYearMin(e.target.value)} displayEmpty>
+                    <Select value={yearMin} onChange={handleYearMinChange} displayEmpty>
                       <MenuItem value="">No Min</MenuItem>
                       {yearOptions.slice(1).map(val => (
                         <MenuItem key={val} value={val}>{val}</MenuItem>
@@ -1352,7 +1654,7 @@ function App() {
                   </FormControl>
                   <Typography sx={{ mx: 1, color: '#6e6e6e', alignSelf: 'center' }}>-</Typography>
                   <FormControl size="small" sx={{ minWidth: 120 }}>
-                    <Select value={yearMax} onChange={e => setYearMax(e.target.value)} displayEmpty>
+                    <Select value={yearMax} onChange={handleYearMaxChange} displayEmpty>
                       <MenuItem value="">No Max</MenuItem>
                       {yearOptions.slice(1).map(val => (
                         <MenuItem key={val} value={val}>{val}</MenuItem>
@@ -1362,33 +1664,33 @@ function App() {
                 </Box>
                 {/* Basement */}
                 <Typography variant="subtitle2" fontWeight={700} mt={2}>Basement</Typography>
-                <FormControlLabel control={<Checkbox checked={hasBasement} onChange={e => setHasBasement(e.target.checked)} />} label="Has basement" />
+                <FormControlLabel control={<Checkbox checked={hasBasement} onChange={handleCheckboxChange(setHasBasement)} />} label="Has basement" />
                 {/* <FormControlLabel control={<Checkbox checked={singleStory} onChange={e => setSingleStory(e.target.checked)} />} label="Single-story only" /> */}
                 {/* Other Amenities */}
                 <Typography variant="subtitle2" fontWeight={700} mt={2}>Other Amenities</Typography>
-                <FormControlLabel control={<Checkbox checked={mustHaveAC} onChange={e => setMustHaveAC(e.target.checked)} />} label="Must have A/C" />
-                <FormControlLabel control={<Checkbox checked={mustHavePool} onChange={e => setMustHavePool(e.target.checked)} />} label="Must have pool" />
-                <FormControlLabel control={<Checkbox checked={waterfront} onChange={e => setWaterfront(e.target.checked)} />} label="Waterfront" />
-                <FormControlLabel control={<Checkbox checked={onSiteParking} onChange={e => setOnSiteParking(e.target.checked)} />} label="On-site Parking" />
-                <FormControlLabel control={<Checkbox checked={inUnitLaundry} onChange={e => setInUnitLaundry(e.target.checked)} />} label="In-unit Laundry" />
-                <FormControlLabel control={<Checkbox checked={acceptsZillowApps} onChange={e => setAcceptsZillowApps(e.target.checked)} />} label="Accepts Zillow Applications" />
-                <FormControlLabel control={<Checkbox checked={incomeRestricted} onChange={e => setIncomeRestricted(e.target.checked)} />} label="Income restricted" />
-                <FormControlLabel control={<Checkbox checked={hardwoodFloors} onChange={e => setHardwoodFloors(e.target.checked)} />} label="Hardwood Floors" />
-                <FormControlLabel control={<Checkbox checked={disabledAccess} onChange={e => setDisabledAccess(e.target.checked)} />} label="Disabled Access" />
-                <FormControlLabel control={<Checkbox checked={utilitiesIncluded} onChange={e => setUtilitiesIncluded(e.target.checked)} />} label="Utilities Included" />
-                <FormControlLabel control={<Checkbox checked={shortTermLease} onChange={e => setShortTermLease(e.target.checked)} />} label="Short term lease available" />
-                <FormControlLabel control={<Checkbox checked={furnished} onChange={e => setFurnished(e.target.checked)} />} label="Furnished" />
-                <FormControlLabel control={<Checkbox checked={outdoorSpace} onChange={e => setOutdoorSpace(e.target.checked)} />} label="Outdoor space" />
-                <FormControlLabel control={<Checkbox checked={controlledAccess} onChange={e => setControlledAccess(e.target.checked)} />} label="Controlled access" />
-                <FormControlLabel control={<Checkbox checked={highSpeedInternet} onChange={e => setHighSpeedInternet(e.target.checked)} />} label="High speed internet" />
-                <FormControlLabel control={<Checkbox checked={elevator} onChange={e => setElevator(e.target.checked)} />} label="Elevator" />
-                <FormControlLabel control={<Checkbox checked={apartmentCommunity} onChange={e => setApartmentCommunity(e.target.checked)} />} label="Apartment Community" />
+                <FormControlLabel control={<Checkbox checked={mustHaveAC} onChange={handleCheckboxChange(setMustHaveAC)} />} label="Must have A/C" />
+                <FormControlLabel control={<Checkbox checked={mustHavePool} onChange={handleCheckboxChange(setMustHavePool)} />} label="Must have pool" />
+                <FormControlLabel control={<Checkbox checked={waterfront} onChange={handleCheckboxChange(setWaterfront)} />} label="Waterfront" />
+                <FormControlLabel control={<Checkbox checked={onSiteParking} onChange={handleCheckboxChange(setOnSiteParking)} />} label="On-site Parking" />
+                <FormControlLabel control={<Checkbox checked={inUnitLaundry} onChange={handleCheckboxChange(setInUnitLaundry)} />} label="In-unit Laundry" />
+                <FormControlLabel control={<Checkbox checked={acceptsZillowApps} onChange={handleCheckboxChange(setAcceptsZillowApps)} />} label="Accepts Zillow Applications" />
+                <FormControlLabel control={<Checkbox checked={incomeRestricted} onChange={handleCheckboxChange(setIncomeRestricted)} />} label="Income restricted" />
+                <FormControlLabel control={<Checkbox checked={hardwoodFloors} onChange={handleCheckboxChange(setHardwoodFloors)} />} label="Hardwood Floors" />
+                <FormControlLabel control={<Checkbox checked={disabledAccess} onChange={handleCheckboxChange(setDisabledAccess)} />} label="Disabled Access" />
+                <FormControlLabel control={<Checkbox checked={utilitiesIncluded} onChange={handleCheckboxChange(setUtilitiesIncluded)} />} label="Utilities Included" />
+                <FormControlLabel control={<Checkbox checked={shortTermLease} onChange={handleCheckboxChange(setShortTermLease)} />} label="Short term lease available" />
+                <FormControlLabel control={<Checkbox checked={furnished} onChange={handleCheckboxChange(setFurnished)} />} label="Furnished" />
+                <FormControlLabel control={<Checkbox checked={outdoorSpace} onChange={handleCheckboxChange(setOutdoorSpace)} />} label="Outdoor space" />
+                <FormControlLabel control={<Checkbox checked={controlledAccess} onChange={handleCheckboxChange(setControlledAccess)} />} label="Controlled access" />
+                <FormControlLabel control={<Checkbox checked={highSpeedInternet} onChange={handleCheckboxChange(setHighSpeedInternet)} />} label="High speed internet" />
+                <FormControlLabel control={<Checkbox checked={elevator} onChange={handleCheckboxChange(setElevator)} />} label="Elevator" />
+                <FormControlLabel control={<Checkbox checked={apartmentCommunity} onChange={handleCheckboxChange(setApartmentCommunity)} />} label="Apartment Community" />
                 {/* View */}
                 <Typography variant="subtitle2" fontWeight={700} mt={2}>View</Typography>
-                <FormControlLabel control={<Checkbox checked={viewCity} onChange={e => setViewCity(e.target.checked)} />} label="City" />
-                <FormControlLabel control={<Checkbox checked={viewMountain} onChange={e => setViewMountain(e.target.checked)} />} label="Mountain" />
-                <FormControlLabel control={<Checkbox checked={viewPark} onChange={e => setViewPark(e.target.checked)} />} label="Park" />
-                <FormControlLabel control={<Checkbox checked={viewWater} onChange={e => setViewWater(e.target.checked)} />} label="Water" />
+                <FormControlLabel control={<Checkbox checked={viewCity} onChange={handleCheckboxChange(setViewCity)} />} label="City" />
+                <FormControlLabel control={<Checkbox checked={viewMountain} onChange={handleCheckboxChange(setViewMountain)} />} label="Mountain" />
+                <FormControlLabel control={<Checkbox checked={viewPark} onChange={handleCheckboxChange(setViewPark)} />} label="Park" />
+                <FormControlLabel control={<Checkbox checked={viewWater} onChange={handleCheckboxChange(setViewWater)} />} label="Water" />
                 {/* Commute Time */}
                 {/* <Typography variant="subtitle2" fontWeight={700} mt={2}>Commute Time</Typography>
                 <TextField
@@ -1672,9 +1974,15 @@ function App() {
                           </TableCell>
                           <TableCell>
                             {prop.listingAgent && prop.listingAgent.name ? (
-                              <Typography variant="subtitle2" sx={{ display: 'block', lineHeight: 1.2 }}>
-                                {prop.listingAgent.name}
-                              </Typography>
+                              <Box sx={{ lineHeight: 1.2 }}>
+                                <Typography variant="subtitle2">{prop.listingAgent.name}</Typography>
+                                {prop.listingAgent.email && (
+                                  <Typography variant="body2" color="text.secondary">{prop.listingAgent.email}</Typography>
+                                )}
+                                {prop.listingAgent.phone && (
+                                  <Typography variant="body2" color="text.secondary">{prop.listingAgent.phone}</Typography>
+                                )}
+                              </Box>
                             ) : (
                               <Typography variant="body2" color="text.secondary">
                                 No agent info
@@ -1739,6 +2047,16 @@ function App() {
           </DialogActions>
         </Dialog>
       )}
+      {/* Filter Summary Dialog */}
+      <FilterSummaryDialog
+        open={showFilterSummary}
+        onClose={() => setShowFilterSummary(false)}
+        onContinue={async () => {
+          setShowFilterSummary(false);
+          await handleSearchOnZillow();
+        }}
+        filters={getCurrentFilters()}
+      />
       {/* Add fade-out CSS */}
       <style>{`
       .fade-out {

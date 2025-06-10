@@ -258,9 +258,7 @@ class ZillowProperty(models.Model):
                 if not res:
                     raise models.UserError('Failed to write data')
                 # Prepare detail_vals for zillow.property.detail (only valid fields)
-                attribution_info = data.get('attributionInfo', {})
-                _logger.info(f"[ATTRIBUTION] Raw attribution info: {attribution_info}")
-
+                attribution_info = data.get('attributionInfo', {})   
                 detail_vals = {
                     'zpid': self.zpid,
                     'property_id': self.id,
@@ -427,6 +425,7 @@ class ZillowProperty(models.Model):
                 if not property_detail:
                     property_detail = self.env['zillow.property.detail'].search([('property_id', '=', self.id)],
                                                                                 limit=1)
+                
                 # print(f"Creating/updating property detail for property {self.id} with vals: {detail_vals}")
                 if property_detail:
                     try:
@@ -436,6 +435,21 @@ class ZillowProperty(models.Model):
                         raise
                 else:
                     property_detail = self.env['zillow.property.detail'].create([detail_vals])
+                # Address data
+                address_info = data.get('address', {})
+                address_data = {
+                    'property_id': property_detail.id,
+                    'city': address_info.get('city') if address_info.get('city') else '',
+                    'community': address_info.get('community') if address_info.get('community') else '',
+                    'neighborhood': address_info.get('neighborhood') if address_info.get('neighborhood') else '',
+                    'state': address_info.get('state') if address_info.get('state') else '',
+                    'street_address': address_info.get('streetAddress') if address_info.get('streetAddress') else '',
+                    'subdivision': address_info.get('subdivision') if address_info.get('subdivision') else '',
+                    'zipcode': address_info.get('zipcode') if address_info.get('zipcode') else '',
+                }
+                self.env['zillow.property.address'].create([address_data])
+                # Write Attibution Info
+                
                 # Handle listingAgents array (under attributionInfo)
                 listing_agents = data.get('attributionInfo', {}).get('listingAgents', [])
                 # Remove old agents for this property detail

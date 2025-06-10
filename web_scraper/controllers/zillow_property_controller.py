@@ -4,6 +4,7 @@ import json
 import logging
 import requests
 from odoo.fields import Datetime
+from datetime import datetime, timedelta
 
 _logger = logging.getLogger(__name__)
 
@@ -126,7 +127,135 @@ class ZillowPropertyController(http.Controller):
             properties = request.env['zillow.property'].sudo().browse(property_ids)
             _logger.info(f"[FETCH] Found {len(properties)} properties")
 
-            webhook_url = "https://services.leadconnectorhq.com/hooks/N1D3b2rc7RAqs4k7qdFY/webhook-trigger/47dabb25-a458-43ec-a0e6-8832251239a5"
+            # Get API configuration from system parameters
+            ICP = request.env['ir.config_parameter'].sudo()
+            location_id = data.get('locationId')
+            if not location_id:
+                _logger.error("[CONFIG] No location ID provided in request")
+                return http.Response(
+                    json.dumps({
+                        'success': False,
+                        'error': 'Location ID is required. Please provide a valid location ID.'
+                    }),
+                    content_type='application/json',
+                    status=400
+                )
+
+            # Get the GHL agency token
+            agency_token = request.env['ghl.agency.token'].sudo().search([], limit=1)
+            if not agency_token:
+                _logger.error("[CONFIG] No GHL agency token found")
+                return http.Response(
+                    json.dumps({
+                        'success': False,
+                        'error': 'No GHL agency token found. Please configure GHL OAuth integration first.'
+                    }),
+                    content_type='application/json',
+                    status=500
+                )
+
+            # Check if token is expired
+            current_time = Datetime.now()
+            token_expiry = agency_token.token_expiry
+            _logger.info(f"[TOKEN] Current time: {current_time}, Token expiry: {token_expiry}")
+            
+            if token_expiry < current_time:
+                _logger.error("[CONFIG] GHL agency token has expired")
+                # Try to refresh the token
+                try:
+                    refresh_url = "https://services.leadconnectorhq.com/oauth/token"
+                    refresh_payload = {
+                        "client_id": agency_token.company_id,
+                        "grant_type": "refresh_token",
+                        "refresh_token": agency_token.refresh_token
+                    }
+                    refresh_headers = {
+                        'Content-Type': 'application/json'
+                    }
+                    
+                    _logger.info("[TOKEN] Attempting to refresh token...")
+                    refresh_response = requests.post(refresh_url, json=refresh_payload, headers=refresh_headers)
+                    
+                    if refresh_response.status_code == 200:
+                        refresh_data = refresh_response.json()
+                        agency_token.write({
+                            'access_token': refresh_data['access_token'],
+                            'refresh_token': refresh_data['refresh_token'],
+                            'token_expiry': Datetime.now() + timedelta(seconds=refresh_data['expires_in'])
+                        })
+                        _logger.info("[TOKEN] Successfully refreshed token")
+                    else:
+                        _logger.error(f"[TOKEN] Failed to refresh token: {refresh_response.text}")
+                        return http.Response(
+                            json.dumps({
+                                'success': False,
+                                'error': 'Failed to refresh GHL token. Please re-authenticate.'
+                            }),
+                            content_type='application/json',
+                            status=500
+                        )
+                except Exception as e:
+                    _logger.error(f"[TOKEN] Error refreshing token: {str(e)}")
+                    return http.Response(
+                        json.dumps({
+                            'success': False,
+                            'error': 'Error refreshing GHL token. Please re-authenticate.'
+                        }),
+                        content_type='application/json',
+                        status=500
+                    )
+
+            agency_access_token = agency_token.access_token
+            company_id = agency_token.company_id
+            _logger.info(f"[TOKEN] Using agency token: {agency_access_token[:10]}...{agency_access_token[-10:] if len(agency_access_token) > 20 else ''}")
+            _logger.info(f"[CONFIG] Using GHL agency token for location ID: {location_id}")
+
+            # Step 1: Get location access token
+            location_token_url = "https://services.leadconnectorhq.com/oauth/locationToken"
+            location_token_headers = {
+                "Accept": "application/json",
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Version": "2021-07-28",
+                "Authorization": f"Bearer {agency_access_token}"
+            }
+            location_token_data = {
+                "companyId": company_id,
+                "locationId": location_id
+            }
+            try:
+                location_token_resp = requests.post(location_token_url, headers=location_token_headers, data=location_token_data)
+                _logger.info(f"[TOKEN] Location token response: {location_token_resp.status_code} {location_token_resp.text}")
+                if location_token_resp.status_code not in [200, 201]:
+                    return http.Response(
+                        json.dumps({
+                            'success': False,
+                            'error': f'Failed to get location access token: {location_token_resp.text}'
+                        }),
+                        content_type='application/json',
+                        status=500
+                    )
+                location_access_token = location_token_resp.json().get('access_token')
+                if not location_access_token:
+                    return http.Response(
+                        json.dumps({
+                            'success': False,
+                            'error': 'No access_token in location token response.'
+                        }),
+                        content_type='application/json',
+                        status=500
+                    )
+            except Exception as e:
+                _logger.error(f"[TOKEN] Error getting location access token: {str(e)}")
+                return http.Response(
+                    json.dumps({
+                        'success': False,
+                        'error': f'Error getting location access token: {str(e)}'
+                    }),
+                    content_type='application/json',
+                    status=500
+                )
+
+            api_url = "https://services.leadconnectorhq.com/contacts/"
 
             results = []
             for prop in properties:
@@ -152,54 +281,72 @@ class ZillowPropertyController(http.Controller):
                 agent = detail.listing_agent_id
                 _logger.info(
                     f"[PROCESS] Agent info for property {prop.id}: {agent.display_name if agent else 'No agent'}")
-
+                agent_email = detail.agent_email or ''
+                agent_name = detail.agent_name or ''
+                # Prepare the payload according to the new API schema
                 payload = {
-                    "listing_agent": agent.display_name if agent else '',
-                    "baths": detail.bathrooms,
-                    "beds": detail.bedrooms,
-                    "sqft": detail.living_area,
-                    "lot_size": detail.lot_size,
-                    "year_built": detail.year_built,
-                    "address": prop.street_address,
-                    "property_type": detail.home_type,
-                    "asking_price": detail.price,
-                    "realtor": agent.display_name if agent else '',
-                    "realtor_email": agent.email if agent else '',
-                    "realtor_phone": agent.phone_number if agent else '',
-                    "description": detail.description,
-                    # Add attribution information
-                    "agent_email": detail.agent_email,
-                    "agent_license_number": detail.agent_license_number,
-                    "agent_name": detail.agent_name,
-                    "agent_phone_number": detail.agent_phone_number,
-                    "attribution_title": detail.attribution_title,
-                    "broker_name": detail.broker_name,
-                    "broker_phone_number": detail.broker_phone_number,
-                    "buyer_agent_member_state_license": detail.buyer_agent_member_state_license,
-                    "buyer_agent_name": detail.buyer_agent_name,
-                    "buyer_brokerage_name": detail.buyer_brokerage_name,
-                    "co_agent_license_number": detail.co_agent_license_number,
-                    "co_agent_name": detail.co_agent_name,
-                    "co_agent_number": detail.co_agent_number,
+                    "locationId": location_id,
+                    "firstName": agent_name.split()[0] if agent_name else '',
+                    "lastName": ' '.join(agent_name.split()[1:]) if agent_name else '',
+                    "name": agent_name if agent_name else '',
+                    "email": detail.agent_email if detail.agent_email else None,
+                    "phone": detail.agent_phone_number or '',
+                    "address1": prop.street_address or '',
+                    "city": prop.city or '',
+                    "state": prop.state or '',
+                    "postalCode": prop.zipcode or '',
+                    "timezone": "America/New_York",  # Default to EST
+                    "dnd": False,
+                    "tags": ["Zillow Agent", "Property Agent"],
+                    "source": "Zillow Integration",
+                    "country": "US",
+                    "companyName": detail.broker_name or '',
                 }
 
-                _logger.info(f"[WEBHOOK] Preparing payload for property {prop.id}: {json.dumps(payload, default=str)}")
+                _logger.info(f"[API] Preparing payload for property {prop.id}: {json.dumps(payload, default=str)}")
 
                 try:
-                    _logger.info(f"[WEBHOOK] Sending request to webhook for property {prop.id}")
-                    resp = requests.post(webhook_url, json=payload, timeout=10)
+                    _logger.info(f"[API] Sending request to GHL API for property {prop.id}")
+                    headers = {
+                        'Accept': 'application/json',
+                        'Authorization': f'Bearer {location_access_token.strip()}',  # Use location access token
+                        'Content-Type': 'application/json',
+                        'Version': '2021-07-28'
+                    }
+                    
+                    resp = requests.post(api_url, json=payload, headers=headers, timeout=10)
                     _logger.info(
-                        f"[WEBHOOK] Response for property {prop.id}: Status={resp.status_code}, Body={resp.text}")
+                        f"[API] Response for property {prop.id}: Status={resp.status_code}, Body={resp.text}")
 
-                    # If webhook call was successful, mark the property as sent
-                    if resp.status_code == 200:
+                    # Log errors for non-successful responses
+                    if resp.status_code not in [200, 201]:
+                        _logger.error(f"[API][ERROR] Failed to create contact for property {prop.id}. Status: {resp.status_code}, Response: {resp.text}, Payload: {json.dumps(payload, default=str)}")
+
+                    # Handle authentication errors
+                    if resp.status_code == 401:
+                        _logger.error(f"[API] Authentication failed for property {prop.id}. Token may have expired or has insufficient permissions.")
+                        # Try to get more details about the error
+                        try:
+                            error_data = resp.json()
+                            _logger.error(f"[API] Error details: {error_data}")
+                        except Exception as e:
+                            _logger.error(f"[API] Error parsing error details: {str(e)}")
+                        results.append({
+                            'property_id': prop.id,
+                            'status': resp.status_code,
+                            'response': 'Authentication failed. Please check token permissions and ensure it has access to the contacts API.'
+                        })
+                        continue
+
+                    # If API call was successful, mark the property as sent
+                    if resp.status_code in [200, 201]:
                         current_user = request.env.user
                         prop.write({
                             'sent_to_cyclsales_by': [(4, current_user.id)],
                             'last_sent_to_cyclsales': Datetime.now()
                         })
                         _logger.info(
-                            f"[UPDATE] Marked property {prop.id} as sent to CyclSales by user {current_user.id}")
+                            f"[UPDATE] Marked property {prop.id} as sent to GHL by user {current_user.id}")
 
                     results.append({
                         'property_id': prop.id,
@@ -207,7 +354,7 @@ class ZillowPropertyController(http.Controller):
                         'response': resp.text
                     })
                 except Exception as e:
-                    _logger.error(f"[WEBHOOK] Error for property {prop.id}: {str(e)}")
+                    _logger.error(f"[API][EXCEPTION] Error for property {prop.id}: {str(e)}. Payload: {json.dumps(payload, default=str)}")
                     results.append({
                         'property_id': prop.id,
                         'status': 'error',

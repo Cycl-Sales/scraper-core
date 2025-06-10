@@ -23,6 +23,7 @@
         'views/ghl_templates.xml',
         'views/ghl_location_views.xml',
         'data/ghl_cron.xml',
+        'data/cron.xml',
     ],
     # 'assets': {
     #     'web.assets_backend': [
