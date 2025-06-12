@@ -106,13 +106,13 @@ class ZillowProperty(models.Model):
     property_detail_ids = fields.One2many('zillow.property.detail', 'property_id', string='Property Details')
 
     # CyclSales Integration
-    sent_to_cyclsales_by = fields.Many2many(
-        'res.users',
-        'zillow_property_cyclsales_rel',
+    sent_to_ghl_locations = fields.Many2many(
+        'ghl.location',
+        'zillow_property_ghl_location_rel',
         'property_id',
-        'user_id',
-        string='Sent to CyclSales by',
-        help='Users who have sent this property to CyclSales'
+        'location_id',
+        string='Sent to GHL Locations',
+        help='GHL Locations this property has been sent to'
     )
     sent_to_cyclsales_count = fields.Integer(
         string='Times Sent to CyclSales',
@@ -124,17 +124,17 @@ class ZillowProperty(models.Model):
         help='When this property was last sent to CyclSales'
     )
 
-    @api.depends('sent_to_cyclsales_by')
-    def _compute_sent_to_cyclsales_count(self):
+    @api.depends('sent_to_ghl_locations')
+    def _compute_sent_to_cyclsales(self):
         for record in self:
-            record.sent_to_cyclsales_count = len(record.sent_to_cyclsales_by)
+            record.sent_to_cyclsales_count = len(record.sent_to_ghl_locations)
 
     def action_send_to_cyclsales(self, user_id):
         """Send property to CyclSales and record the user who sent it."""
         self.ensure_one()
-        if user_id not in self.sent_to_cyclsales_by.ids:
+        if user_id not in self.sent_to_ghl_locations.ids:
             self.write({
-                'sent_to_cyclsales_by': [(4, user_id)]
+                'sent_to_ghl_locations': [(4, user_id)]
             })
             return True
         return False
@@ -258,7 +258,7 @@ class ZillowProperty(models.Model):
                 if not res:
                     raise models.UserError('Failed to write data')
                 # Prepare detail_vals for zillow.property.detail (only valid fields)
-                attribution_info = data.get('attributionInfo', {})   
+                attribution_info = data.get('attributionInfo', {})
                 detail_vals = {
                     'zpid': self.zpid,
                     'property_id': self.id,
@@ -268,7 +268,7 @@ class ZillowProperty(models.Model):
                     'agent_email': attribution_info.get('agentEmail'),
                     'agent_license_number': attribution_info.get('agentLicenseNumber'),
                     'agent_name': attribution_info.get('agentName'),
-                    'agent_phone_number': attribution_info.get('agentPhoneNumber'),
+                    'agent_phone_number': attribution_info.get('listingAttributionContact'),
                     'attribution_title': attribution_info.get('attributionTitle'),
                     'broker_name': attribution_info.get('brokerName'),
                     'broker_phone_number': attribution_info.get('brokerPhoneNumber'),
@@ -418,14 +418,14 @@ class ZillowProperty(models.Model):
                     'zipcode_search_url_path': data.get('zipcodeSearchUrlPath'),
                 }
 
-                # _logger.info(f"[ATTRIBUTION] Mapped attribution fields: {detail_vals}")
+                # _logger.info(f"[ATTRIBUTION] Mapped attribution fields: {data}")
 
                 # Create or update property detail record
                 property_detail = self.env['zillow.property.detail'].search([('zpid', '=', self.zpid)], limit=1)
                 if not property_detail:
                     property_detail = self.env['zillow.property.detail'].search([('property_id', '=', self.id)],
                                                                                 limit=1)
-                
+
                 # print(f"Creating/updating property detail for property {self.id} with vals: {detail_vals}")
                 if property_detail:
                     try:
@@ -449,7 +449,7 @@ class ZillowProperty(models.Model):
                 }
                 self.env['zillow.property.address'].create([address_data])
                 # Write Attibution Info
-                
+
                 # Handle listingAgents array (under attributionInfo)
                 listing_agents = data.get('attributionInfo', {}).get('listingAgents', [])
                 # Remove old agents for this property detail

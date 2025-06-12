@@ -197,6 +197,7 @@ function App() {
   const [fadingProperties, setFadingProperties] = useState<Set<string>>(new Set());
   const [locationId, setLocationId] = useState<string | null>(null);
   const [showFilterSummary, setShowFilterSummary] = useState(false);
+  const [backgroundFetching, setBackgroundFetching] = useState(false);
 
   const sqftOptions = ['', '500', '750', '1000', '1250', '1500', '1750', '2000', '2250', '2500', '2750', '3000', '3500', '4000', '5000', '7500'];
   const lotOptions = ['', '1000', '2000', '3000', '4000', '5000', '7500', '10890', '21780', '43560', '87120', '217800', '435600', '871200', '2178000', '4356000'];
@@ -296,7 +297,8 @@ function App() {
             (lotMin ? `&lot_min=${lotMin}` : '') +
             (lotMax ? `&lot_max=${lotMax}` : '') +
             (yearMin ? `&year_min=${yearMin}` : '') +
-            (yearMax ? `&year_max=${yearMax}` : '');
+            (yearMax ? `&year_max=${yearMax}` : '') +
+            (search ? `&search=${encodeURIComponent(search)}` : '');
           const response = await fetch(url);
           data = await response.json();
           if (data.error) {
@@ -305,12 +307,14 @@ function App() {
             setFilteredProperties([]);
             setTotalResults(0);
             setPage(1);
+            setBackgroundFetching(false);
             return;
           }
           setProperties(Array.isArray(data.properties) ? data.properties : []);
           setFilteredProperties(Array.isArray(data.properties) ? data.properties : []);
           setTotalResults(data.total_results || 0);
           setPage(data.page || 1);
+          setBackgroundFetching(!!data.background_fetching);
         } else {
           const url = buildSearchUrl();
           const response = await fetch(`/api/zillow/search?url=${encodeURIComponent(url)}&page=${pageArg || 1}&page_size=${pageSizeArg || pageSize}${locationId ? `&locationId=${encodeURIComponent(locationId)}` : ''}`);
@@ -335,7 +339,7 @@ function App() {
         setLoading(false);
       }
     },
-    [locationId, pageSize, sortColumn, sortDirection, listingTypeValue, minPrice, maxPrice, bedrooms, bathrooms, sqftMin, sqftMax, lotMin, lotMax, yearMin, yearMax]
+    [locationId, pageSize, sortColumn, sortDirection, listingTypeValue, minPrice, maxPrice, bedrooms, bathrooms, sqftMin, sqftMax, lotMin, lotMax, yearMin, yearMax, search]
   );
 
   // On mount, fetch from DB only once
@@ -423,7 +427,8 @@ function App() {
           (lotMin ? `&lot_min=${lotMin}` : '') +
           (lotMax ? `&lot_max=${lotMax}` : '') +
           (yearMin ? `&year_min=${yearMin}` : '') +
-          (yearMax ? `&year_max=${yearMax}` : '');
+          (yearMax ? `&year_max=${yearMax}` : '') +
+          (search ? `&search=${encodeURIComponent(search)}` : '');
         const response = await fetch(url);
         data = await response.json();
         if (data.error) {
@@ -432,12 +437,14 @@ function App() {
           setFilteredProperties([]);
           setTotalResults(0);
           setPage(1);
+          setBackgroundFetching(false);
           return;
         }
         setProperties(Array.isArray(data.properties) ? data.properties : []);
         setFilteredProperties(Array.isArray(data.properties) ? data.properties : []);
         setTotalResults(data.total_results || 0);
         setPage(data.page || 1);
+        setBackgroundFetching(!!data.background_fetching);
       } else {
         // Market search (local sort fallback)
         const url = buildSearchUrl();
@@ -1046,6 +1053,13 @@ function App() {
     setYearMax(e.target.value);
     fetchProperties(dataSource, 1, pageSize);
   };
+
+  useEffect(() => {
+    if (backgroundFetching) {
+      const timer = setTimeout(() => setBackgroundFetching(false), 8000); // 8 seconds
+      return () => clearTimeout(timer);
+    }
+  }, [backgroundFetching]);
 
   if (!locationId) {
     return (
@@ -2064,6 +2078,14 @@ function App() {
         transition: opacity 0.5s !important;
       }
       `}</style>
+      {backgroundFetching && (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+          <CircularProgress size={18} color="primary" />
+          <Typography variant="body2" color="text.secondary">
+            Fetching new properties in the background...
+          </Typography>
+        </Box>
+      )}
     </ThemeProvider>
   );
 }

@@ -122,13 +122,7 @@ class ZillowPropertyController(http.Controller):
                     status=400
                 )
 
-            # Fetch properties from zillow.property model
-            _logger.info(f"[FETCH] Attempting to fetch properties with IDs: {property_ids}")
-            properties = request.env['zillow.property'].sudo().browse(property_ids)
-            _logger.info(f"[FETCH] Found {len(properties)} properties")
-
-            # Get API configuration from system parameters
-            ICP = request.env['ir.config_parameter'].sudo()
+            # Get location ID from request
             location_id = data.get('locationId')
             if not location_id:
                 _logger.error("[CONFIG] No location ID provided in request")
@@ -140,6 +134,27 @@ class ZillowPropertyController(http.Controller):
                     content_type='application/json',
                     status=400
                 )
+
+            # Find the GHL location record
+            ghl_location = request.env['ghl.location'].sudo().search([('location_id', '=', location_id)], limit=1)
+            if not ghl_location:
+                _logger.error(f"[CONFIG] No GHL location found for ID: {location_id}")
+                return http.Response(
+                    json.dumps({
+                        'success': False,
+                        'error': 'Invalid GHL location ID provided.'
+                    }),
+                    content_type='application/json',
+                    status=400
+                )
+
+            # Fetch properties from zillow.property model
+            _logger.info(f"[FETCH] Attempting to fetch properties with IDs: {property_ids}")
+            properties = request.env['zillow.property'].sudo().browse(property_ids)
+            _logger.info(f"[FETCH] Found {len(properties)} properties")
+
+            # Get API configuration from system parameters
+            ICP = request.env['ir.config_parameter'].sudo()
 
             # Get the GHL agency token
             agency_token = request.env['ghl.agency.token'].sudo().search([], limit=1)
@@ -338,15 +353,14 @@ class ZillowPropertyController(http.Controller):
                         })
                         continue
 
-                    # If API call was successful, mark the property as sent
+                    # If API call was successful, mark the property as sent to this GHL location
                     if resp.status_code in [200, 201]:
-                        current_user = request.env.user
                         prop.write({
-                            'sent_to_cyclsales_by': [(4, current_user.id)],
+                            'sent_to_ghl_locations': [(4, ghl_location.id)],
                             'last_sent_to_cyclsales': Datetime.now()
                         })
                         _logger.info(
-                            f"[UPDATE] Marked property {prop.id} as sent to GHL by user {current_user.id}")
+                            f"[UPDATE] Marked property {prop.id} as sent to GHL location {ghl_location.id}")
 
                     results.append({
                         'property_id': prop.id,

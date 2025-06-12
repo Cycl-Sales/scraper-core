@@ -107,8 +107,15 @@ class ZillowPropertyController(http.Controller):
             home_status = kwargs.get('home_status')
             if home_status:
                 domain.append(('home_status', '=', home_status))
-            # Additional filters can be added here as needed
-            # ...
+            # Street address, city, state, or zipcode search (from search box)
+            search_value = kwargs.get('search') or kwargs.get('address') or kwargs.get('street_address')
+            if search_value:
+                domain += ['|', '|', '|',
+                    ('street_address', 'ilike', search_value),
+                    ('city', 'ilike', search_value),
+                    ('state', 'ilike', search_value),
+                    ('zipcode', 'ilike', search_value),
+                ]
 
             # Listing type filter (for_sale, for_rent, sold)
             listing_type = kwargs.get('listing_type', 'for_sale')
@@ -119,150 +126,7 @@ class ZillowPropertyController(http.Controller):
             else:
                 domain.append(('home_status', '=', 'FOR_SALE'))
 
-            # Get total count first
-            total_count = request.env['zillow.property'].sudo().search_count(domain)
-
-            # Check each zipcode and fetch data if needed
-            ICPSudo = request.env['ir.config_parameter'].sudo()
-            api_host = ICPSudo.get_param('web_scraper.rapidapi_host', 'zillow56.p.rapidapi.com')
-            api_key = ICPSudo.get_param('web_scraper.rapidapi_key')
-
-            if not api_key:
-                return Response(
-                    json.dumps({'error': 'RapidAPI key is not configured.'}),
-                    content_type='application/json',
-                    status=500,
-                    headers=[('Access-Control-Allow-Origin', '*')]
-                )
-
-            headers = {
-                'x-rapidapi-host': api_host,
-                'x-rapidapi-key': api_key
-            }
-            for zipcode in allowed_zipcodes:
-                try:
-                    try:
-                        # Check existing properties for this zipcode
-                        existing_count = request.env['zillow.property'].sudo().search_count([('zipcode', '=', zipcode)])
-                        print(f"Found {existing_count} existing properties for zipcode {zipcode}")
-
-                        # Only fetch from API if we have less than 5 properties
-                        if existing_count < 5:
-                            properties_needed = 5 - existing_count
-                            print(f"Need to fetch {properties_needed} more properties for zipcode {zipcode}")
-                            try:
-                                rapidapi_url = f'https://{api_host}/search'
-                                params = {
-                                    'location': zipcode,
-                                    'output': 'json',
-                                    'status': 'forSale',
-                                    'sortSelection': 'priorityscore',
-                                    'listing_type': 'by_agent',
-                                    'doz': 'any'
-                                }
-
-                                response = requests.get(rapidapi_url, headers=headers, params=params)
-                                response.raise_for_status()
-                                data = response.json()
-
-                                # Extract properties from the response
-                                properties_data = []
-                                if isinstance(data, dict):
-                                    if 'results' in data:
-                                        properties_data = data['results']
-                                    elif 'searchResults' in data:
-                                        properties_data = data['searchResults'].get('listResults', [])
-
-                                print(f"Found {len(properties_data)} properties in API response for zipcode {zipcode}")
-
-                                # Get all zpids from the response
-                                zpids = [p.get('zpid') for p in properties_data if p.get('zpid')]
-
-                                # Check for existing property details and properties
-                                existing_details = request.env['zillow.property.detail'].sudo().search(
-                                    [('zpid', 'in', zpids)])
-                                existing_properties = request.env['zillow.property'].sudo().search(
-                                    [('zpid', 'in', zpids)])
-
-                                # Get sets of existing zpids
-                                existing_detail_zpids = set(existing_details.mapped('zpid'))
-                                existing_property_zpids = set(existing_properties.mapped('zpid'))
-
-                                # Filter out properties that already exist
-                                properties_data = [
-                                    p for p in properties_data
-                                    if p.get('zpid')
-                                       and p.get('zpid') not in existing_detail_zpids
-                                       and p.get('zpid') not in existing_property_zpids
-                                ]
-
-                                print(
-                                    f"After filtering existing properties, {len(properties_data)} properties remain for zipcode {zipcode}")
-
-                                # Process properties until we have enough
-                                properties_processed = 0
-                                for property_data in properties_data:
-                                    if properties_processed >= properties_needed:
-                                        break
-
-                                    # Skip if no zpid (invalid property)
-                                    if not property_data.get('zpid'):
-                                        print(f"Skipping property without zpid for zipcode {zipcode}")
-                                        continue
-
-                                    zpid = property_data.get('zpid')
-
-                                    try:
-                                        # Double check property doesn't exist (race condition protection)
-                                        existing_property = request.env['zillow.property'].sudo().search(
-                                            [('zpid', '=', zpid)], limit=1)
-                                        if existing_property:
-                                            print(f"Property with zpid {zpid} already exists, skipping")
-                                            continue
-
-                                        address_data = property_data.get('address', {})
-                                        vals = {
-                                            'zpid': zpid,
-                                            'street_address': address_data.get('streetAddress'),
-                                            'city': address_data.get('city'),
-                                            'state': address_data.get('state'),
-                                            'zipcode': zipcode,
-                                            'price': float(property_data['price']) if property_data.get(
-                                                'price') else False,
-                                            'bedrooms': int(property_data['bedrooms']) if property_data.get(
-                                                'bedrooms') else False,
-                                            'bathrooms': float(property_data['bathrooms']) if property_data.get(
-                                                'bathrooms') else False,
-                                            'living_area': float(property_data['livingArea']) if property_data.get(
-                                                'livingArea') else False,
-                                            'home_status': property_data.get('homeStatus'),
-                                            'home_type': property_data.get('homeType'),
-                                        }
-
-                                        # Create the property
-                                        request.env['zillow.property'].sudo().create(vals)
-
-                                        properties_processed += 1
-
-                                    except Exception as e:
-                                        print(f"Error processing property data for zipcode {zipcode}: {str(e)}")
-                                        continue
-                            except Exception as e:
-                                print(f"Error fetching data from API for zipcode {zipcode}: {str(e)}")
-                                continue
-                        else:
-                            print(f"Already have enough properties ({existing_count}) for zipcode {zipcode}")
-
-                    except Exception as e:
-                        # Rollback the zipcode transaction
-                        print(f"Error in main zipcode processing for {zipcode}: {str(e)}")
-                        continue
-
-                except Exception as e:
-                    print(f"Error creating cursor for zipcode {zipcode}: {str(e)}")
-                    continue
-
-            # Recalculate total count after fetching new data
+            # Get total count
             total_count = request.env['zillow.property'].sudo().search_count(domain)
 
             # Calculate offset and limit
@@ -279,33 +143,38 @@ class ZillowPropertyController(http.Controller):
                 order=order
             )
 
-            # For each property, get its detail record
+            # Batch fetch all details for these properties
+            property_ids = [p['id'] for p in properties]
+            details = request.env['zillow.property.detail'].sudo().search([('property_id', 'in', property_ids)])
+            details_by_property = {}
+            for d in details:
+                details_by_property.setdefault(d.property_id.id, []).append(d)
+
+            # For each property, attach its detail record (if any)
             for zproperty in properties:
-                detail = request.env['zillow.property.detail'].sudo().search(
-                    [('property_id', '=', zproperty['id'])],
-                )
-                if detail:
-                    for zdetail in detail:
-                        zproperty['home_type'] = zdetail.home_type.replace('_',
-                                                                           ' ').title() if zdetail.home_type else ''
-                        zproperty['hi_res_image_link'] = zdetail.hi_res_image_link
-                        zproperty['hdp_url'] = zdetail.hdp_url
-                        # Refactored: Get listing agent from agent_ids where associated_agent_type == 'listAgent'
-                        listing_agent = zdetail.agent_ids.filtered(lambda a: a.associated_agent_type == 'listAgent')
-                        if listing_agent:
-                            agent = listing_agent[0]
-                            agent_name = agent.member_full_name
-                            if not agent_name:
-                                agent_name = detail.agent_name
-                            zproperty['listingAgent'] = {
-                                'name': agent_name,
-                                'email': detail.agent_email or 'N/A',
-                                'phone': detail.agent_phone_number or 'N/A',
-                                'full_name': agent.member_full_name or '',
-                                'state_license': agent.member_state_license or '',
-                            }
-                        else:
-                            zproperty['listingAgent'] = None
+                detail_list = details_by_property.get(zproperty['id'], [])
+                if detail_list:
+                    # If multiple, just use the first for display
+                    zdetail = detail_list[0]
+                    zproperty['home_type'] = zdetail.home_type.replace('_', ' ').title() if zdetail.home_type else ''
+                    zproperty['hi_res_image_link'] = zdetail.hi_res_image_link
+                    zproperty['hdp_url'] = zdetail.hdp_url
+                    # Refactored: Get listing agent from agent_ids where associated_agent_type == 'listAgent'
+                    listing_agent = zdetail.agent_ids.filtered(lambda a: a.associated_agent_type == 'listAgent')
+                    if listing_agent:
+                        agent = listing_agent[0]
+                        agent_name = agent.member_full_name
+                        if not agent_name:
+                            agent_name = zdetail.agent_name
+                        zproperty['listingAgent'] = {
+                            'name': agent_name,
+                            'email': zdetail.agent_email or 'N/A',
+                            'phone': zdetail.agent_phone_number or 'N/A',
+                            'full_name': agent.member_full_name or '',
+                            'state_license': agent.member_state_license or '',
+                        }
+                    else:
+                        zproperty['listingAgent'] = None
                 else:
                     zproperty['hi_res_image_link'] = False
                     zproperty['hdp_url'] = False
@@ -603,3 +472,136 @@ class ZillowPropertyController(http.Controller):
             status=status,
             headers=[('Access-Control-Allow-Origin', '*')]
         )
+
+    def _fetch_properties_from_api(self, allowed_zipcodes):
+        """Helper method to fetch properties from the API for given zipcodes"""
+        ICPSudo = request.env['ir.config_parameter'].sudo()
+        api_host = ICPSudo.get_param('web_scraper.rapidapi_host', 'zillow56.p.rapidapi.com')
+        api_key = ICPSudo.get_param('web_scraper.rapidapi_key')
+
+        if not api_key:
+            return False
+
+        headers = {
+            'x-rapidapi-host': api_host,
+            'x-rapidapi-key': api_key
+        }
+
+        for zipcode in allowed_zipcodes:
+            try:
+                # Check existing properties for this zipcode
+                existing_count = request.env['zillow.property'].sudo().search_count([('zipcode', '=', zipcode)])
+                print(f"Found {existing_count} existing properties for zipcode {zipcode}")
+
+                # Only fetch from API if we have less than 5 properties
+                if existing_count < 5:
+                    properties_needed = 5 - existing_count
+                    print(f"Need to fetch {properties_needed} more properties for zipcode {zipcode}")
+                    try:
+                        rapidapi_url = f'https://{api_host}/search'
+                        params = {
+                            'location': zipcode,
+                            'output': 'json',
+                            'status': 'forSale',
+                            'sortSelection': 'priorityscore',
+                            'listing_type': 'by_agent',
+                            'doz': 'any'
+                        }
+
+                        response = requests.get(rapidapi_url, headers=headers, params=params)
+                        response.raise_for_status()
+                        data = response.json()
+
+                        # Extract properties from the response
+                        properties_data = []
+                        if isinstance(data, dict):
+                            if 'results' in data:
+                                properties_data = data['results']
+                            elif 'searchResults' in data:
+                                properties_data = data['searchResults'].get('listResults', [])
+
+                        print(f"Found {len(properties_data)} properties in API response for zipcode {zipcode}")
+
+                        # Get all zpids from the response
+                        zpids = [p.get('zpid') for p in properties_data if p.get('zpid')]
+
+                        # Check for existing property details and properties
+                        existing_details = request.env['zillow.property.detail'].sudo().search(
+                            [('zpid', 'in', zpids)])
+                        existing_properties = request.env['zillow.property'].sudo().search(
+                            [('zpid', 'in', zpids)])
+
+                        # Get sets of existing zpids
+                        existing_detail_zpids = set(existing_details.mapped('zpid'))
+                        existing_property_zpids = set(existing_properties.mapped('zpid'))
+
+                        # Filter out properties that already exist
+                        properties_data = [
+                            p for p in properties_data
+                            if p.get('zpid')
+                               and p.get('zpid') not in existing_detail_zpids
+                               and p.get('zpid') not in existing_property_zpids
+                        ]
+
+                        print(
+                            f"After filtering existing properties, {len(properties_data)} properties remain for zipcode {zipcode}")
+
+                        # Process properties until we have enough
+                        properties_processed = 0
+                        for property_data in properties_data:
+                            if properties_processed >= properties_needed:
+                                break
+
+                            # Skip if no zpid (invalid property)
+                            if not property_data.get('zpid'):
+                                print(f"Skipping property without zpid for zipcode {zipcode}")
+                                continue
+
+                            zpid = property_data.get('zpid')
+
+                            try:
+                                # Double check property doesn't exist (race condition protection)
+                                existing_property = request.env['zillow.property'].sudo().search(
+                                    [('zpid', '=', zpid)], limit=1)
+                                if existing_property:
+                                    print(f"Property with zpid {zpid} already exists, skipping")
+                                    continue
+
+                                address_data = property_data.get('address', {})
+                                vals = {
+                                    'zpid': zpid,
+                                    'street_address': address_data.get('streetAddress'),
+                                    'city': address_data.get('city'),
+                                    'state': address_data.get('state'),
+                                    'zipcode': zipcode,
+                                    'price': float(property_data['price']) if property_data.get(
+                                        'price') else False,
+                                    'bedrooms': int(property_data['bedrooms']) if property_data.get(
+                                        'bedrooms') else False,
+                                    'bathrooms': float(property_data['bathrooms']) if property_data.get(
+                                        'bathrooms') else False,
+                                    'living_area': float(property_data['livingArea']) if property_data.get(
+                                        'livingArea') else False,
+                                    'home_status': property_data.get('homeStatus'),
+                                    'home_type': property_data.get('homeType'),
+                                }
+
+                                # Create the property
+                                request.env['zillow.property'].sudo().create(vals)
+
+                                properties_processed += 1
+
+                            except Exception as e:
+                                print(f"Error processing property data for zipcode {zipcode}: {str(e)}")
+                                continue
+                    except Exception as e:
+                        print(f"Error fetching data from API for zipcode {zipcode}: {str(e)}")
+                        continue
+                else:
+                    print(f"Already have enough properties ({existing_count}) for zipcode {zipcode}")
+
+            except Exception as e:
+                print(f"Error processing zipcode {zipcode}: {str(e)}")
+                continue
+
+        return True
