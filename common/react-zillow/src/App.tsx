@@ -42,6 +42,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import PropertyPopup from './PropertyPopup';
 import type { ZillowProperty } from './services/zillowService';
 import { zillowService } from './services/zillowService';
+import axios from 'axios';
 
 const theme = createTheme({
   palette: {
@@ -299,8 +300,8 @@ function App() {
             (yearMin ? `&year_min=${yearMin}` : '') +
             (yearMax ? `&year_max=${yearMax}` : '') +
             (search ? `&search=${encodeURIComponent(search)}` : '');
-          const response = await fetch(url);
-          data = await response.json();
+          const response = await axios.get(url);
+          data = response.data;
           if (data.error) {
             setError(data.error);
             setProperties([]);
@@ -317,8 +318,8 @@ function App() {
           setBackgroundFetching(!!data.background_fetching);
         } else {
           const url = buildSearchUrl();
-          const response = await fetch(`/api/zillow/search?url=${encodeURIComponent(url)}&page=${pageArg || 1}&page_size=${pageSizeArg || pageSize}${locationId ? `&locationId=${encodeURIComponent(locationId)}` : ''}`);
-          const result = await response.json();
+          const response = await axios.get(`/api/zillow/search?url=${encodeURIComponent(url)}&page=${pageArg || 1}&page_size=${pageSizeArg || pageSize}${locationId ? `&locationId=${encodeURIComponent(locationId)}` : ''}`);
+          const result = response.data;
           if (result.success) {
             setProperties(result.properties);
             setFilteredProperties(result.properties);
@@ -429,8 +430,8 @@ function App() {
           (yearMin ? `&year_min=${yearMin}` : '') +
           (yearMax ? `&year_max=${yearMax}` : '') +
           (search ? `&search=${encodeURIComponent(search)}` : '');
-        const response = await fetch(url);
-        data = await response.json();
+        const response = await axios.get(url);
+        data = response.data;
         if (data.error) {
           setError(data.error);
           setProperties([]);
@@ -448,8 +449,8 @@ function App() {
       } else {
         // Market search (local sort fallback)
         const url = buildSearchUrl();
-        const response = await fetch(`/api/zillow/search?url=${encodeURIComponent(url)}&page=${pageArg || 1}&page_size=${pageSizeArg || pageSize}${locationId ? `&locationId=${encodeURIComponent(locationId)}` : ''}`);
-        const result = await response.json();
+        const response = await axios.get(`/api/zillow/search?url=${encodeURIComponent(url)}&page=${pageArg || 1}&page_size=${pageSizeArg || pageSize}${locationId ? `&locationId=${encodeURIComponent(locationId)}` : ''}`);
+        const result = response.data;
         if (result.success) {
           setProperties(result.properties);
           setFilteredProperties(result.properties);
@@ -877,8 +878,8 @@ function App() {
       `&location=${encodeURIComponent(search || locationId)}`;
 
     try {
-      const response = await fetch(url);
-      const result = await response.json();
+      const response = await axios.get(url);
+      const result = response.data;
       if (result.success || result.properties) {
         setProperties(result.properties);
         setFilteredProperties(result.properties);
