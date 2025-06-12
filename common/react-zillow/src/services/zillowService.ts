@@ -138,5 +138,17 @@ export const zillowService = {
       }
       throw error;
     }
+  },
+
+  async getProperty(zpid: string): Promise<any> {
+    try {
+      const response = await axios.get(`/api/zillow/property/${zpid}`);
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        throw new Error(`Get Property Error: ${error.message}`);
+      }
+      throw error;
+    }
   }
 }; 

@@ -58,22 +58,20 @@ export default function PropertyPopup({ zpid, isOpen, onClose, viewOnMarketUrl, 
   const [showGlobalLoading, setShowGlobalLoading] = useState(false);
   const [resultDialog, setResultDialog] = useState<{ open: boolean; success: boolean; message: string }>({ open: false, success: false, message: '' });
 
-  const fetchProperty = () => {
-    if (isOpen && zpid) { 
-      fetch(`/api/zillow/property/${zpid}`)
-        .then(res => res.json())
-        .then(data => {
-          if (!data.success) { 
-            setProperty(null);
-          } else {
-            setProperty(data); 
-          } 
-        })
-        .catch(() => { 
-          setProperty(null); 
-        });
+  const fetchProperty = async () => {
+    if (isOpen && zpid) {
+      try {
+        const response = await zillowService.getProperty(zpid);
+        if (!response.success) {
+          setProperty(null);
+        } else {
+          setProperty(response);
+        }
+      } catch {
+        setProperty(null);
+      }
     } else {
-      setProperty(null); 
+      setProperty(null);
     }
   };
 
