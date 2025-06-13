@@ -1,6 +1,17 @@
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+// Hardcoded API base URL for all environments
+export const API_BASE_URL = 'https://cyclsales.redtechitsolutions.com/odoo/discuss/api/zillow';
+
+// Create a shared axios instance
+export const api = axios.create({
+  baseURL: API_BASE_URL,
+  headers: {
+    'Accept': 'application/json',
+    'Content-Type': 'application/json',
+  },
+  timeout: 10000,
+});
 
 export interface ZillowProperty {
   id: number;
@@ -54,15 +65,8 @@ export interface ApiResponse {
 export const zillowService = {
   async getProperties(): Promise<ZillowProperty[]> {
     try {
-      console.log('Fetching properties from:', `${API_BASE_URL}/properties`);
-      const response = await axios.get<ZillowProperty[]>(`${API_BASE_URL}/properties`, {
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-        },
-        timeout: 10000, // 10 second timeout
-      });
-      
+      console.log('Fetching properties from:', `/properties`);
+      const response = await api.get<ZillowProperty[]>(`/properties`);
       console.log('API Response:', response.data);
       return response.data;
     } catch (error) {
@@ -82,19 +86,13 @@ export const zillowService = {
 
   async searchProperties(params: SearchParams): Promise<SearchResponse> {
     try {
-      const response = await axios.get<SearchResponse>(`${API_BASE_URL}/search`, {
+      const response = await api.get<SearchResponse>(`/search`, {
         params: {
           url: params.url,
           page: params.page || 1,
           listing_type: params.listing_type || 'by_agent'
         },
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-        },
-        timeout: 10000,
       });
-
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
@@ -114,16 +112,9 @@ export const zillowService = {
       console.log('zillowService.sendToCyclSales - Sending request with data:', { property_ids: propertyIds, locationId });
       const body: any = { property_ids: propertyIds };
       if (locationId) body.locationId = locationId;
-      const response = await axios.post<{ success: boolean; error?: string }>(
-        `${API_BASE_URL}/send-to-cyclsales`,
-        body,
-        {
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-          },
-          timeout: 10000,
-        }
+      const response = await api.post<{ success: boolean; error?: string }>(
+        `/send-to-cyclsales`,
+        body
       );
       console.log('zillowService.sendToCyclSales - Response:', response.data);
       return response.data;
@@ -142,7 +133,7 @@ export const zillowService = {
 
   async getProperty(zpid: string): Promise<any> {
     try {
-      const response = await axios.get(`/api/zillow/property/${zpid}`);
+      const response = await api.get(`/property/${zpid}`);
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {

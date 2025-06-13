@@ -41,8 +41,7 @@ import Skeleton from '@mui/material/Skeleton';
 import React, { useEffect, useState, useCallback } from 'react';
 import PropertyPopup from './PropertyPopup';
 import type { ZillowProperty } from './services/zillowService';
-import { zillowService } from './services/zillowService';
-import axios from 'axios';
+import { zillowService, api, API_BASE_URL } from './services/zillowService';
 
 const theme = createTheme({
   palette: {
@@ -300,7 +299,7 @@ function App() {
             (yearMin ? `&year_min=${yearMin}` : '') +
             (yearMax ? `&year_max=${yearMax}` : '') +
             (search ? `&search=${encodeURIComponent(search)}` : '');
-          const response = await axios.get(url);
+          const response = await api.get(url);
           data = response.data;
           if (data.error) {
             setError(data.error);
@@ -318,7 +317,7 @@ function App() {
           setBackgroundFetching(!!data.background_fetching);
         } else {
           const url = buildSearchUrl();
-          const response = await axios.get(`/api/zillow/search?url=${encodeURIComponent(url)}&page=${pageArg || 1}&page_size=${pageSizeArg || pageSize}${locationId ? `&locationId=${encodeURIComponent(locationId)}` : ''}`);
+          const response = await api.get(`/api/zillow/search?url=${encodeURIComponent(url)}&page=${pageArg || 1}&page_size=${pageSizeArg || pageSize}${locationId ? `&locationId=${encodeURIComponent(locationId)}` : ''}`);
           const result = response.data;
           if (result.success) {
             setProperties(result.properties);
@@ -430,7 +429,7 @@ function App() {
           (yearMin ? `&year_min=${yearMin}` : '') +
           (yearMax ? `&year_max=${yearMax}` : '') +
           (search ? `&search=${encodeURIComponent(search)}` : '');
-        const response = await axios.get(url);
+        const response = await api.get(url);
         data = response.data;
         if (data.error) {
           setError(data.error);
@@ -449,7 +448,7 @@ function App() {
       } else {
         // Market search (local sort fallback)
         const url = buildSearchUrl();
-        const response = await axios.get(`/api/zillow/search?url=${encodeURIComponent(url)}&page=${pageArg || 1}&page_size=${pageSizeArg || pageSize}${locationId ? `&locationId=${encodeURIComponent(locationId)}` : ''}`);
+        const response = await api.get(`/api/zillow/search?url=${encodeURIComponent(url)}&page=${pageArg || 1}&page_size=${pageSizeArg || pageSize}${locationId ? `&locationId=${encodeURIComponent(locationId)}` : ''}`);
         const result = response.data;
         if (result.success) {
           setProperties(result.properties);
@@ -878,7 +877,7 @@ function App() {
       `&location=${encodeURIComponent(search || locationId)}`;
 
     try {
-      const response = await axios.get(url);
+      const response = await api.get(url);
       const result = response.data;
       if (result.success || result.properties) {
         setProperties(result.properties);
