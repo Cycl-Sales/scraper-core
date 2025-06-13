@@ -2,6 +2,7 @@ from odoo import http
 from odoo.http import request
 import json
 import logging
+from .cors_utils import get_cors_headers
 
 _logger = logging.getLogger(__name__)
 
@@ -87,8 +88,8 @@ class ZillowPropertyAPI(http.Controller):
                         'write_review_url': agent.write_review_url or '',
                         'is_zpro': agent.is_zpro,
                     }
-            return http.Response(json.dumps(response), content_type='application/json')
+            return http.Response(json.dumps(response), content_type='application/json', headers=get_cors_headers(request))
         except Exception as e:
             _logger.error(f"Error in get_property_detail for zpid={zpid}: {str(e)}", exc_info=True)
             response = {'success': False, 'error': f'Internal server error: {str(e)}'}
-            return http.Response(json.dumps(response), content_type='application/json', status=500) 
+            return http.Response(json.dumps(response), content_type='application/json', status=500, headers=get_cors_headers(request)) 

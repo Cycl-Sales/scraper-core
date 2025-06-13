@@ -5,6 +5,7 @@ import logging
 import requests
 from odoo.fields import Datetime
 from datetime import datetime, timedelta
+from .cors_utils import get_cors_headers
 
 _logger = logging.getLogger(__name__)
 
@@ -84,7 +85,8 @@ class ZillowPropertyController(http.Controller):
             return http.Response(
                 json.dumps(response),
                 content_type='application/json',
-                status=200
+                status=200,
+                headers=get_cors_headers(request)
             )
 
         except Exception as e:
@@ -95,7 +97,8 @@ class ZillowPropertyController(http.Controller):
                     'message': str(e)
                 }),
                 content_type='application/json',
-                status=500
+                status=500,
+                headers=get_cors_headers(request)
             )
 
     @http.route('/api/zillow/send-to-cyclsales', type='http', auth='public', methods=['POST'], csrf=False)
@@ -119,7 +122,8 @@ class ZillowPropertyController(http.Controller):
                 return http.Response(
                     json.dumps({'success': False, 'error': 'No property IDs provided'}),
                     content_type='application/json',
-                    status=400
+                    status=400,
+                    headers=get_cors_headers(request)
                 )
 
             # Get location ID from request
@@ -132,7 +136,8 @@ class ZillowPropertyController(http.Controller):
                         'error': 'Location ID is required. Please provide a valid location ID.'
                     }),
                     content_type='application/json',
-                    status=400
+                    status=400,
+                    headers=get_cors_headers(request)
                 )
 
             # Find the GHL location record
@@ -145,7 +150,8 @@ class ZillowPropertyController(http.Controller):
                         'error': 'Invalid GHL location ID provided.'
                     }),
                     content_type='application/json',
-                    status=400
+                    status=400,
+                    headers=get_cors_headers(request)
                 )
 
             # Fetch properties from zillow.property model
@@ -166,7 +172,8 @@ class ZillowPropertyController(http.Controller):
                         'error': 'No GHL agency token found. Please configure GHL OAuth integration first.'
                     }),
                     content_type='application/json',
-                    status=500
+                    status=500,
+                    headers=get_cors_headers(request)
                 )
 
             # Check if token is expired
@@ -207,7 +214,8 @@ class ZillowPropertyController(http.Controller):
                                 'error': 'Failed to refresh GHL token. Please re-authenticate.'
                             }),
                             content_type='application/json',
-                            status=500
+                            status=500,
+                            headers=get_cors_headers(request)
                         )
                 except Exception as e:
                     _logger.error(f"[TOKEN] Error refreshing token: {str(e)}")
@@ -217,7 +225,8 @@ class ZillowPropertyController(http.Controller):
                             'error': 'Error refreshing GHL token. Please re-authenticate.'
                         }),
                         content_type='application/json',
-                        status=500
+                        status=500,
+                        headers=get_cors_headers(request)
                     )
 
             agency_access_token = agency_token.access_token
@@ -247,7 +256,8 @@ class ZillowPropertyController(http.Controller):
                             'error': f'Failed to get location access token: {location_token_resp.text}'
                         }),
                         content_type='application/json',
-                        status=500
+                        status=500,
+                        headers=get_cors_headers(request)
                     )
                 location_access_token = location_token_resp.json().get('access_token')
                 if not location_access_token:
@@ -257,7 +267,8 @@ class ZillowPropertyController(http.Controller):
                             'error': 'No access_token in location token response.'
                         }),
                         content_type='application/json',
-                        status=500
+                        status=500,
+                        headers=get_cors_headers(request)
                     )
             except Exception as e:
                 _logger.error(f"[TOKEN] Error getting location access token: {str(e)}")
@@ -267,7 +278,8 @@ class ZillowPropertyController(http.Controller):
                         'error': f'Error getting location access token: {str(e)}'
                     }),
                     content_type='application/json',
-                    status=500
+                    status=500,
+                    headers=get_cors_headers(request)
                 )
 
             api_url = "https://services.leadconnectorhq.com/contacts/"
@@ -383,7 +395,8 @@ class ZillowPropertyController(http.Controller):
                     'results': results
                 }),
                 content_type='application/json',
-                status=200
+                status=200,
+                headers=get_cors_headers(request)
             )
 
         except json.JSONDecodeError as e:
@@ -391,12 +404,14 @@ class ZillowPropertyController(http.Controller):
             return http.Response(
                 json.dumps({'success': False, 'error': 'Invalid JSON data'}),
                 content_type='application/json',
-                status=400
+                status=400,
+                headers=get_cors_headers(request)
             )
         except Exception as e:
             _logger.error(f"[ERROR] Unexpected error in send_to_cyclsales: {str(e)}")
             return http.Response(
                 json.dumps({'success': False, 'error': str(e)}),
                 content_type='application/json',
-                status=500
+                status=500,
+                headers=get_cors_headers(request)
             )

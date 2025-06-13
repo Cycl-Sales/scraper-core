@@ -1,10 +1,11 @@
 from odoo import http
-from odoo.http import request, Response
+from odoo.http import request, Response, route
 import json
 import requests
 import urllib.parse
 from odoo.fields import Datetime
 import logging
+from .cors_utils import get_cors_headers
 
 
 class ZillowPropertyController(http.Controller):
@@ -18,7 +19,7 @@ class ZillowPropertyController(http.Controller):
                     json.dumps({'error': 'locationId is required'}),
                     content_type='application/json',
                     status=400,
-                    headers=[('Access-Control-Allow-Origin', '*')]
+                    headers=get_cors_headers(request)
                 )
 
             # Find the GHL location record
@@ -29,7 +30,7 @@ class ZillowPropertyController(http.Controller):
                     json.dumps({'error': 'Invalid or unlinked locationId'}),
                     content_type='application/json',
                     status=400,
-                    headers=[('Access-Control-Allow-Origin', '*')]
+                    headers=get_cors_headers(request)
                 )
 
             # Get allowed ZIP codes from the market location
@@ -40,7 +41,7 @@ class ZillowPropertyController(http.Controller):
                     json.dumps({'error': 'No ZIP codes configured for this location'}),
                     content_type='application/json',
                     status=400,
-                    headers=[('Access-Control-Allow-Origin', '*')]
+                    headers=get_cors_headers(request)
                 )
 
             # Get pagination parameters
@@ -189,14 +190,14 @@ class ZillowPropertyController(http.Controller):
                     'total_pages': (total_count + page_size - 1) // page_size
                 }),
                 content_type='application/json',
-                headers=[('Access-Control-Allow-Origin', '*')]
+                headers=get_cors_headers(request)
             )
         except Exception as e:
             return Response(
                 json.dumps({'error': str(e)}),
                 content_type='application/json',
                 status=500,
-                headers=[('Access-Control-Allow-Origin', '*')]
+                headers=get_cors_headers(request)
             )
 
     @http.route('/api/zillow/property/send-to-cyclsales', type='http', auth='user', methods=['POST'], cors='*',
@@ -209,7 +210,7 @@ class ZillowPropertyController(http.Controller):
                     json.dumps({'error': 'No properties selected'}),
                     content_type='application/json',
                     status=400,
-                    headers=[('Access-Control-Allow-Origin', '*')]
+                    headers=get_cors_headers(request)
                 )
 
             properties = request.env['zillow.property'].sudo().browse(property_ids)
@@ -230,14 +231,14 @@ class ZillowPropertyController(http.Controller):
                     'already_sent': already_sent
                 }),
                 content_type='application/json',
-                headers=[('Access-Control-Allow-Origin', '*')]
+                headers=get_cors_headers(request)
             )
         except Exception as e:
             return Response(
                 json.dumps({'error': str(e)}),
                 content_type='application/json',
                 status=500,
-                headers=[('Access-Control-Allow-Origin', '*')]
+                headers=get_cors_headers(request)
             )
 
     @http.route('/api/zillow/property/<int:property_id>/fetch', type='http', auth='none', methods=['POST'], cors='*',
@@ -249,14 +250,14 @@ class ZillowPropertyController(http.Controller):
             return Response(
                 json.dumps({'success': True}),
                 content_type='application/json',
-                headers=[('Access-Control-Allow-Origin', '*')]
+                headers=get_cors_headers(request)
             )
         except Exception as e:
             return Response(
                 json.dumps({'error': str(e)}),
                 content_type='application/json',
                 status=500,
-                headers=[('Access-Control-Allow-Origin', '*')]
+                headers=get_cors_headers(request)
             )
 
     @http.route('/api/zillow/search', type='http', auth='user', methods=['GET'], cors='*', csrf=False)
@@ -462,7 +463,7 @@ class ZillowPropertyController(http.Controller):
                 'total_pages': 1
             }),
             content_type='application/json',
-            headers=[('Access-Control-Allow-Origin', '*')]
+            headers=get_cors_headers(request)
         )
 
     def _error_response(self, message, status=400):
@@ -470,7 +471,7 @@ class ZillowPropertyController(http.Controller):
             json.dumps({'error': message}),
             content_type='application/json',
             status=status,
-            headers=[('Access-Control-Allow-Origin', '*')]
+            headers=get_cors_headers(request)
         )
 
     def _fetch_properties_from_api(self, allowed_zipcodes):
@@ -605,3 +606,13 @@ class ZillowPropertyController(http.Controller):
                 continue
 
         return True
+
+
+class CORSPreflightController(http.Controller):
+    @route(['/api/zillow/<path:anything>'], type='http', auth='none', methods=['OPTIONS'], csrf=False)
+    def cors_preflight(self, **kwargs):
+        return Response(
+            "",
+            status=200,
+            headers=get_cors_headers(request)
+        )
