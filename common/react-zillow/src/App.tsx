@@ -38,10 +38,10 @@ import {
   Typography
 } from '@mui/material';
 import Skeleton from '@mui/material/Skeleton';
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import PropertyPopup from './PropertyPopup';
 import type { ZillowProperty } from './services/zillowService';
-import { zillowService, api, API_BASE_URL } from './services/zillowService';
+import { api, zillowService } from './services/zillowService';
 
 const theme = createTheme({
   palette: {
