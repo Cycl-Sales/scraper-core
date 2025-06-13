@@ -65,8 +65,8 @@ export interface ApiResponse {
 export const zillowService = {
   async getProperties(): Promise<ZillowProperty[]> {
     try {
-      console.log('Fetching properties from:', `/properties`);
-      const response = await api.get<ZillowProperty[]>(`/properties`);
+      console.log('Fetching properties from:', `/api/zillow/properties`);
+      const response = await api.get<ZillowProperty[]>(`/api/zillow/properties`);
       console.log('API Response:', response.data);
       return response.data;
     } catch (error) {
@@ -86,7 +86,7 @@ export const zillowService = {
 
   async searchProperties(params: SearchParams): Promise<SearchResponse> {
     try {
-      const response = await api.get<SearchResponse>(`/search`, {
+      const response = await api.get<SearchResponse>(`/api/zillow/search`, {
         params: {
           url: params.url,
           page: params.page || 1,
@@ -113,7 +113,7 @@ export const zillowService = {
       const body: any = { property_ids: propertyIds };
       if (locationId) body.locationId = locationId;
       const response = await api.post<{ success: boolean; error?: string }>(
-        `/send-to-cyclsales`,
+        `/api/zillow/send-to-cyclsales`,
         body
       );
       console.log('zillowService.sendToCyclSales - Response:', response.data);
@@ -133,7 +133,7 @@ export const zillowService = {
 
   async getProperty(zpid: string): Promise<any> {
     try {
-      const response = await api.get(`/property/${zpid}`);
+      const response = await api.get(`/api/zillow/property/${zpid}`);
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
