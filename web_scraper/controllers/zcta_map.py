@@ -4,11 +4,11 @@ import geopandas as gpd
 import os
 
 class ZctaMapController(http.Controller):
-    @http.route('/zcta/map', type='http', auth='user')
+    @http.route('/zcta/map', type='http', auth='none')
     def zcta_map(self, **kw):
         return request.render('web_scraper.zcta_map_template', {})
 
-    @http.route('/zcta/geojson', type='http', auth='user')
+    @http.route('/zcta/geojson', type='http', auth='none')
     def zcta_geojson(self, **kw):
         base = request.env['ir.config_parameter'].sudo().get_param('web_scraper.data_dir') or '/Users/rscs/odoo/odoo18/custom/web_scraper/common/tl_2020_us_zcta520'
         shp_path = os.path.join(base, 'tl_2020_us_zcta520.shp')

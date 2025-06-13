@@ -12,7 +12,7 @@ _logger = logging.getLogger(__name__)
 
 class ZillowPropertyController(http.Controller):
 
-    @http.route('/api/zillow/properties', type='http', auth='public', methods=['GET'], csrf=False)
+    @http.route('/api/zillow/properties', type='http', auth='none', methods=['GET'], csrf=False)
     def get_zillow_properties(self, **kwargs):
         try:
             # Get all Zillow property records with listing agent data
@@ -101,7 +101,7 @@ class ZillowPropertyController(http.Controller):
                 headers=get_cors_headers(request)
             )
 
-    @http.route('/api/zillow/send-to-cyclsales', type='http', auth='public', methods=['POST'], csrf=False)
+    @http.route('/api/zillow/send-to-cyclsales', type='http', auth='none', methods=['POST'], csrf=False)
     def send_to_cyclsales(self, **kwargs):
         try:
             _logger.info("=== Starting send_to_cyclsales process ===")

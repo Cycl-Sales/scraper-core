@@ -7,7 +7,7 @@ from .cors_utils import get_cors_headers
 _logger = logging.getLogger(__name__)
 
 class ZillowPropertyAPI(http.Controller):
-    @http.route('/api/zillow/property/<string:zpid>', type='http', auth='public', cors='*')
+    @http.route('/api/zillow/property/<string:zpid>', type='http', auth='none', cors='*')
     def get_property_detail(self, zpid):
         try:
             detail = request.env['zillow.property.detail'].sudo().search([('zpid', '=', zpid)], limit=1)

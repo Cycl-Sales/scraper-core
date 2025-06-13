@@ -9,7 +9,7 @@ from .cors_utils import get_cors_headers
 
 
 class ZillowPropertyController(http.Controller):
-    @http.route('/api/zillow/properties', type='http', auth='user', cors='*', csrf=False)
+    @http.route('/api/zillow/properties', type='http', auth='none', cors='*', csrf=False)
     def get_properties(self, **kwargs):
         try:
             # Get locationId from request
@@ -200,7 +200,7 @@ class ZillowPropertyController(http.Controller):
                 headers=get_cors_headers(request)
             )
 
-    @http.route('/api/zillow/property/send-to-cyclsales', type='http', auth='user', methods=['POST'], cors='*',
+    @http.route('/api/zillow/property/send-to-cyclsales', type='http', auth='none', methods=['POST'], cors='*',
                 csrf=False)
     def send_to_cyclsales(self, **post):
         try:
@@ -260,7 +260,7 @@ class ZillowPropertyController(http.Controller):
                 headers=get_cors_headers(request)
             )
 
-    @http.route('/api/zillow/search', type='http', auth='user', methods=['GET'], cors='*', csrf=False)
+    @http.route('/api/zillow/search', type='http', auth='publinonec', methods=['GET'], cors='*', csrf=False)
     def search_properties_new(self, **kwargs):
         logger = logging.getLogger(__name__)
         try:
