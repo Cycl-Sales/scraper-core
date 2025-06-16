@@ -12,4 +12,9 @@ class ResConfigSettings(models.TransientModel):
         string='RapidAPI Key',
         config_parameter='web_scraper.rapidapi_key',
         help='The x-rapidapi-key value for API authentication'
+    )
+    openai_api_key = fields.Char(
+        string='OpenAI API Key',
+        config_parameter='web_scraper.openai_api_key',
+        help='The OpenAI API key for vision analysis.'
     ) 

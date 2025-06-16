@@ -1,3 +1,5 @@
 common/react-zillow/vite.config.ts
 common/react-zillow/dist/ 
 *.pyc
+common/react-zillow/src/services/zillowService.ts
+common/react-zillow/vite.config.ts

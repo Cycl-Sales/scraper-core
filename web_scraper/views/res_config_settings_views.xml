@@ -13,6 +13,11 @@
                             <field name="rapidapi_key" password="True" placeholder="Your RapidAPI Key"/>
                         </setting>
                     </block>
+                    <block title="OpenAI Configuration">
+                        <setting id="openai_settings" help="Configure your OpenAI API key for vision analysis">
+                            <field name="openai_api_key" password="True" placeholder="Your OpenAI API Key"/>
+                        </setting>
+                    </block>
                 </app>
             </xpath>
         </field>
