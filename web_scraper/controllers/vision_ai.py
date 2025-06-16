@@ -35,6 +35,7 @@ class VisionAIController(http.Controller):
                 ) 
             attachment_urls = data.get('cs_vision_attachment')
             instructions = data.get('cs_vision_instruction')
+            custom_api_key = data.get('cs_vision_openai_api_key')
             _logger.info(f"[VisionAI] attachment_urls: {attachment_urls}, instructions: {instructions}")
 
             if not attachment_urls or not instructions:
@@ -52,14 +53,14 @@ class VisionAIController(http.Controller):
                     headers=get_cors_headers(request)
                 )
 
-            # Get OpenAI API key from system parameters
-            api_key = request.env['ir.config_parameter'].sudo().get_param('web_scraper.openai_api_key')
-            _logger.info(f"[VisionAI] Using OpenAI API key: {'set' if api_key else 'not set'}")
+            # Get OpenAI API key from request data or system parameters
+            api_key = custom_api_key or request.env['ir.config_parameter'].sudo().get_param('web_scraper.openai_api_key')
+            _logger.info(f"[VisionAI] Using OpenAI API key: {'custom' if custom_api_key else 'system' if api_key else 'not set'}")
             if not api_key:
-                _logger.error("[VisionAI] OpenAI API key not configured")
+                _logger.error("[VisionAI] OpenAI API key not configured. Please provide cs_vision_openai_api_key or configure system parameter web_scraper.openai_api_key")
                 error_response = {
                     'error_code': 'no_api_key',
-                    'message': 'OpenAI API key not configured'
+                    'message': 'OpenAI API key not configured. Please provide cs_vision_openai_api_key or configure system parameter web_scraper.openai_api_key'
                 }
                 _logger.info(f"[VisionAI] Returning error response: {error_response}")
                 return Response(
