@@ -260,7 +260,7 @@ class ZillowPropertyController(http.Controller):
                 headers=get_cors_headers(request)
             )
 
-    @http.route('/api/zillow/search', type='http', auth='publinonec', methods=['GET'], csrf=False)
+    @http.route('/api/zillow/search', type='http', auth='none', methods=['GET'], csrf=False)
     def search_properties_new(self, **kwargs):
         logger = logging.getLogger(__name__)
         try:
