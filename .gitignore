@@ -4,3 +4,10 @@ common/react-zillow/dist/
 common/react-zillow/src/services/zillowService.ts
 common/react-zillow/vite.config.ts
 *.pyc
+web_scraper/controllers/__pycache__/__init__.cpython-310.pyc
+web_scraper/controllers/__pycache__/main.cpython-310.pyc
+web_scraper/controllers/__pycache__/property_api.cpython-310.pyc
+web_scraper/controllers/__pycache__/zcta_map.cpython-310.pyc
+web_scraper/controllers/__pycache__/zillow_property_controller.cpython-310.pyc
+*.pyc
+web_scraper/models/__pycache__/res_config_settings.cpython-310.pyc

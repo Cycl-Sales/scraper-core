@@ -5,6 +5,8 @@ import requests
 import base64
 from .cors_utils import get_cors_headers
 import logging
+import PyPDF2
+import io
 
 _logger = logging.getLogger(__name__)
 
@@ -92,37 +94,11 @@ class VisionAIController(http.Controller):
                     headers=get_cors_headers(request)
                 )
 
-            # Convert file content to base64
-            try:
-                base64_content = base64.b64encode(file_content).decode('utf-8')
-                _logger.info(f"[VisionAI] File encoded to base64. Length: {len(base64_content)}")
-            except Exception as e:
-                _logger.error(f"[VisionAI] Base64 encoding error: {str(e)}")
-                error_response = {
-                    'error_code': 'base64_error',
-                    'message': 'Failed to encode file as base64',
-                    'details': str(e)
-                }
-                _logger.info(f"[VisionAI] Returning error response: {error_response}")
-                return Response(
-                    json.dumps(error_response),
-                    content_type='application/json',
-                    status=500,
-                    headers=get_cors_headers(request)
-                )
-
             # Determine file type from URL
             file_type = 'image'
             if attachment_urls.lower().endswith('.pdf'):
                 file_type = 'pdf'
             _logger.info(f"[VisionAI] Detected file type: {file_type}")
-
-            # Prepare the request to OpenAI
-            headers = {
-                'Authorization': f'Bearer {api_key}',
-                'Content-Type': 'application/json'
-            }
-            _logger.info(f"[VisionAI] Prepared OpenAI headers.")
 
             # Prepare the content based on file type
             content = [
@@ -133,24 +109,70 @@ class VisionAIController(http.Controller):
             ]
 
             if file_type == 'image':
-                content.append({
-                    'type': 'image_url',
-                    'image_url': {
-                        'url': f"data:image/jpeg;base64,{base64_content}"
+                # Convert image content to base64
+                try:
+                    base64_content = base64.b64encode(file_content).decode('utf-8')
+                    _logger.info(f"[VisionAI] Image encoded to base64. Length: {len(base64_content)}")
+                    content.append({
+                        'type': 'image_url',
+                        'image_url': {
+                            'url': f"data:image/jpeg;base64,{base64_content}"
+                        }
+                    })
+                    _logger.info(f"[VisionAI] Added image_url to OpenAI payload.")
+                except Exception as e:
+                    _logger.error(f"[VisionAI] Base64 encoding error: {str(e)}")
+                    error_response = {
+                        'error_code': 'base64_error',
+                        'message': 'Failed to encode image as base64',
+                        'details': str(e)
                     }
-                })
-                _logger.info(f"[VisionAI] Added image_url to OpenAI payload.")
+                    _logger.info(f"[VisionAI] Returning error response: {error_response}")
+                    return Response(
+                        json.dumps(error_response),
+                        content_type='application/json',
+                        status=500,
+                        headers=get_cors_headers(request)
+                    )
             else:  # PDF
-                content.append({
-                    'type': 'file_url',
-                    'file_url': {
-                        'url': f"data:application/pdf;base64,{base64_content}"
+                try:
+                    # Extract text from PDF
+                    pdf_file = io.BytesIO(file_content)
+                    pdf_reader = PyPDF2.PdfReader(pdf_file)
+                    pdf_text = ""
+                    for page in pdf_reader.pages:
+                        pdf_text += page.extract_text() + "\n"
+                    
+                    # Add PDF text to the content
+                    content.append({
+                        'type': 'text',
+                        'text': f"Here is the content of the PDF document:\n\n{pdf_text}"
+                    })
+                    _logger.info(f"[VisionAI] Added PDF text to OpenAI payload. Text length: {len(pdf_text)}")
+                except Exception as e:
+                    _logger.error(f"[VisionAI] PDF processing error: {str(e)}")
+                    error_response = {
+                        'error_code': 'pdf_processing_error',
+                        'message': 'Failed to process PDF document',
+                        'details': str(e)
                     }
-                })
-                _logger.info(f"[VisionAI] Added file_url to OpenAI payload.")
+                    _logger.info(f"[VisionAI] Returning error response: {error_response}")
+                    return Response(
+                        json.dumps(error_response),
+                        content_type='application/json',
+                        status=500,
+                        headers=get_cors_headers(request)
+                    )
+
+            # Prepare the request to OpenAI
+            headers = {
+                'Authorization': f'Bearer {api_key}',
+                'Content-Type': 'application/json'
+            }
+            _logger.info(f"[VisionAI] Prepared OpenAI headers.")
 
             payload = {
-                'model': 'gpt-4o',
+                'model': 'gpt-4-vision-preview',
                 'messages': [
                     {
                         'role': 'user',
