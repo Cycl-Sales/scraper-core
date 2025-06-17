@@ -172,7 +172,7 @@ class VisionAIController(http.Controller):
             _logger.info(f"[VisionAI] Prepared OpenAI headers.")
 
             payload = {
-                'model': 'gpt-4-vision-preview',
+                'model': 'gpt-4o',
                 'messages': [
                     {
                         'role': 'user',
