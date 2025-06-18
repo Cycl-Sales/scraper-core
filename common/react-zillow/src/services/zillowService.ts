@@ -31,6 +31,7 @@ export interface ZillowProperty {
   hdp_url?: string;
   sent_by_current_user: boolean;
   sent_to_cyclsales_count: number;
+  sent_to_cyclsales: boolean;
   listingAgent?: {
     id: number;
     name: string;
