@@ -6,6 +6,7 @@ from .cors_utils import get_cors_headers
 
 _logger = logging.getLogger(__name__)
 
+
 class ZillowPropertyAPI(http.Controller):
     @http.route('/api/zillow/property/<string:zpid>', type='http', auth='none')
     def get_property_detail(self, zpid):
@@ -63,12 +64,15 @@ class ZillowPropertyAPI(http.Controller):
                 }
                 if detail.listing_agent_id:
                     agent = detail.listing_agent_id
+                    agent_name = agent.member_full_name
+                    if not agent_name:
+                        agent_name = detail.agent_name
                     response['listingAgent'] = {
                         'id': agent.id,
                         'property_id': agent.property_id.id,
-                        'name': agent.display_name or '',
+                        'name': agent_name or '',
                         'business_name': agent.business_name or '',
-                        'phone': f"{agent.phone_area_code or ''}-{agent.phone_prefix or ''}-{agent.phone_number or ''}",
+                        'phone': detail.agent_phone_number,
                         'profile_url': agent.profile_url or '',
                         'email': agent.email or '',
                         'license_number': agent.license_number or '',
@@ -88,8 +92,11 @@ class ZillowPropertyAPI(http.Controller):
                         'write_review_url': agent.write_review_url or '',
                         'is_zpro': agent.is_zpro,
                     }
-            return http.Response(json.dumps(response), content_type='application/json', headers=get_cors_headers(request))
+                print(response)
+            return http.Response(json.dumps(response), content_type='application/json',
+                                 headers=get_cors_headers(request))
         except Exception as e:
             _logger.error(f"Error in get_property_detail for zpid={zpid}: {str(e)}", exc_info=True)
             response = {'success': False, 'error': f'Internal server error: {str(e)}'}
-            return http.Response(json.dumps(response), content_type='application/json', status=500, headers=get_cors_headers(request)) 
+            return http.Response(json.dumps(response), content_type='application/json', status=500,
+                                 headers=get_cors_headers(request))

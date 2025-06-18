@@ -247,6 +247,7 @@ class ZillowPropertyDetail(models.Model):
     home_status = fields.Selection([
         ('FOR_SALE', 'For Sale'),
         ('SOLD', 'Sold'),
+        ('FOR_RENT', 'Rental'),
         ('PENDING', 'Pending'),
         ('OFF_MARKET', 'Off Market'),
         ('OTHER', 'Other'),
@@ -258,7 +259,9 @@ class ZillowPropertyDetail(models.Model):
         ('CONDO', 'Condo'),
         ('TOWNHOUSE', 'Townhouse'),
         ('LAND', 'Land'),
-        ('MANUFACTURED', 'Manufactured')
+        ('MANUFACTURED', 'Manufactured'),
+        ('LOT', 'LOT'),
+        ('APARTMENT', 'Apartment')
     ], string='Home Type')
     is_premier_builder = fields.Boolean(string='Is Premier Builder')
     is_showcase_listing = fields.Boolean(string='Is Showcase Listing')

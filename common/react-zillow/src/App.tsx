@@ -857,12 +857,21 @@ function App() {
     setLoading(true);
     setError(null);
 
+    // Map listingTypeValue to home_status for backend
+    const homeStatusMap: Record<string, string> = {
+      for_sale: 'FOR_SALE',
+      for_rent: 'FOR_RENT',
+      sold: 'SOLD',
+    };
+    const homeStatus = homeStatusMap[listingTypeValue] || 'FOR_SALE';
+
     // Always use 'by_agent' for the API call
     let url = `/api/zillow/search?search_on_market=1` +
       `&locationId=${encodeURIComponent(locationId)}` +
       `&page=${pageOverride || 1}` +
       `&page_size=${pageSizeOverride || pageSize}` +
       `&listing_type=by_agent` +
+      `&home_status=${homeStatus}` +
       (minPrice ? `&min_price=${minPrice}` : '') +
       (maxPrice ? `&max_price=${maxPrice}` : '') +
       (bedrooms ? `&bedrooms=${bedrooms}` : '') +
@@ -1984,7 +1993,19 @@ function App() {
                             />
                           </TableCell>
                           <TableCell>
-                            {prop.sent_to_cyclsales_count ?? 0}
+                            {prop.sent_to_cyclsales ? (
+                              <Chip
+                                label="Sent"
+                                sx={{ bgcolor: '#22c55e', color: '#fff', fontWeight: 600 }}
+                                size="small"
+                              />
+                            ) : (
+                              <Chip
+                                label="Not Sent"
+                                sx={{ bgcolor: '#64748b', color: '#fff', fontWeight: 600 }}
+                                size="small"
+                              />
+                            )}
                           </TableCell>
                           <TableCell>
                             {prop.listingAgent && prop.listingAgent.name ? (

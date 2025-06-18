@@ -6,6 +6,7 @@ import urllib.parse
 from odoo.fields import Datetime
 import logging
 from .cors_utils import get_cors_headers
+import time
 
 
 class ZillowPropertyController(http.Controller):
@@ -112,11 +113,11 @@ class ZillowPropertyController(http.Controller):
             search_value = kwargs.get('search') or kwargs.get('address') or kwargs.get('street_address')
             if search_value:
                 domain += ['|', '|', '|',
-                    ('street_address', 'ilike', search_value),
-                    ('city', 'ilike', search_value),
-                    ('state', 'ilike', search_value),
-                    ('zipcode', 'ilike', search_value),
-                ]
+                           ('street_address', 'ilike', search_value),
+                           ('city', 'ilike', search_value),
+                           ('state', 'ilike', search_value),
+                           ('zipcode', 'ilike', search_value),
+                           ]
 
             # Listing type filter (for_sale, for_rent, sold)
             listing_type = kwargs.get('listing_type', 'for_sale')
@@ -138,7 +139,7 @@ class ZillowPropertyController(http.Controller):
                 domain,
                 ['id', 'zpid', 'street_address', 'city', 'state', 'price',
                  'bedrooms', 'bathrooms', 'living_area', 'home_status', 'home_type',
-                 'sent_to_cyclsales_count', 'zipcode'],
+                 'sent_to_cyclsales_count', 'zipcode', 'sent_to_ghl_locations'],
                 offset=offset,
                 limit=page_size,
                 order=order
@@ -151,7 +152,6 @@ class ZillowPropertyController(http.Controller):
             for d in details:
                 details_by_property.setdefault(d.property_id.id, []).append(d)
 
-            # For each property, attach its detail record (if any)
             for zproperty in properties:
                 detail_list = details_by_property.get(zproperty['id'], [])
                 if detail_list:
@@ -180,6 +180,13 @@ class ZillowPropertyController(http.Controller):
                     zproperty['hi_res_image_link'] = False
                     zproperty['hdp_url'] = False
                     zproperty['listingAgent'] = None
+                sent_to_ghl_locations = zproperty.get('sent_to_ghl_locations', [])
+                zproperty['sent_to_cyclsales'] = False
+                if location_id and sent_to_ghl_locations:
+                    for record in sent_to_ghl_locations:
+                        ghl_location_id = request.env['ghl.location'].sudo().browse(record)
+                        if location_id in ghl_location_id.location_id:
+                            zproperty['sent_to_cyclsales'] = True
 
             return Response(
                 json.dumps({
@@ -267,28 +274,22 @@ class ZillowPropertyController(http.Controller):
             location_id = kwargs.get('locationId')
             address = kwargs.get('address', '').strip()
             location = kwargs.get('location', '').strip()
-            # If address is empty, use locationId as location
-            if not address and not location and location_id:
-                location = location_id
-            ghl_location = request.env['ghl.location'].sudo().search([('location_id', '=', location_id)], limit=1)
-            print("ghl_location", ghl_location)
-            allowed_zipcodes = ghl_location.market_location_id.zipcode_ids.mapped(
-                'zip_code') if ghl_location and ghl_location.market_location_id else []
-            print("Allowed Zipcodes: ", allowed_zipcodes)
-            logger.info(f"[Zillow Search] Starting search for location_id: {location_id}")
-            logger.info(f"[Zillow Search] Found {len(allowed_zipcodes)} allowed zipcodes: {allowed_zipcodes}")
 
-            # Only error if ALL are missing
-            if not address and not location and not allowed_zipcodes:
-                logger.warning("[Zillow Search] No address, location, or allowed zipcodes provided.")
-                return self._error_response("No address, location, or allowed zipcodes provided, or no results found.")
+            # Log all incoming parameters
+            logger.info(f"[Zillow Search] All incoming parameters: {json.dumps(kwargs)}")
 
             if not location_id:
                 logger.error("[Zillow Search] locationId is required")
                 return self._error_response('locationId is required')
+
+            # Get location details
+            ghl_location = request.env['ghl.location'].sudo().search([('location_id', '=', location_id)], limit=1)
             if not ghl_location or not ghl_location.market_location_id:
                 logger.error(f"[Zillow Search] Invalid or unlinked locationId: {location_id}")
                 return self._error_response('Invalid or unlinked locationId')
+
+            # Get ZIP codes
+            allowed_zipcodes = ghl_location.market_location_id.zipcode_ids.mapped('zip_code')
             if not allowed_zipcodes:
                 logger.error(f"[Zillow Search] No ZIP codes configured for location: {location_id}")
                 return self._error_response('No ZIP codes configured for this location')
@@ -296,101 +297,222 @@ class ZillowPropertyController(http.Controller):
             # Get RapidAPI credentials
             api_host, api_key = self._get_rapidapi_keys()
             headers = {'x-rapidapi-host': api_host, 'x-rapidapi-key': api_key}
-            rapidapi_url = f'https://{api_host}/search_url'
 
-            all_property_ids = []
-            page = int(kwargs.get('page', 1))
-            page_size = int(kwargs.get('page_size', 100))
-            properties_per_zipcode = max(1, page_size // len(allowed_zipcodes))
+            # Determine search status based on listing type or home status
+            listing_type = kwargs.get('listing_type', '').lower()
+            home_status = kwargs.get('home_status', '').upper()
 
-            logger.info(
-                f"[Zillow Search] Search parameters - Page: {page}, Page Size: {page_size}, Properties per zipcode: {properties_per_zipcode}")
+            if listing_type == 'for_rent' or home_status == 'FOR_RENT':
+                status = 'forRent'
+            elif listing_type == 'sold' or home_status == 'SOLD':
+                status = 'sold'
+            else:
+                status = 'forSale'
 
-            # Search through each zipcode
-            for index, zipcode in enumerate(allowed_zipcodes, 1):
-                try:
-                    logger.info(f"[Zillow Search] Processing zipcode {index}/{len(allowed_zipcodes)}: {zipcode}")
+            logger.info(f"[Zillow Search] Using status: {status}")
 
-                    # Build search query state for this zipcode
-                    searchQueryState = self._build_search_query_state(kwargs, [zipcode])
-                    # Add mapBounds if provided
-                    # if kwargs.get('west') and kwargs.get('east') and kwargs.get('south') and kwargs.get('north'):
-                    #     searchQueryState['mapBounds'] = {
-                    #         'west': float(kwargs['west']),
-                    #         'east': float(kwargs['east']),
-                    #         'south': float(kwargs['south']),
-                    #         'north': float(kwargs['north']),
-                    #     }
-                    zillow_url = self._build_zillow_url(searchQueryState, path='/homes/for_sale/2_p/')
-                    logger.info(f"[Zillow Search] Generated Zillow URL for zipcode {zipcode}: {zillow_url}")
+            all_properties = []
+            seen_zpids = set()
 
-                    # Call RapidAPI with the constructed URL
-                    rapidapi_params = {
-                        'url': zillow_url,
-                        'page': page,
-                        'output': 'json',
-                        'listing_type': 'by_agent',
-                        'page_size': properties_per_zipcode
-                    }
-                    logger.info(
-                        f"[Zillow Search] Calling /search_url for zipcode {zipcode} with params: {rapidapi_params}")
-                    response = requests.get(rapidapi_url, headers=headers, params=rapidapi_params)
-                    logger.info(
-                        f"[Zillow Search] RapidAPI /search_url status for zipcode {zipcode}: {response.status_code}")
-                    response.raise_for_status()
-                    data = response.json()
+            # Loop through all allowed zipcodes
+            for zipcode in allowed_zipcodes:
+                rapidapi_params = {
+                    'location': zipcode,
+                    'output': 'json',
+                    'status': status,
+                    'sortSelection': 'priorityscore',
+                    'listing_type': 'by_agent',
+                    'doz': 'any'
+                }
+                if kwargs.get('page'):
+                    rapidapi_params['page'] = kwargs['page']
+                if kwargs.get('page_size'):
+                    rapidapi_params['page_size'] = kwargs['page_size']
+                logger.info(f"[Zillow Search] Calling /search for zipcode {zipcode} with params: {rapidapi_params}")
+                for attempt in range(3):  # Try up to 3 times
+                    try:
+                        response = requests.get(f'https://{api_host}/search', headers=headers, params=rapidapi_params)
+                        response.raise_for_status()
+                        data = response.json()
+                        properties_data = data.get('results', []) if isinstance(data, dict) else []
+                        logger.info(f"[Zillow Search] Found {len(properties_data)} properties for zipcode {zipcode}")
+                        # Deduplicate by zpid
+                        for prop in properties_data:
+                            zpid = prop.get('zpid')
+                            if zpid and zpid not in seen_zpids:
+                                all_properties.append(prop)
+                                seen_zpids.add(zpid)
+                        break  # Success, break out of retry loop
+                    except Exception as e:
+                        logger.error(
+                            f"[Zillow Search] Error fetching properties for zipcode {zipcode} (attempt {attempt + 1}): {str(e)}",
+                            exc_info=True)
+                        if attempt < 2:
+                            logger.info(f"[Zillow Search] Waiting 5 seconds before retrying zipcode {zipcode}")
+                            time.sleep(5)  # Wait longer if rate limited
+                        else:
+                            logger.info(f"[Zillow Search] Giving up on zipcode {zipcode} after 3 attempts.")
+                    # No need to continue if successful
+                time.sleep(1)  # Add a 1-second delay between requests
 
-                    # Process the response for this zipcode
-                    properties_data = data.get('results', []) if isinstance(data, dict) else []
-                    logger.info(f"[Zillow Search] Found {len(properties_data)} properties for zipcode {zipcode}")
+            logger.info(f"[Zillow Search] Total unique properties found: {len(all_properties)}")
 
-                    property_ids = self._create_zillow_properties(properties_data, [zipcode])
-                    logger.info(f"[Zillow Search] Created/Updated {len(property_ids)} properties for zipcode {zipcode}")
-                    all_property_ids.extend(property_ids)
+            # Create/update properties
+            property_ids = self._create_zillow_properties(all_properties, allowed_zipcodes)
 
-                except Exception as e:
-                    logger.error(f"[Zillow Search] Error processing zipcode {zipcode}: {str(e)}", exc_info=True)
-                    continue
-
-            logger.info(f"[Zillow Search] Completed search. Total properties found: {len(all_property_ids)}")
-            # Return combined results
-            return self._build_properties_response(all_property_ids)
+            return self._build_properties_response(property_ids)
 
         except Exception as e:
             logger.error(f"[Zillow Search] Error in search_properties_new: {str(e)}", exc_info=True)
             return self._error_response(str(e), status=500)
 
-    def _build_search_query_state(self, kwargs, allowed_zipcodes):
-        # Use frontend map bounds if provided, otherwise use defaults from the cURL sample
-        map_bounds = {
-            "west": float(kwargs.get('west', -112.39143704189931)),
-            "east": float(kwargs.get('east', -110.78468655361806)),
-            "south": float(kwargs.get('south', 32.79032628812945)),
-            "north": float(kwargs.get('north', 33.7227901388417))
+    def _build_search_query_state(self, kwargs, allowed_zipcodes, city=None, state_abbr=None):
+        zipcode = allowed_zipcodes[0]
+        filter_state = {
+            "sort": {"value": "globalrelevanceex"}
         }
+
+        # Map home_status or listing_type to correct filterState key
+        home_status = kwargs.get('home_status')
+        listing_type = kwargs.get('listing_type')
+        if not home_status and listing_type:
+            if listing_type.lower() == 'for_rent':
+                home_status = 'FOR_RENT'
+            elif listing_type.lower() == 'sold':
+                home_status = 'SOLD'
+            else:
+                home_status = 'FOR_SALE'
+        if not home_status:
+            home_status = 'FOR_SALE'
+
+        # Set correct filterState key
+        if home_status == 'FOR_RENT':
+            filter_state['fr'] = {'value': True}
+        elif home_status == 'SOLD':
+            filter_state['sold'] = {'value': True}
+        else:
+            filter_state['fsba'] = {'value': True}
+
+        # Price filters
+        min_price = kwargs.get('min_price')
+        max_price = kwargs.get('max_price')
+        if min_price:
+            filter_state['price'] = {'min': float(min_price)}
+        if max_price:
+            filter_state['price'] = filter_state.get('price', {})
+            filter_state['price']['max'] = float(max_price)
+
+        # Bedrooms filter
+        bedrooms = kwargs.get('bedrooms')
+        if bedrooms:
+            filter_state['beds'] = {'min': int(bedrooms)}
+
+        # Bathrooms filter
+        bathrooms = kwargs.get('bathrooms')
+        if bathrooms:
+            filter_state['baths'] = {'min': float(bathrooms)}
+
+        # Living Area (sqft) filters
+        sqft_min = kwargs.get('sqft_min')
+        sqft_max = kwargs.get('sqft_max')
+        if sqft_min:
+            filter_state['sqft'] = {'min': float(sqft_min)}
+        if sqft_max:
+            filter_state['sqft'] = filter_state.get('sqft', {})
+            filter_state['sqft']['max'] = float(sqft_max)
+
+        # Lot Area filters
+        lot_min = kwargs.get('lot_min')
+        lot_max = kwargs.get('lot_max')
+        if lot_min:
+            filter_state['lot'] = {'min': float(lot_min)}
+        if lot_max:
+            filter_state['lot'] = filter_state.get('lot', {})
+            filter_state['lot']['max'] = float(lot_max)
+
+        # Year Built filters
+        year_min = kwargs.get('year_min')
+        year_max = kwargs.get('year_max')
+        if year_min:
+            filter_state['yearBuilt'] = {'min': int(year_min)}
+        if year_max:
+            filter_state['yearBuilt'] = filter_state.get('yearBuilt', {})
+            filter_state['yearBuilt']['max'] = int(year_max)
+
+        # Home Type filter - using Zillow's actual filter keys
+        home_type = kwargs.get('home_type')
+        if home_type:
+            if isinstance(home_type, list):
+                for t in home_type:
+                    if t and t.lower() != 'nan':
+                        key = self._get_home_type_key(t)
+                        if key:
+                            filter_state[key] = {'value': True}
+            elif home_type.lower() != 'nan':
+                key = self._get_home_type_key(home_type)
+                if key:
+                    filter_state[key] = {'value': True}
+
+        # Build the location string
+        location_str = f"{city}, {state_abbr}" if city and state_abbr else zipcode
+
         state = {
-            "pagination": {"currentPage": int(kwargs.get('page', 1))},
-            "mapBounds": map_bounds,
+            "pagination": {},
             "isMapVisible": True,
-            "filterState": {
-                "con": {"value": False},
-                "apa": {"value": False},
-                "mf": {"value": False},
-                "ah": {"value": True},
-                "sort": {"value": "globalrelevanceex"},
-                "land": {"value": False},
-                "manu": {"value": False},
-                "apco": {"value": False}
-            },
-            "isListVisible": True
+            "filterState": filter_state,
+            "isListVisible": True,
+            "usersSearchTerm": location_str,
+            "regionSelection": [{"regionId": int(zipcode), "regionType": 6}],  # Changed to 6 for city search
+            "category": "cat1"  # Added category as seen in Zillow's URL
         }
+
+        # Add mapBounds if city and state are available
+        if city and state_abbr:
+            # Get the zipcode record to get lat/long bounds
+            zipcode_rec = request.env['us.zipcode.reference'].sudo().search([('zip', '=', zipcode)], limit=1)
+            if zipcode_rec and zipcode_rec.latitude and zipcode_rec.longitude:
+                # Create a bounding box around the zipcode (approximately 2 mile radius)
+                lat_offset = 0.029  # roughly 2 miles in latitude
+                lon_offset = 0.029  # roughly 2 miles in longitude
+                state["mapBounds"] = {
+                    "west": float(zipcode_rec.longitude) - lon_offset,
+                    "east": float(zipcode_rec.longitude) + lon_offset,
+                    "south": float(zipcode_rec.latitude) - lat_offset,
+                    "north": float(zipcode_rec.latitude) + lat_offset
+                }
+
         return state
 
     def _build_zillow_url(self, searchQueryState, path='/homes/for_sale/2_p/'):
-        base_url = f'https://www.zillow.com{path}'
+        logger = logging.getLogger(__name__)
+
+        # Get the search location details
+        users_search_term = searchQueryState.get('usersSearchTerm', '')
+        region_selection = searchQueryState.get('regionSelection', [{}])[0]
+
+        # Format the URL slug based on the search term
+        if users_search_term:
+            # Extract city and state if available
+            parts = users_search_term.lower().split(',')
+            if len(parts) >= 2:
+                city = parts[0].strip()
+                state = parts[1].strip().split()[0]  # Get state abbreviation
+                url_slug = f"{city}-{state}"
+                base_path = f"/{url_slug}/"
+            else:
+                # Default to homes/for_rent if we can't parse city-state
+                base_path = '/homes/for_rent/'
+        else:
+            base_path = '/homes/for_rent/'
+
+        logger.info(f"[Zillow URL Builder] Using base path: {base_path}")
+
+        base_url = f'https://www.zillow.com{base_path}'
         sqs_json = json.dumps(searchQueryState, separators=(',', ':'))
         params = {'searchQueryState': sqs_json}
-        return base_url + '?' + urllib.parse.urlencode(params)
+        final_url = base_url + '?' + urllib.parse.urlencode(params)
+        logger.info(f"[Zillow URL Builder] Final URL: {final_url}")
+        return final_url
 
     def _get_rapidapi_keys(self):
         ICPSudo = request.env['ir.config_parameter'].sudo()
@@ -417,6 +539,7 @@ class ZillowPropertyController(http.Controller):
         return data.get('results', []) if isinstance(data, dict) else []
 
     def _create_zillow_properties(self, properties_data, allowed_zipcodes):
+        logger = logging.getLogger(__name__)
         created_properties = []
         for property_data in properties_data:
             address_data = property_data.get('address', {})
@@ -424,12 +547,16 @@ class ZillowPropertyController(http.Controller):
             if not zipcode and allowed_zipcodes:
                 zipcode = allowed_zipcodes[0]
             if zipcode not in allowed_zipcodes:
+                logger.info(
+                    f"Skipping property {property_data.get('zpid')} because zipcode {zipcode} not in allowed_zipcodes {allowed_zipcodes}")
                 continue
             zpid = property_data.get('zpid')
             if not zpid:
+                logger.info(f"Skipping property with missing zpid: {property_data}")
                 continue
             existing_property = request.env['zillow.property'].sudo().search([('zpid', '=', zpid)], limit=1)
             if not existing_property:
+                logger.info(f"Creating property with zpid {zpid}")
                 vals = {
                     'zpid': zpid,
                     'street_address': address_data.get('streetAddress'),
@@ -446,6 +573,7 @@ class ZillowPropertyController(http.Controller):
                 created = request.env['zillow.property'].sudo().create(vals)
                 created_properties.append(created.id)
             else:
+                logger.info(f"Property with zpid {zpid} already exists, skipping creation")
                 created_properties.append(existing_property.id)
         return created_properties
 
@@ -606,6 +734,24 @@ class ZillowPropertyController(http.Controller):
                 continue
 
         return True
+
+    def _get_home_type_key(self, home_type):
+        """Map home types to Zillow's filter keys"""
+        home_type_map = {
+            'house': 'hhomeType',
+            'houses': 'hhomeType',
+            'apartment': 'apartmentType',
+            'apartments': 'apartmentType',
+            'townhouse': 'townhouseType',
+            'townhomes': 'townhouseType',
+            'condo': 'condoType',
+            'condos': 'condoType',
+            'manufactured': 'manufacturedType',
+            'lot': 'lotType',
+            'land': 'lotType',
+            'multi-family': 'multiFamily'
+        }
+        return home_type_map.get(home_type.lower())
 
 
 class CORSPreflightController(http.Controller):

@@ -82,8 +82,17 @@ export default function PropertyPopup({ zpid, isOpen, onClose, viewOnMarketUrl, 
     let success = false;
     let message = '';
     try {
+      // Get locationId from URL (same as App.tsx)
+      let locationId: string | null = null;
+      const params = new URLSearchParams(window.location.search);
+      locationId = params.get('locationId');
+      if (!locationId) {
+        const match = window.location.pathname.match(/locationId=([^\/]+)/);
+        if (match) locationId = match[1];
+      }
       const id = property.id ? Number(property.id) : Number(property.zpid);
-      const result = await zillowService.sendToCyclSales([id]);
+      // Use the same API call as App.tsx
+      const result = await zillowService.sendToCyclSales([id], locationId || undefined);
       if (result.success) {
         success = true;
         message = 'Sent to Cycl Sales!';

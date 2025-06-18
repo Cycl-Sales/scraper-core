@@ -4,16 +4,50 @@ import logging
 import json
 from datetime import datetime, timedelta
 from odoo.fields import Datetime, Date
+import time
 
 _logger = logging.getLogger(__name__)
 
 
 def ms_to_odoo_date(ms):
-    return Date.to_string(datetime.utcfromtimestamp(ms / 1000))
+    try:
+        ms = int(ms)
+        return Date.to_string(datetime.utcfromtimestamp(ms / 1000))
+    except Exception:
+        return False
 
 
 def ms_to_odoo_datetime(ms):
-    return Datetime.to_string(datetime.utcfromtimestamp(ms / 1000))
+    try:
+        ms = int(ms)
+        return Datetime.to_string(datetime.utcfromtimestamp(ms / 1000))
+    except Exception:
+        return False
+
+
+def safe_ms_to_odoo_date(val):
+    try:
+        if val and str(val).isdigit() and len(str(val)) > 11:
+            return ms_to_odoo_date(val)
+        return val
+    except Exception:
+        return False
+
+
+def robust_get(url, headers=None, params=None, max_retries=3, backoff=2):
+    for attempt in range(max_retries):
+        try:
+            response = requests.get(url, headers=headers, params=params, timeout=10)
+            response.raise_for_status()
+            return response
+        except requests.exceptions.RequestException as e:
+            if attempt < max_retries - 1:
+                wait = backoff ** attempt
+                _logger.warning(f"Request failed: {e}. Retrying in {wait} seconds...")
+                time.sleep(wait)
+            else:
+                _logger.error(f"Request failed after {max_retries} attempts: {e}")
+                raise
 
 
 class ZillowProperty(models.Model):
@@ -201,8 +235,7 @@ class ZillowProperty(models.Model):
         }
 
         try:
-            response = requests.get(url, headers=headers, params=params)
-            response.raise_for_status()
+            response = robust_get(url, headers=headers, params=params)
             data = response.json()
 
             # Update record with API data
@@ -231,7 +264,7 @@ class ZillowProperty(models.Model):
                     'time_on_zillow': data.get('timeOnZillow'),
                     'days_on_zillow': int(data['daysOnZillow']) if data.get('daysOnZillow') else False,
                     'price_change': float(data['priceChange']) if data.get('priceChange') else False,
-                    'date_price_changed': data.get('datePriceChanged'),
+                    'date_price_changed': safe_ms_to_odoo_date(data.get('datePriceChanged')),
                     'provider_listing_id': data.get('providerListingID'),
                     'last_fetched': fields.Datetime.now(),
                     'hi_res_image_link': data.get('hiResImageLink'),
@@ -268,7 +301,8 @@ class ZillowProperty(models.Model):
                     'agent_email': attribution_info.get('agentEmail'),
                     'agent_license_number': attribution_info.get('agentLicenseNumber'),
                     'agent_name': attribution_info.get('agentName'),
-                    'agent_phone_number': attribution_info.get('listingAttributionContact'),
+                    'agent_phone_number': attribution_info.get('agentPhoneNumber') if attribution_info.get(
+                        'agentPhoneNumber') else attribution_info.get('listingAttributionContact'),
                     'attribution_title': attribution_info.get('attributionTitle'),
                     'broker_name': attribution_info.get('brokerName'),
                     'broker_phone_number': attribution_info.get('brokerPhoneNumber'),
@@ -315,7 +349,7 @@ class ZillowProperty(models.Model):
                     'county': data.get('county'),
                     'county_fips': data.get('countyFips'),
                     'county_id': int(data['countyId']) if data.get('countyId') else False,
-                    'date_posted_string': data.get('datePostedString'),
+                    'date_posted_string': safe_ms_to_odoo_date(data.get('datePostedString')),
                     'days_on_zillow': int(data['daysOnZillow']) if data.get('daysOnZillow') else False,
                     'description': data.get('description'),
                     'desktop_web_hdp_image_link': data.get('desktopWebHdpImageLink'),
@@ -346,26 +380,24 @@ class ZillowProperty(models.Model):
                     'foreclosure_amount': float(data['foreclosureAmount']) if data.get('foreclosureAmount') else False,
                     'foreclosure_auction_city': data.get('foreclosureAuctionCity'),
                     'foreclosure_auction_description': data.get('foreclosureAuctionDescription'),
-                    'foreclosure_auction_filing_date': data.get('foreclosureAuctionFilingDate'),
-                    'foreclosure_auction_location': data.get('foreclosureAuctionLocation'),
-                    'foreclosure_auction_time': data.get('foreclosureAuctionTime'),
-                    'foreclosure_balance_reporting_date': data.get('foreclosureBalanceReportingDate'),
-                    'foreclosure_date': data.get('foreclosureDate'),
+                    'foreclosure_auction_filing_date': safe_ms_to_odoo_date(data.get('foreclosureAuctionFilingDate')),
+                    'foreclosure_auction_time': safe_ms_to_odoo_date(data.get('foreclosureAuctionTime')),
+                    'foreclosure_balance_reporting_date': safe_ms_to_odoo_date(
+                        data.get('foreclosureBalanceReportingDate')),
+                    'foreclosure_date': safe_ms_to_odoo_date(data.get('foreclosureDate')),
                     'foreclosure_default_description': data.get('foreclosureDefaultDescription'),
-                    'foreclosure_default_filing_date': data.get('foreclosureDefaultFilingDate'),
+                    'foreclosure_default_filing_date': safe_ms_to_odoo_date(data.get('foreclosureDefaultFilingDate')),
                     'foreclosure_judicial_type': data.get('foreclosureJudicialType'),
                     'foreclosure_loan_amount': float(data['foreclosureLoanAmount']) if data.get(
                         'foreclosureLoanAmount') else False,
-                    'foreclosure_loan_date': ms_to_odoo_date(data['foreclosureLoanDate']) if data.get(
-                        'foreclosureLoanDate') else False,
+                    'foreclosure_loan_date': safe_ms_to_odoo_date(data.get('foreclosureLoanDate')),
                     'foreclosure_loan_originator': data.get('foreclosureLoanOriginator'),
                     'foreclosure_more_info': data.get('foreclosureMoreInfo'),
                     'foreclosure_past_due_balance': float(data['foreclosurePastDueBalance']) if data.get(
                         'foreclosurePastDueBalance') else False,
                     'foreclosure_prior_sale_amount': float(data['foreclosurePriorSaleAmount']) if data.get(
                         'foreclosurePriorSaleAmount') else False,
-                    'foreclosure_prior_sale_date': ms_to_odoo_date(data['foreclosurePriorSaleDate']) if data.get(
-                        'foreclosurePriorSaleDate') else False,
+                    'foreclosure_prior_sale_date': safe_ms_to_odoo_date(data.get('foreclosurePriorSaleDate')),
                     'foreclosure_unpaid_balance': float(data['foreclosureUnpaidBalance']) if data.get(
                         'foreclosureUnpaidBalance') else False,
                     'listing_account_user_id': data.get('listingAccountUserId'),
@@ -377,15 +409,15 @@ class ZillowProperty(models.Model):
                     'lot_premium': float(data['lotPremium']) if data.get('lotPremium') else False,
                     'move_home_map_location_link': data.get('moveHomeMapLocationLink'),
                     'mortgage_arm5_rate': float(data['mortgageArm5Rate']) if data.get('mortgageArm5Rate') else False,
-                    'mortgage_arm5_last_updated': data.get('mortgageArm5LastUpdated'),
+                    'mortgage_arm5_last_updated': safe_ms_to_odoo_date(data.get('mortgageArm5LastUpdated')),
                     'mortgage_arm5_rate_source': data.get('mortgageArm5RateSource'),
                     'mortgage_15yr_fixed_rate': float(data['mortgage15yrFixedRate']) if data.get(
                         'mortgage15yrFixedRate') else False,
-                    'mortgage_15yr_fixed_last_updated': data.get('mortgage15yrFixedLastUpdated'),
+                    'mortgage_15yr_fixed_last_updated': safe_ms_to_odoo_date(data.get('mortgage15yrFixedLastUpdated')),
                     'mortgage_15yr_fixed_rate_source': data.get('mortgage15yrFixedRateSource'),
                     'mortgage_30yr_fixed_rate': float(data['mortgage30yrFixedRate']) if data.get(
                         'mortgage30yrFixedRate') else False,
-                    'mortgage_30yr_fixed_last_updated': data.get('mortgage30yrFixedLastUpdated'),
+                    'mortgage_30yr_fixed_last_updated': safe_ms_to_odoo_date(data.get('mortgage30yrFixedLastUpdated')),
                     'mortgage_30yr_fixed_rate_source': data.get('mortgage30yrFixedRateSource'),
                     'listed_by': data.get('listedBy'),
                     'listing_account': data.get('listingAccount'),
@@ -418,7 +450,7 @@ class ZillowProperty(models.Model):
                     'zipcode_search_url_path': data.get('zipcodeSearchUrlPath'),
                 }
 
-                # _logger.info(f"[ATTRIBUTION] Mapped attribution fields: {data}")
+                _logger.info(f"[ATTRIBUTION] Mapped attribution fields: {detail_vals}")
 
                 # Create or update property detail record
                 property_detail = self.env['zillow.property.detail'].search([('zpid', '=', self.zpid)], limit=1)
@@ -498,28 +530,6 @@ class ZillowProperty(models.Model):
                 prop.action_fetch_property_data()
             except Exception as e:
                 _logger.error(f"Failed to update property {prop.zpid}: {e}")
-
-    @api.model
-    def search(self, args, offset=0, limit=None, order=None, count=False):
-        user = self.env.user
-        _logger.info(f"[ZillowProperty.search] Called by user: {user.id} ({user.name})")
-        market_location = user.market_location_id
-        if not market_location:
-            _logger.warning(f"[ZillowProperty.search] No market_location_id set for user {user.id}")
-        else:
-            _logger.info(f"[ZillowProperty.search] market_location_id: {market_location.id} ({market_location.name})")
-            if not market_location.zipcode_ids:
-                _logger.warning(
-                    f"[ZillowProperty.search] No zipcode_ids set for market_location_id {market_location.id}")
-            else:
-                zipcodes = market_location.zipcode_ids.mapped('zip_code')
-                _logger.info(f"[ZillowProperty.search] zipcodes for user {user.id}: {zipcodes}")
-                if not any(arg[0] == 'zipcode' for arg in args):
-                    args = args + [('zipcode', 'in', zipcodes)]
-                    _logger.info(f"[ZillowProperty.search] Domain args updated: {args}")
-
-        # Call super with only the parameters it expects
-        return super(ZillowProperty, self).search(args, offset=offset, limit=limit, order=order)
 
     def update_zero_price_properties(self):
         """
@@ -720,7 +730,7 @@ class ZillowPropertySearchWizard(models.TransientModel):
         }
         params = {'address': self.address}
         try:
-            response = requests.get(url, headers=headers, params=params)
+            response = robust_get(url, headers=headers, params=params)
             _logger.info(f"Search address response: {response.status_code} {response.text}")
             response.raise_for_status()
             data = response.json()
@@ -748,7 +758,7 @@ class ZillowPropertySearchWizard(models.TransientModel):
                 'time_on_zillow': data.get('timeOnZillow'),
                 'days_on_zillow': int(data['daysOnZillow']) if data.get('daysOnZillow') else False,
                 'price_change': float(data['priceChange']) if data.get('priceChange') else False,
-                'date_price_changed': data.get('datePriceChanged'),
+                'date_price_changed': safe_ms_to_odoo_date(data.get('datePriceChanged')),
                 'provider_listing_id': data.get('providerListingID'),
                 'zpid': zpid,
             }
