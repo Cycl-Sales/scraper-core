@@ -207,8 +207,7 @@ class ZillowPropertyController(http.Controller):
                 headers=get_cors_headers(request)
             )
 
-    @http.route('/api/zillow/property/send-to-cyclsales', type='http', auth='none', methods=['POST'], cors='*',
-                csrf=False)
+    @http.route('/api/zillow/property/send-to-cyclsales', type='http', auth='none', methods=['POST', 'OPTIONS'], cors='*', csrf=False)
     def send_to_cyclsales(self, **post):
         try:
             property_ids = json.loads(post.get('property_ids', '[]'))
@@ -248,8 +247,7 @@ class ZillowPropertyController(http.Controller):
                 headers=get_cors_headers(request)
             )
 
-    @http.route('/api/zillow/property/<int:property_id>/fetch', type='http', auth='none', methods=['POST'], cors='*',
-                csrf=False)
+    @http.route('/api/zillow/property/<int:property_id>/fetch', type='http', auth='none', methods=['POST', 'OPTIONS'], cors='*', csrf=False)
     def fetch_property_data(self, property_id):
         try:
             property = request.env['zillow.property'].sudo().browse(property_id)

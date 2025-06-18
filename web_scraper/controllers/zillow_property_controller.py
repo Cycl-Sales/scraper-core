@@ -101,7 +101,7 @@ class ZillowPropertyController(http.Controller):
                 headers=get_cors_headers(request)
             )
 
-    @http.route('/api/zillow/send-to-cyclsales', type='http', auth='none', methods=['POST'], csrf=False)
+    @http.route('/api/zillow/send-to-cyclsales', type='http', auth='none', methods=['POST', 'OPTIONS'], cors='*', csrf=False)
     def send_to_cyclsales(self, **kwargs):
         try:
             _logger.info("=== Starting send_to_cyclsales process ===")

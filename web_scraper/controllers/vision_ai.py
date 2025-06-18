@@ -11,7 +11,7 @@ import io
 _logger = logging.getLogger(__name__)
 
 class VisionAIController(http.Controller):
-    @http.route('/cs-vision-ai/vision', type='http', auth='none', methods=['POST'], cors='*', csrf=False)
+    @http.route('/cs-vision-ai/vision', type='http', auth='none', methods=['POST', 'OPTIONS'], cors='*', csrf=False)
     def analyze_vision(self, **post):
         try:
             # Log the raw request data
