@@ -448,7 +448,7 @@ class ZillowProperty(models.Model):
                     'zipcode': data.get('zipcode'),
                     'zipcode_id': int(data['zipcodeId']) if data.get('zipcodeId') else False,
                     'zipcode_search_url_path': data.get('zipcodeSearchUrlPath'),
-                } 
+                }
 
                 # Create or update property detail record
                 property_detail = self.env['zillow.property.detail'].search([('zpid', '=', self.zpid)], limit=1)

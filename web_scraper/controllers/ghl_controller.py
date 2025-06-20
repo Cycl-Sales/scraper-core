@@ -64,6 +64,7 @@ class GHLController(http.Controller):
             headers = {
                 'Accept': 'application/json',
                 'Authorization': f'Bearer {access_token}',
+                'Version': '2021-07-28',
             }
             resp = requests.get(GHL_INSTALLED_LOCATIONS_URL, headers=headers)
             if resp.status_code == 200:
