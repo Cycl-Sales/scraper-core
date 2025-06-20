@@ -434,6 +434,7 @@ class ZillowPropertyController(http.Controller):
 
                             field_mapping = {
                                 'property type': ghl_property_type,
+                                'property type 2': ghl_property_type,
                                 'beds': prop.bedrooms,
                                 'baths': prop.bathrooms,
                                 'sqft': prop.living_area,
