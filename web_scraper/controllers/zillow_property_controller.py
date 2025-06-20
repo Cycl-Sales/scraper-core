@@ -6,8 +6,32 @@ import requests
 from odoo.fields import Datetime
 from datetime import datetime, timedelta
 from .cors_utils import get_cors_headers
+from odoo.addons.web_scraper.controllers.cors_utils import get_cors_headers
+from odoo.fields import Datetime, Date
+import time
 
 _logger = logging.getLogger(__name__)
+
+
+def get_all_custom_fields(location_access_token):
+    """Fetches all custom fields for a given location."""
+    _logger.info("Fetching all custom fields from GHL...")
+    custom_fields_url = "https://services.leadconnectorhq.com/customFields/"
+    headers = {
+        'Accept': 'application/json',
+        'Authorization': f'Bearer {location_access_token}',
+        'Version': '2021-07-28'
+    }
+    try:
+        resp = requests.get(custom_fields_url, headers=headers, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        fields = data.get('customFields', [])
+        _logger.info(f"Successfully fetched {len(fields)} custom fields.")
+        return {field['name'].lower(): field['id'] for field in fields}
+    except Exception as e:
+        _logger.error(f"Failed to fetch custom fields: {e}")
+        return {}
 
 
 class ZillowPropertyController(http.Controller):
@@ -103,6 +127,8 @@ class ZillowPropertyController(http.Controller):
 
     @http.route('/api/zillow/send-to-cyclsales', type='http', auth='none', methods=['POST', 'OPTIONS'], cors='*', csrf=False)
     def send_to_cyclsales(self, **kwargs):
+        if request.httprequest.method == 'OPTIONS':
+            return http.Response(headers=get_cors_headers(request))
         try:
             _logger.info("=== Starting send_to_cyclsales process ===")
 
@@ -283,6 +309,11 @@ class ZillowPropertyController(http.Controller):
                 )
 
             api_url = "https://services.leadconnectorhq.com/contacts/"
+            update_contact_url_template = "https://services.leadconnectorhq.com/contacts/{}"
+
+            all_custom_fields = get_all_custom_fields(location_access_token)
+            if not all_custom_fields:
+                _logger.warning("[CONFIG] Could not fetch custom fields. Proceeding without custom field updates.")
 
             results = []
             for prop in properties:
@@ -336,7 +367,7 @@ class ZillowPropertyController(http.Controller):
                     _logger.info(f"[API] Sending request to GHL API for property {prop.id}")
                     headers = {
                         'Accept': 'application/json',
-                        'Authorization': f'Bearer {location_access_token.strip()}',  # Use location access token
+                        'Authorization': f'Bearer {location_access_token.strip()}',
                         'Content-Type': 'application/json',
                         'Version': '2021-07-28'
                     }
@@ -345,11 +376,16 @@ class ZillowPropertyController(http.Controller):
                     _logger.info(
                         f"[API] Response for property {prop.id}: Status={resp.status_code}, Body={resp.text}")
 
-                    # Log errors for non-successful responses
+                    resp_data = {}
+                    try:
+                        resp_data = resp.json()
+                    except json.JSONDecodeError:
+                        _logger.error(f"[API] Failed to decode JSON response for property {prop.id}")
+                        resp_data = {'raw_response': resp.text}
+
                     if resp.status_code not in [200, 201]:
                         _logger.error(f"[API][ERROR] Failed to create contact for property {prop.id}. Status: {resp.status_code}, Response: {resp.text}, Payload: {json.dumps(payload, default=str)}")
 
-                    # Handle authentication errors
                     if resp.status_code == 401:
                         _logger.error(f"[API] Authentication failed for property {prop.id}. Token may have expired or has insufficient permissions.")
                         # Try to get more details about the error
@@ -365,7 +401,46 @@ class ZillowPropertyController(http.Controller):
                         })
                         continue
 
-                    # If API call was successful, mark the property as sent to this GHL location
+                    if resp.status_code in [200, 201] and 'contact' in resp_data:
+                        contact_id = resp_data['contact'].get('id')
+                        if contact_id and all_custom_fields:
+                            _logger.info(f"[UPDATE] Preparing custom fields for contact {contact_id}")
+                            
+                            custom_field_payload = { "customField": {} }
+                            
+                            field_mapping = {
+                                'property type': detail.home_type,
+                                'beds': prop.bedrooms,
+                                'baths': prop.bathrooms,
+                                'sqft': prop.living_area,
+                                'lot size': f"{prop.lot_area_value} {prop.lot_area_unit}" if prop.lot_area_value and prop.lot_area_unit else (prop.lot_area_value or ''),
+                                'year built': detail.year_built,
+                                'link to pictures': prop.hi_res_image_link,
+                                'asking price': detail.price,
+                                'occupancy': 'Tenant' if detail.is_non_owner_occupied else 'Owner',
+                                'condition': detail.description,
+                            }
+                            
+                            for field_name, value in field_mapping.items():
+                                if field_name in all_custom_fields and value:
+                                    field_id = all_custom_fields[field_name]
+                                    custom_field_payload["customField"][field_id] = str(value)
+
+                            if custom_field_payload["customField"]:
+                                update_url = update_contact_url_template.format(contact_id)
+                                update_headers = headers.copy()
+                                del update_headers['Accept'] # PUT request might not need Accept
+                                _logger.info(f"[UPDATE] Sending custom field update to {update_url} with payload: {json.dumps(custom_field_payload, default=str)}")
+                                
+                                update_resp = requests.put(update_url, json=custom_field_payload, headers=update_headers, timeout=10)
+                                
+                                if update_resp.status_code == 200:
+                                    _logger.info(f"[UPDATE] Successfully updated custom fields for contact {contact_id}")
+                                else:
+                                    _logger.error(f"[UPDATE][ERROR] Failed to update custom fields for contact {contact_id}. Status: {update_resp.status_code}, Response: {update_resp.text}")
+                            else:
+                                _logger.info(f"[UPDATE] No custom fields to update for contact {contact_id}")
+                    
                     if resp.status_code in [200, 201]:
                         prop.write({
                             'sent_to_ghl_locations': [(4, ghl_location.id)],
@@ -377,7 +452,7 @@ class ZillowPropertyController(http.Controller):
                     results.append({
                         'property_id': prop.id,
                         'status': resp.status_code,
-                        'response': resp.text
+                        'response': resp.text if isinstance(resp.text, str) else json.dumps(resp_data)
                     })
                 except Exception as e:
                     _logger.error(f"[API][EXCEPTION] Error for property {prop.id}: {str(e)}. Payload: {json.dumps(payload, default=str)}")
