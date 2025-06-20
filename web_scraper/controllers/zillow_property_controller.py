@@ -34,6 +34,24 @@ def get_all_custom_fields(location_access_token, location_id):
         return {}
 
 
+def convert_home_type_to_ghl(odoo_home_type):
+    """Converts Odoo home_type value to a GHL-compatible property type string."""
+    if not odoo_home_type:
+        return None
+    
+    mapping = {
+        'SINGLE_FAMILY': 'Single Family',
+        'MULTI_FAMILY': 'Multifamily 2-4',
+        'CONDO': 'Single Family',
+        'TOWNHOUSE': 'Single Family',
+        'LAND': 'Land',
+        'LOT': 'Land',
+        'APARTMENT': 'Multifamily 5+',
+        'MANUFACTURED': 'Single Family'
+    }
+    return mapping.get(odoo_home_type, None)
+
+
 class ZillowPropertyController(http.Controller):
 
     @http.route('/api/zillow/properties', type='http', auth='none', methods=['GET'], csrf=False)
@@ -408,8 +426,10 @@ class ZillowPropertyController(http.Controller):
                             
                             custom_field_payload = { "customFields": [] }
                             
+                            ghl_property_type = convert_home_type_to_ghl(detail.home_type)
+
                             field_mapping = {
-                                'property type': detail.home_type,
+                                'property type': ghl_property_type,
                                 'beds': prop.bedrooms,
                                 'baths': prop.bathrooms,
                                 'sqft': prop.living_area,
@@ -422,7 +442,7 @@ class ZillowPropertyController(http.Controller):
                             }
                             
                             for field_name, value in field_mapping.items():
-                                if field_name in all_custom_fields and value:
+                                if field_name in all_custom_fields and value is not None:
                                     field_id = all_custom_fields[field_name]
                                     custom_field_payload["customFields"].append({
                                         "id": field_id,
