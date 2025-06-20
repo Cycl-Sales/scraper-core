@@ -61,17 +61,19 @@ class GHLController(http.Controller):
             else:
                 AgencyToken.create(vals)
             # Fetch installed locations
+            app_id = "6834710f642d2825854891ec"  # GHL App ID
+            url = f'{GHL_INSTALLED_LOCATIONS_URL}?isInstalled=true&companyId={company_id}&appId={app_id}'
             headers = {
                 'Accept': 'application/json',
                 'Authorization': f'Bearer {access_token}',
                 'Version': '2021-07-28',
             }
-            resp = requests.get(GHL_INSTALLED_LOCATIONS_URL, headers=headers)
+            resp = requests.get(url, headers=headers)
             if resp.status_code == 200:
                 locations = resp.json().get('locations', [])
                 Location = request.env['ghl.location'].sudo()
                 for loc in locations:
-                    location_id = loc.get('locationId')
+                    location_id = loc.get('_id')  # Changed from 'locationId' to '_id' to match API response
                     name = loc.get('name') or f'GHL Location {location_id}'
                     rec = Location.search([('location_id', '=', location_id)], limit=1)
                     vals = {
