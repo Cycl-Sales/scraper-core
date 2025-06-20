@@ -28,13 +28,13 @@ def get_all_custom_fields(location_access_token, location_id):
         data = resp.json()
         fields = data.get('customFields', [])
         _logger.info(f"Successfully fetched {len(fields)} custom fields.")
-        
+
         field_dict = {}
         for field in fields:
             key = field.get('fieldKey')
             if key and '.' in key:
                 simple_key = key.split('.')[-1]
-                field_dict[simple_key] = { 'id': field['id'] }
+                field_dict[simple_key] = {'id': field['id']}
         return field_dict
     except Exception as e:
         _logger.error(f"Failed to fetch custom fields: {e}")
@@ -160,7 +160,8 @@ class ZillowPropertyController(http.Controller):
                 headers=get_cors_headers(request)
             )
 
-    @http.route('/api/zillow/send-to-cyclsales', type='http', auth='none', methods=['POST', 'OPTIONS'], cors='*', csrf=False)
+    @http.route('/api/zillow/send-to-cyclsales', type='http', auth='none', methods=['POST', 'OPTIONS'], cors='*',
+                csrf=False)
     def send_to_cyclsales(self, **kwargs):
         if request.httprequest.method == 'OPTIONS':
             return http.Response(headers=get_cors_headers(request))
@@ -241,7 +242,7 @@ class ZillowPropertyController(http.Controller):
             current_time = Datetime.now()
             token_expiry = agency_token.token_expiry
             _logger.info(f"[TOKEN] Current time: {current_time}, Token expiry: {token_expiry}")
-            
+
             if token_expiry < current_time:
                 _logger.error("[CONFIG] GHL agency token has expired")
                 # Try to refresh the token
@@ -255,10 +256,10 @@ class ZillowPropertyController(http.Controller):
                     refresh_headers = {
                         'Content-Type': 'application/json'
                     }
-                    
+
                     _logger.info("[TOKEN] Attempting to refresh token...")
                     refresh_response = requests.post(refresh_url, json=refresh_payload, headers=refresh_headers)
-                    
+
                     if refresh_response.status_code == 200:
                         refresh_data = refresh_response.json()
                         agency_token.write({
@@ -292,7 +293,8 @@ class ZillowPropertyController(http.Controller):
 
             agency_access_token = agency_token.access_token
             company_id = agency_token.company_id
-            _logger.info(f"[TOKEN] Using agency token: {agency_access_token[:10]}...{agency_access_token[-10:] if len(agency_access_token) > 20 else ''}")
+            _logger.info(
+                f"[TOKEN] Using agency token: {agency_access_token[:10]}...{agency_access_token[-10:] if len(agency_access_token) > 20 else ''}")
             _logger.info(f"[CONFIG] Using GHL agency token for location ID: {location_id}")
 
             # Step 1: Get location access token
@@ -308,8 +310,10 @@ class ZillowPropertyController(http.Controller):
                 "locationId": location_id
             }
             try:
-                location_token_resp = requests.post(location_token_url, headers=location_token_headers, data=location_token_data)
-                _logger.info(f"[TOKEN] Location token response: {location_token_resp.status_code} {location_token_resp.text}")
+                location_token_resp = requests.post(location_token_url, headers=location_token_headers,
+                                                    data=location_token_data)
+                _logger.info(
+                    f"[TOKEN] Location token response: {location_token_resp.status_code} {location_token_resp.text}")
                 if location_token_resp.status_code not in [200, 201]:
                     return http.Response(
                         json.dumps({
@@ -406,7 +410,7 @@ class ZillowPropertyController(http.Controller):
                         'Content-Type': 'application/json',
                         'Version': '2021-07-28'
                     }
-                    
+
                     resp = requests.post(api_url, json=payload, headers=headers, timeout=10)
                     _logger.info(
                         f"[API] Response for property {prop.id}: Status={resp.status_code}, Body={resp.text}")
@@ -419,10 +423,12 @@ class ZillowPropertyController(http.Controller):
                         resp_data = {'raw_response': resp.text}
 
                     if resp.status_code not in [200, 201]:
-                        _logger.error(f"[API][ERROR] Failed to create contact for property {prop.id}. Status: {resp.status_code}, Response: {resp.text}, Payload: {json.dumps(payload, default=str)}")
+                        _logger.error(
+                            f"[API][ERROR] Failed to create contact for property {prop.id}. Status: {resp.status_code}, Response: {resp.text}, Payload: {json.dumps(payload, default=str)}")
 
                     if resp.status_code == 401:
-                        _logger.error(f"[API] Authentication failed for property {prop.id}. Token may have expired or has insufficient permissions.")
+                        _logger.error(
+                            f"[API] Authentication failed for property {prop.id}. Token may have expired or has insufficient permissions.")
                         # Try to get more details about the error
                         try:
                             error_data = resp.json()
@@ -432,7 +438,8 @@ class ZillowPropertyController(http.Controller):
                         results.append({
                             'property_id': prop.id,
                             'status': resp.status_code,
-                            'response': 'Authentication failed. Please check token permissions and ensure it has access to the contacts API.'
+                            'response': 'Authentication failed. Please check token permissions and ensure '
+                                        'it has access to the contacts API.'
                         })
                         continue
 
@@ -440,21 +447,22 @@ class ZillowPropertyController(http.Controller):
                         contact_id = resp_data['contact'].get('id')
                         if contact_id and all_custom_fields:
                             _logger.info(f"[UPDATE] Preparing custom fields for contact {contact_id}")
-                            
+
                             field_mapping = {
                                 'property_type': convert_for_radio(detail.home_type),
                                 'property_type_2': convert_for_single_options(detail.home_type),
                                 'beds': prop.bedrooms,
                                 'baths': prop.bathrooms,
                                 'sqft': prop.living_area,
-                                'lot_size': f"{prop.lot_area_value} {prop.lot_area_unit}" if prop.lot_area_value and prop.lot_area_unit else (prop.lot_area_value or ''),
+                                'lot_size': f"{prop.lot_area_value} {prop.lot_area_unit}" if prop.lot_area_value and prop.lot_area_unit else (
+                                        prop.lot_area_value or ''),
                                 'year_built': detail.year_built,
                                 'link_to_pictures': prop.hi_res_image_link,
                                 'asking_price': detail.price,
                                 'occupancy': 'Tenant' if detail.is_non_owner_occupied else 'Owner',
                                 'condition': detail.description,
                             }
-                            
+
                             custom_field_payload = {"customFields": []}
                             for field_key, value in field_mapping.items():
                                 if field_key in all_custom_fields and value is not None:
@@ -468,18 +476,22 @@ class ZillowPropertyController(http.Controller):
                             if custom_field_payload["customFields"]:
                                 update_url = update_contact_url_template.format(contact_id)
                                 update_headers = headers.copy()
-                                
-                                _logger.info(f"[UPDATE] Sending custom field update to {update_url} with payload: {json.dumps(custom_field_payload, default=str)}")
-                                
-                                update_resp = requests.put(update_url, json=custom_field_payload, headers=update_headers, timeout=10)
-                                
+
+                                _logger.info(
+                                    f"[UPDATE] Sending custom field update to {update_url} with payload: {json.dumps(custom_field_payload, default=str)}")
+
+                                update_resp = requests.put(update_url, json=custom_field_payload,
+                                                           headers=update_headers, timeout=10)
+
                                 if update_resp.status_code == 200:
-                                    _logger.info(f"[UPDATE] Successfully updated custom fields for contact {contact_id}")
+                                    _logger.info(
+                                        f"[UPDATE] Successfully updated custom fields for contact {contact_id}")
                                 else:
-                                    _logger.error(f"[UPDATE][ERROR] Failed to update custom fields for contact {contact_id}. Status: {update_resp.status_code}, Response: {update_resp.text}")
+                                    _logger.error(
+                                        f"[UPDATE][ERROR] Failed to update custom fields for contact {contact_id}. Status: {update_resp.status_code}, Response: {update_resp.text}")
                             else:
                                 _logger.info(f"[UPDATE] No custom fields to update for contact {contact_id}")
-                    
+
                     if resp.status_code in [200, 201]:
                         prop.write({
                             'sent_to_ghl_locations': [(4, ghl_location.id)],
@@ -494,7 +506,8 @@ class ZillowPropertyController(http.Controller):
                         'response': resp.text if isinstance(resp.text, str) else json.dumps(resp_data)
                     })
                 except Exception as e:
-                    _logger.error(f"[API][EXCEPTION] Error for property {prop.id}: {str(e)}. Payload: {json.dumps(payload, default=str)}")
+                    _logger.error(
+                        f"[API][EXCEPTION] Error for property {prop.id}: {str(e)}. Payload: {json.dumps(payload, default=str)}")
                     results.append({
                         'property_id': prop.id,
                         'status': 'error',

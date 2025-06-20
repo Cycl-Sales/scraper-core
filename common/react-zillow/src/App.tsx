@@ -134,16 +134,23 @@ function App() {
   const bedroomOptions = ['', '1', '2', '3', '4', '5'];
   const bathroomOptions = ['', '1', '1.5', '2', '3', '4'];
   const [homeTypeAnchorEl, setHomeTypeAnchorEl] = useState<null | HTMLElement>(null);
-  const [selectedHomeTypes, setSelectedHomeTypes] = useState<string[]>(['house', 'apartment', 'townhome']);
-  const [selectedSpaces, setSelectedSpaces] = useState<string[]>(['entire']);
+  const [selectedHomeTypes, setSelectedHomeTypes] = useState<string[]>([
+    'SINGLE_FAMILY',
+    'TOWNHOUSE',
+    'MULTI_FAMILY',
+    'CONDO',
+    'LOT',
+    'APARTMENT',
+    'MANUFACTURED',
+  ]);
   const homeTypeOptions = [
-    { value: 'house', label: 'Houses' },
-    { value: 'apartment', label: 'Apartments/Condos/Co-ops' },
-    { value: 'townhome', label: 'Townhomes' },
-  ];
-  const spaceOptions = [
-    { value: 'entire', label: 'Entire place' },
-    { value: 'room', label: 'Room' },
+    { value: 'SINGLE_FAMILY', label: 'Houses' },
+    { value: 'TOWNHOUSE', label: 'Townhomes' },
+    { value: 'MULTI_FAMILY', label: 'Multi-family' },
+    { value: 'CONDO', label: 'Condos/Co-ops' },
+    { value: 'LOT', label: 'Lots/Land' },
+    { value: 'APARTMENT', label: 'Apartments' },
+    { value: 'MANUFACTURED', label: 'Manufactured' },
   ];
   const [moreAnchorEl, setMoreAnchorEl] = useState<null | HTMLElement>(null);
   const [sqftMin, setSqftMin] = useState('');
@@ -288,6 +295,7 @@ function App() {
             `&sort_direction=${sortDir || sortDirection}` +
             `${locationId ? `&locationId=${encodeURIComponent(locationId)}` : ''}` +
             `&listing_type=${listingTypeValue}` +
+            (selectedHomeTypes.length > 0 ? `&home_types=${selectedHomeTypes.join(',')}` : '') +
             (minPrice ? `&min_price=${minPrice}` : '') +
             (maxPrice ? `&max_price=${maxPrice}` : '') +
             (bedrooms ? `&bedrooms=${bedrooms}` : '') +
@@ -339,7 +347,7 @@ function App() {
         setLoading(false);
       }
     },
-    [locationId, pageSize, sortColumn, sortDirection, listingTypeValue, minPrice, maxPrice, bedrooms, bathrooms, sqftMin, sqftMax, lotMin, lotMax, yearMin, yearMax, search]
+    [locationId, pageSize, sortColumn, sortDirection, listingTypeValue, minPrice, maxPrice, bedrooms, bathrooms, sqftMin, sqftMax, lotMin, lotMax, yearMin, yearMax, search, selectedHomeTypes]
   );
 
   // On mount, fetch from DB only once
@@ -418,6 +426,7 @@ function App() {
           `&sort_direction=${sortDir || sortDirection}` +
           `${locationId ? `&locationId=${encodeURIComponent(locationId)}` : ''}` +
           `&listing_type=${listingTypeValue}` +
+          (selectedHomeTypes.length > 0 ? `&home_types=${selectedHomeTypes.join(',')}` : '') +
           (minPrice ? `&min_price=${minPrice}` : '') +
           (maxPrice ? `&max_price=${maxPrice}` : '') +
           (bedrooms ? `&bedrooms=${bedrooms}` : '') +
@@ -578,19 +587,16 @@ function App() {
       return updated;
     });
   };
-  const handleSpaceChange = (value: string) => {
-    setSelectedSpaces(prev => {
-      const updated = prev.includes(value) ? prev.filter(v => v !== value) : [...prev, value];
-      setTimeout(() => fetchProperties(dataSource, 1, pageSize), 0);
-      return updated;
-    });
-  };
   const handleDeselectAllHomeTypes = () => {
-    setSelectedHomeTypes([]);
+    if (selectedHomeTypes.length === homeTypeOptions.length) {
+      setSelectedHomeTypes([]);
+    } else {
+      setSelectedHomeTypes(homeTypeOptions.map(o => o.value));
+    }
     fetchProperties(dataSource, 1, pageSize);
   };
   const handleApplyHomeType = () => {
-    // TODO: Use selectedHomeTypes and selectedSpaces in your search/filter logic
+    // TODO: Use selectedHomeTypes in your search/filter logic
     handleHomeTypeMenuClose();
   };
 
@@ -709,13 +715,14 @@ function App() {
     if (bathrooms) searchQueryState.filterState.baths = { min: parseFloat(bathrooms) };
     // Home Type
     if (selectedHomeTypes.length > 0) {
-      // Map to Zillow's home type keys if needed
-      // Example: house -> isSingleFamily, apartment -> isApartment, townhome -> isTownhouse
-      selectedHomeTypes.forEach(type => {
-        if (type === 'house') searchQueryState.filterState.isSingleFamily = { value: true };
-        if (type === 'apartment') searchQueryState.filterState.isApartment = { value: true };
-        if (type === 'townhome') searchQueryState.filterState.isTownhouse = { value: true };
-      });
+      // Map to Zillow's home type keys
+      if (selectedHomeTypes.includes('SINGLE_FAMILY')) searchQueryState.filterState.isSingleFamily = { value: true };
+      if (selectedHomeTypes.includes('TOWNHOUSE')) searchQueryState.filterState.isTownhouse = { value: true };
+      if (selectedHomeTypes.includes('MULTI_FAMILY')) searchQueryState.filterState.isMultiFamily = { value: true };
+      if (selectedHomeTypes.includes('CONDO')) searchQueryState.filterState.isCondo = { value: true };
+      if (selectedHomeTypes.includes('LOT')) searchQueryState.filterState.isLotLand = { value: true };
+      if (selectedHomeTypes.includes('APARTMENT')) searchQueryState.filterState.isApartment = { value: true };
+      if (selectedHomeTypes.includes('MANUFACTURED')) searchQueryState.filterState.isManufactured = { value: true };
     }
     // Square Footage
     if (sqftMin) searchQueryState.filterState.sqft = { ...searchQueryState.filterState.sqft, min: parseInt(sqftMin) };
@@ -816,7 +823,6 @@ function App() {
     Year_Min: yearMin,
     Year_Max: yearMax,
     Home_Types: selectedHomeTypes,
-    Spaces: selectedSpaces,
     Has_Basement: hasBasement,
     Must_Have_AC: mustHaveAC,
     Must_Have_Pool: mustHavePool,
@@ -872,6 +878,7 @@ function App() {
       `&page_size=${pageSizeOverride || pageSize}` +
       `&listing_type=by_agent` +
       `&home_status=${homeStatus}` +
+      (selectedHomeTypes.length > 0 ? `&home_types=${selectedHomeTypes.join(',')}` : '') +
       (minPrice ? `&min_price=${minPrice}` : '') +
       (maxPrice ? `&max_price=${maxPrice}` : '') +
       (bedrooms ? `&bedrooms=${bedrooms}` : '') +
@@ -1463,40 +1470,32 @@ function App() {
               </Box>
               <Box sx={{ px: 3, pt: 2, pb: 1 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                  <Checkbox
-                    checked={selectedHomeTypes.length === 0}
-                    onChange={handleDeselectAllHomeTypes}
-                    sx={{ color: '#2563eb', p: 0, mr: 1 }}
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={selectedHomeTypes.length === homeTypeOptions.length}
+                        indeterminate={selectedHomeTypes.length > 0 && selectedHomeTypes.length < homeTypeOptions.length}
+                        onChange={handleDeselectAllHomeTypes}
+                        sx={{ p: 0, mr: 1 }}
+                      />
+                    }
+                    label={
+                      <Typography
+                        variant="subtitle1"
+                        fontWeight={700}
+                        sx={{ color: '#2563eb' }}
+                      >
+                        {selectedHomeTypes.length === homeTypeOptions.length ? 'Deselect All' : 'Select All'}
+                      </Typography>
+                    }
+                    sx={{ ml: 0 }}
                   />
-                  <Typography
-                    variant="subtitle1"
-                    fontWeight={700}
-                    sx={{ color: '#2563eb', cursor: 'pointer' }}
-                    onClick={handleDeselectAllHomeTypes}
-                  >
-                    Deselect All
-                  </Typography>
                 </Box>
                 {homeTypeOptions.map(opt => (
                   <Box key={opt.value} sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
                     <Checkbox
                       checked={selectedHomeTypes.includes(opt.value)}
                       onChange={() => handleHomeTypeChange(opt.value)}
-                      sx={{ color: '#2563eb', p: 0, mr: 1 }}
-                    />
-                    <Typography variant="body1" fontWeight={500}>{opt.label}</Typography>
-                  </Box>
-                ))}
-              </Box>
-              <Box sx={{ bgcolor: '#f7f8fa', px: 3, py: 2, mt: 2 }}>
-                <Typography variant="subtitle1" fontWeight={600} color="#6e6e6e">Space</Typography>
-              </Box>
-              <Box sx={{ px: 3, pt: 2, pb: 1 }}>
-                {spaceOptions.map(opt => (
-                  <Box key={opt.value} sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                    <Checkbox
-                      checked={selectedSpaces.includes(opt.value)}
-                      onChange={() => handleSpaceChange(opt.value)}
                       sx={{ color: '#2563eb', p: 0, mr: 1 }}
                     />
                     <Typography variant="body1" fontWeight={500}>{opt.label}</Typography>
