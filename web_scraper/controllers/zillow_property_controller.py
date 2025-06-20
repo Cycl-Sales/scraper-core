@@ -28,32 +28,43 @@ def get_all_custom_fields(location_access_token, location_id):
         data = resp.json()
         fields = data.get('customFields', [])
         _logger.info(f"Successfully fetched {len(fields)} custom fields.")
-        return {
-            field['name'].lower(): {
-                'id': field['id'],
-                'key': field.get('fieldKey')
-            }
-            for field in fields if field.get('name')
-        }
+        
+        field_dict = {}
+        for field in fields:
+            key = field.get('fieldKey')
+            if key and '.' in key:
+                simple_key = key.split('.')[-1]
+                field_dict[simple_key] = { 'id': field['id'] }
+        return field_dict
     except Exception as e:
         _logger.error(f"Failed to fetch custom fields: {e}")
         return {}
 
 
-def convert_home_type_to_ghl(odoo_home_type):
-    """Converts Odoo home_type value to a GHL-compatible property type string."""
+def convert_for_radio(odoo_home_type):
+    """Converts Odoo home_type for the RADIO 'property_type' field."""
     if not odoo_home_type:
         return None
-    
+    mapping = {
+        'SINGLE_FAMILY': 'Single Family',
+        'MULTI_FAMILY': 'Multi Family',
+        'CONDO': 'Condo Townhome',
+        'TOWNHOUSE': 'Condo Townhome',
+        'MANUFACTURED': 'Mobile Home'
+    }
+    return mapping.get(odoo_home_type, None)
+
+
+def convert_for_single_options(odoo_home_type):
+    """Converts Odoo home_type for the SINGLE_OPTIONS 'property_type_2' field."""
+    if not odoo_home_type:
+        return None
     mapping = {
         'SINGLE_FAMILY': 'Single Family',
         'MULTI_FAMILY': 'Multifamily 2-4',
-        'CONDO': 'Single Family',
-        'TOWNHOUSE': 'Single Family',
+        'APARTMENT': 'Multifamily 5+',
         'LAND': 'Land',
         'LOT': 'Land',
-        'APARTMENT': 'Multifamily 5+',
-        'MANUFACTURED': 'Single Family'
     }
     return mapping.get(odoo_home_type, None)
 
@@ -430,27 +441,24 @@ class ZillowPropertyController(http.Controller):
                         if contact_id and all_custom_fields:
                             _logger.info(f"[UPDATE] Preparing custom fields for contact {contact_id}")
                             
-                            ghl_property_type = convert_home_type_to_ghl(detail.home_type)
-
                             field_mapping = {
-                                'property type': ghl_property_type,
-                                'property_type_2': "Multifamily 2-4",
+                                'property_type': convert_for_radio(detail.home_type),
+                                'property_type_2': convert_for_single_options(detail.home_type),
                                 'beds': prop.bedrooms,
                                 'baths': prop.bathrooms,
                                 'sqft': prop.living_area,
-                                'lot size': f"{prop.lot_area_value} {prop.lot_area_unit}" if prop.lot_area_value and prop.lot_area_unit else (prop.lot_area_value or ''),
-                                'year built': detail.year_built,
-                                'link to pictures': prop.hi_res_image_link,
-                                'asking price': detail.price,
+                                'lot_size': f"{prop.lot_area_value} {prop.lot_area_unit}" if prop.lot_area_value and prop.lot_area_unit else (prop.lot_area_value or ''),
+                                'year_built': detail.year_built,
+                                'link_to_pictures': prop.hi_res_image_link,
+                                'asking_price': detail.price,
                                 'occupancy': 'Tenant' if detail.is_non_owner_occupied else 'Owner',
                                 'condition': detail.description,
                             }
                             
                             custom_field_payload = {"customFields": []}
-                            for field_name, value in field_mapping.items():
-                                if field_name in all_custom_fields and value is not None:
-                                    field_info = all_custom_fields[field_name]
-                                    field_id = field_info.get('id')
+                            for field_key, value in field_mapping.items():
+                                if field_key in all_custom_fields and value is not None:
+                                    field_id = all_custom_fields[field_key].get('id')
                                     if field_id:
                                         custom_field_payload["customFields"].append({
                                             "id": field_id,
