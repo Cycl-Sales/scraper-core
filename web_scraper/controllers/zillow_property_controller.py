@@ -28,7 +28,13 @@ def get_all_custom_fields(location_access_token, location_id):
         data = resp.json()
         fields = data.get('customFields', [])
         _logger.info(f"Successfully fetched {len(fields)} custom fields.")
-        return {field['name'].lower(): field['id'] for field in fields}
+        return {
+            field['name'].lower(): {
+                'id': field['id'],
+                'key': field.get('fieldKey')
+            }
+            for field in fields if field.get('name')
+        }
     except Exception as e:
         _logger.error(f"Failed to fetch custom fields: {e}")
         return {}
@@ -424,13 +430,10 @@ class ZillowPropertyController(http.Controller):
                         if contact_id and all_custom_fields:
                             _logger.info(f"[UPDATE] Preparing custom fields for contact {contact_id}")
                             
-                            custom_field_payload = { "customFields": [] }
-                            
                             ghl_property_type = convert_home_type_to_ghl(detail.home_type)
 
                             field_mapping = {
-                                'property_type_2': ghl_property_type,
-                                'property_type': ghl_property_type,
+                                'property type': ghl_property_type,
                                 'beds': prop.bedrooms,
                                 'baths': prop.bathrooms,
                                 'sqft': prop.living_area,
@@ -442,20 +445,24 @@ class ZillowPropertyController(http.Controller):
                                 'condition': detail.description,
                             }
                             
+                            custom_field_update_payload = {}
                             for field_name, value in field_mapping.items():
                                 if field_name in all_custom_fields and value is not None:
-                                    field_id = all_custom_fields[field_name]
-                                    custom_field_payload["customFields"].append({
-                                        "id": field_id,
-                                        "value": str(value)
-                                    })
+                                    field_info = all_custom_fields[field_name]
+                                    field_key = field_info.get('key')
+                                    
+                                    if field_key:
+                                        if '.' in field_key:
+                                            field_key = field_key.split('.')[-1]
+                                        custom_field_update_payload[field_key] = str(value)
 
-                            if custom_field_payload["customFields"]:
+                            if custom_field_update_payload:
                                 update_url = update_contact_url_template.format(contact_id)
                                 update_headers = headers.copy()
-                                _logger.info(f"[UPDATE] Sending custom field update to {update_url} with payload: {json.dumps(custom_field_payload, default=str)}")
                                 
-                                update_resp = requests.put(update_url, json=custom_field_payload, headers=update_headers, timeout=10)
+                                _logger.info(f"[UPDATE] Sending custom field update to {update_url} with payload: {json.dumps(custom_field_update_payload, default=str)}")
+                                
+                                update_resp = requests.put(update_url, json=custom_field_update_payload, headers=update_headers, timeout=10)
                                 
                                 if update_resp.status_code == 200:
                                     _logger.info(f"[UPDATE] Successfully updated custom fields for contact {contact_id}")
