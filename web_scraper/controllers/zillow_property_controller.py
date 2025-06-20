@@ -445,24 +445,24 @@ class ZillowPropertyController(http.Controller):
                                 'condition': detail.description,
                             }
                             
-                            custom_field_update_payload = {}
+                            custom_field_payload = {"customFields": []}
                             for field_name, value in field_mapping.items():
                                 if field_name in all_custom_fields and value is not None:
                                     field_info = all_custom_fields[field_name]
-                                    field_key = field_info.get('key')
-                                    
-                                    if field_key:
-                                        if '.' in field_key:
-                                            field_key = field_key.split('.')[-1]
-                                        custom_field_update_payload[field_key] = str(value)
+                                    field_id = field_info.get('id')
+                                    if field_id:
+                                        custom_field_payload["customFields"].append({
+                                            "id": field_id,
+                                            "value": value
+                                        })
 
-                            if custom_field_update_payload:
+                            if custom_field_payload["customFields"]:
                                 update_url = update_contact_url_template.format(contact_id)
                                 update_headers = headers.copy()
                                 
-                                _logger.info(f"[UPDATE] Sending custom field update to {update_url} with payload: {json.dumps(custom_field_update_payload, default=str)}")
+                                _logger.info(f"[UPDATE] Sending custom field update to {update_url} with payload: {json.dumps(custom_field_payload, default=str)}")
                                 
-                                update_resp = requests.put(update_url, json=custom_field_update_payload, headers=update_headers, timeout=10)
+                                update_resp = requests.put(update_url, json=custom_field_payload, headers=update_headers, timeout=10)
                                 
                                 if update_resp.status_code == 200:
                                     _logger.info(f"[UPDATE] Successfully updated custom fields for contact {contact_id}")
