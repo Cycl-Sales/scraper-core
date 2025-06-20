@@ -13,10 +13,10 @@ import time
 _logger = logging.getLogger(__name__)
 
 
-def get_all_custom_fields(location_access_token):
+def get_all_custom_fields(location_access_token, location_id):
     """Fetches all custom fields for a given location."""
-    _logger.info("Fetching all custom fields from GHL...")
-    custom_fields_url = "https://services.leadconnectorhq.com/customFields/"
+    _logger.info(f"Fetching all custom fields from GHL for location {location_id}...")
+    custom_fields_url = f"https://services.leadconnectorhq.com/locations/{location_id}/customFields"
     headers = {
         'Accept': 'application/json',
         'Authorization': f'Bearer {location_access_token}',
@@ -311,7 +311,7 @@ class ZillowPropertyController(http.Controller):
             api_url = "https://services.leadconnectorhq.com/contacts/"
             update_contact_url_template = "https://services.leadconnectorhq.com/contacts/{}"
 
-            all_custom_fields = get_all_custom_fields(location_access_token)
+            all_custom_fields = get_all_custom_fields(location_access_token, location_id)
             if not all_custom_fields:
                 _logger.warning("[CONFIG] Could not fetch custom fields. Proceeding without custom field updates.")
 
