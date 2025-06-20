@@ -406,7 +406,7 @@ class ZillowPropertyController(http.Controller):
                         if contact_id and all_custom_fields:
                             _logger.info(f"[UPDATE] Preparing custom fields for contact {contact_id}")
                             
-                            custom_field_payload = { "customField": {} }
+                            custom_field_payload = { "customFields": [] }
                             
                             field_mapping = {
                                 'property type': detail.home_type,
@@ -424,12 +424,14 @@ class ZillowPropertyController(http.Controller):
                             for field_name, value in field_mapping.items():
                                 if field_name in all_custom_fields and value:
                                     field_id = all_custom_fields[field_name]
-                                    custom_field_payload["customField"][field_id] = str(value)
+                                    custom_field_payload["customFields"].append({
+                                        "id": field_id,
+                                        "value": str(value)
+                                    })
 
-                            if custom_field_payload["customField"]:
+                            if custom_field_payload["customFields"]:
                                 update_url = update_contact_url_template.format(contact_id)
                                 update_headers = headers.copy()
-                                del update_headers['Accept'] # PUT request might not need Accept
                                 _logger.info(f"[UPDATE] Sending custom field update to {update_url} with payload: {json.dumps(custom_field_payload, default=str)}")
                                 
                                 update_resp = requests.put(update_url, json=custom_field_payload, headers=update_headers, timeout=10)
