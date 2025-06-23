@@ -269,6 +269,18 @@ class ZillowPropertyController(http.Controller):
     def search_properties_new(self, **kwargs):
         logger = logging.getLogger(__name__)
         try:
+            # Immediately return a response to the frontend
+            return Response(
+                json.dumps({
+                    'success': True,
+                    'background_fetching': True,
+                    'message': 'Your request is being processed in the background.'
+                }),
+                content_type='application/json',
+                status=202,  # HTTP 202 Accepted
+                headers=get_cors_headers(request)
+            )
+
             location_id = kwargs.get('locationId')
             address = kwargs.get('address', '').strip()
             location = kwargs.get('location', '').strip()

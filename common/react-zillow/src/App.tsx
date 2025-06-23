@@ -459,11 +459,15 @@ function App() {
         const url = buildSearchUrl();
         const response = await api.get(`/api/zillow/search?url=${encodeURIComponent(url)}&page=${pageArg || 1}&page_size=${pageSizeArg || pageSize}${locationId ? `&locationId=${encodeURIComponent(locationId)}` : ''}`);
         const result = response.data;
-        if (result.success) {
+        if (result.background_fetching) {
+          setBackgroundFetching(true);
+          setError(null); // Clear previous errors
+        } else if (result.success || result.properties) {
           setProperties(result.properties);
           setFilteredProperties(result.properties);
           setTotalResults(result.total_results);
           if (result.total_pages) setPage(result.page || 1);
+          setBackgroundFetching(false);
         } else {
           setError(result.error || 'Failed to search on Zillow');
           setProperties([]);
@@ -475,6 +479,7 @@ function App() {
     } catch (err) {
       setError('Failed to fetch properties');
       console.error('Error fetching properties:', err);
+      setBackgroundFetching(false);
     } finally {
       setLoading(false);
     }
@@ -895,11 +900,15 @@ function App() {
     try {
       const response = await api.get(url);
       const result = response.data;
-      if (result.success || result.properties) {
+      if (result.background_fetching) {
+        setBackgroundFetching(true);
+        setError(null); // Clear previous errors
+      } else if (result.success || result.properties) {
         setProperties(result.properties);
         setFilteredProperties(result.properties);
         setTotalResults(result.total_results);
         if (result.total_pages) setPage(result.page || 1);
+        setBackgroundFetching(false);
       } else {
         setError(result.error || 'Failed to search on Zillow');
         setProperties([]);
@@ -910,6 +919,7 @@ function App() {
     } catch (err) {
       setError('Failed to fetch properties');
       console.error('Error fetching properties:', err);
+      setBackgroundFetching(false);
     } finally {
       setLoading(false);
     }
