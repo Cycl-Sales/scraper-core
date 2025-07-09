@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // Hardcoded API base URL for all environments
-export const API_BASE_URL = 'https://cyclsales.redtechitsolutions.com/';
+export const API_BASE_URL = 'http://localhost:5173/';
 
 // Create a shared axios instance
 export const api = axios.create({

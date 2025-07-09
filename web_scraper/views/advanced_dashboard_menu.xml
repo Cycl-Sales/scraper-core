@@ -1,0 +1,77 @@
+<odoo>
+    <!-- Parent menu -->
+    <menuitem id="menu_advanced_dashboard"
+              name="Advanced Dashboard"
+              sequence="10"
+              web_icon="web_scraper/static/description/advanced_dashboard_icon.png"
+              action="action_installed_location"/>
+
+    <!-- Installed Locations (main view) -->
+    <menuitem id="menu_installed_location_main"
+              name="Installed Locations"
+              parent="menu_advanced_dashboard"
+              action="action_installed_location"
+              sequence="1"/>
+
+    <!-- Locations submenu -->
+    <menuitem id="menu_advanced_dashboard_locations"
+              name="Location Details"
+              parent="menu_advanced_dashboard"
+              sequence="2"/>
+
+    <!-- Submenus under Locations -->
+    <menuitem id="menu_installed_location_detail"
+              name="Installed Location Details"
+              parent="menu_advanced_dashboard_locations"
+              action="action_installed_location_detail"
+              sequence="1"/>
+    <menuitem id="menu_location_business"
+              name="Business Info"
+              parent="menu_advanced_dashboard_locations"
+              action="action_location_business"
+              sequence="2"/>
+    <menuitem id="menu_location_social"
+              name="Social Info"
+              parent="menu_advanced_dashboard_locations"
+              action="action_location_social"
+              sequence="3"/>
+    <menuitem id="menu_location_settings"
+              name="Settings Info"
+              parent="menu_advanced_dashboard_locations"
+              action="action_location_settings"
+              sequence="4"/>
+    <menuitem id="menu_location_reseller"
+              name="Reseller Info"
+              parent="menu_advanced_dashboard_locations"
+              action="action_location_reseller"
+              sequence="5"/>
+    <!-- Users submenu under Location Details -->
+    <menuitem id="menu_ghl_location_user"
+              name="Users"
+              parent="menu_advanced_dashboard_locations"
+              action="action_ghl_location_user"
+              sequence="30"/>
+    
+    <!-- Contacts submenu -->
+    <menuitem id="menu_advanced_dashboard_contacts"
+              name="Contacts"
+              parent="menu_advanced_dashboard"
+              sequence="3"/>
+    
+    <!-- Submenus under Contacts -->
+    <menuitem id="menu_ghl_location_contact"
+              name="Contacts"
+              parent="menu_advanced_dashboard_contacts"
+              action="action_ghl_location_contact"
+              sequence="10"/>
+    <menuitem id="menu_ghl_contact_task"
+              name="Tasks"
+              parent="menu_advanced_dashboard_contacts"
+              action="action_ghl_contact_task"
+              sequence="20"/> 
+    <menuitem id="menu_ghl_contact_opportunity" 
+              name="Opportunities"
+              parent="menu_advanced_dashboard_contacts"
+              action="action_ghl_contact_opportunity"
+              sequence="30"/>
+</odoo> 

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 {
     'name': 'Web Scraper',
-    'version': '18.0.1.0',
+    'version': '18.0.1.4',
     'category': 'Tools',
     'summary': 'Web Scraper for Zillow',
     'description': """
@@ -22,6 +22,15 @@
         'views/templates.xml',
         'views/ghl_templates.xml',
         'views/ghl_location_views.xml',
+        'views/cyclsales_application_views.xml', 
+        'views/installed_location_views.xml',
+        'views/installed_location_detail_views.xml',
+        'views/ghl_location_user_views.xml',
+        'views/ghl_location_contact_views.xml',
+        'views/ghl_contact_task_views.xml',
+        'views/ghl_contact_conversation_views.xml',
+        'views/ghl_contact_opportunity_views.xml',
+        'views/advanced_dashboard_menu.xml',
         'data/ghl_cron.xml',
         'data/cron.xml',
     ],

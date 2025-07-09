@@ -772,3 +772,13 @@ class CORSPreflightController(http.Controller):
             status=200,
             headers=get_cors_headers(request)
         )
+
+
+class CORSPreflightDashboardController(http.Controller):
+    @route(['/api/dashboard/<path:anything>'], type='http', auth='none', methods=['OPTIONS'], csrf=False)
+    def cors_preflight_dashboard(self, **kwargs):
+        return Response(
+            "",
+            status=200,
+            headers=get_cors_headers(request)
+        )

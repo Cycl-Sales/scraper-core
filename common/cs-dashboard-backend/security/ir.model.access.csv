@@ -1,0 +1,5 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_ghl_oauth_config_user,ghl.oauth.config.user,model_ghl_oauth_config,base.group_user,1,1,1,1
+access_ghl_contact_user,ghl.contact.user,model_ghl_contact,base.group_user,1,1,1,1
+access_ghl_tag_user,ghl.tag.user,model_ghl_tag,base.group_user,1,1,1,1
+access_ghl_tag_manager,ghl.tag.manager,model_ghl_tag,base.group_system,1,1,1,1

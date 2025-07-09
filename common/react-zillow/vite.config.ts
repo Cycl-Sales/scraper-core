@@ -7,7 +7,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'https://cyclsales.redtechitsolutions.com/',  // Updated to correct backend port
+        target: 'http://localhost:8018',  // Updated to correct backend port
         changeOrigin: true,
         secure: false,
       }

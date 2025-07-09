@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="0">
+        <!-- Advanced Dashboard GHL OAuth Configuration -->
+        <record id="default_ghl_oauth_config" model="ghl.oauth.config">
+            <field name="name">Advanced Dashboard GHL OAuth Config</field>
+            <field name="is_active">True</field>
+            <field name="client_id">6867d1537079188afca5013c-mcou2rv4</field>
+            <field name="client_secret">e610fb6b-16b6-4750-bfc6-8182c7fb5bbc</field>
+            <field name="redirect_uri">https://ed4a-180-191-20-127.ngrok-free.app/api/dashboard/oauth/callback</field>
+            <field name="app_id">6867d1537079188afca5013c</field>
+            <field name="authorization_url">https://marketplace.gohighlevel.com/oauth/chooselocation</field>
+            <field name="token_url">https://services.leadconnectorhq.com/oauth/token</field>
+            <field name="api_base_url">https://services.leadconnectorhq.com</field>
+            <field name="api_version">2021-07-28</field>
+            <field name="scopes">locations.readonly contacts.readonly</field>
+            <field name="auto_refresh_tokens">True</field>
+            <field name="token_expiry_buffer">5</field>
+        </record>
+    </data>
+</odoo> 
