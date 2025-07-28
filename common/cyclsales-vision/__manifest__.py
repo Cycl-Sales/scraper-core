@@ -22,9 +22,11 @@ Features:
     'depends': ['base', 'web_scraper', 'cs-dashboard-backend'],
     'data': [
         'security/ir.model.access.csv',
+        'data/ai_service_data.xml',
         'views/views.xml',
         'views/templates.xml',
         'views/trigger_views.xml',
+        'views/ai_views.xml',
     ],
     'installable': True,
     'application': True,

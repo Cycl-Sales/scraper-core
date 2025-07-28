@@ -807,20 +807,27 @@ class GhlContactMessage(models.Model):
             if not data:
                 _logger.error(f"No message data in response: {resp.text}")
                 return None
+            
+            # Extract message data - GHL API wraps message in a 'message' object
+            message_data = data.get('message', data)
+            if not message_data:
+                _logger.error(f"No message data found in response: {resp.text}")
+                return None
+            
             # Map fields
             vals = {
-                'ghl_id': data.get('id'),
-                'type': data.get('type'),
-                'message_type': data.get('messageType'),
-                'body': data.get('body'),
-                'direction': data.get('direction'),
-                'status': data.get('status'),
-                'content_type': data.get('contentType'),
-                'source': data.get('source'),
-                'conversation_provider_id': data.get('conversationProviderId'),
+                'ghl_id': message_data.get('id'),
+                'type': message_data.get('type'),
+                'message_type': message_data.get('messageType'),
+                'body': message_data.get('body'),
+                'direction': message_data.get('direction'),
+                'status': message_data.get('status'),
+                'content_type': message_data.get('contentType'),
+                'source': message_data.get('source'),
+                'conversation_provider_id': message_data.get('conversationProviderId'),
             }
             # Parse dateAdded
-            date_added = data.get('dateAdded')
+            date_added = message_data.get('dateAdded')
             if date_added:
                 try:
                     vals['date_added'] = datetime.strptime(date_added.replace('Z', ''), '%Y-%m-%dT%H:%M:%S.%f')
@@ -831,7 +838,7 @@ class GhlContactMessage(models.Model):
                         _logger.warning(f"Could not parse date: {date_added}")
                         vals['date_added'] = False
             # Find installed.location by locationId
-            location_id_val = data.get('locationId')
+            location_id_val = message_data.get('locationId')
             installed_location = self.env['installed.location'].search([
                 ('location_id', '=', location_id_val)
             ], limit=1)
@@ -840,7 +847,7 @@ class GhlContactMessage(models.Model):
                 return None
             vals['location_id'] = installed_location.id
             # Find contact by contactId and location
-            contact_id_val = data.get('contactId')
+            contact_id_val = message_data.get('contactId')
             contact = self.env['ghl.location.contact'].search([
                 ('external_id', '=', contact_id_val),
                 ('location_id', '=', installed_location.id)
@@ -851,7 +858,7 @@ class GhlContactMessage(models.Model):
             else:
                 vals['contact_id'] = contact.id
             # Find conversation by conversationId and location
-            conversation_id_val = data.get('conversationId')
+            conversation_id_val = message_data.get('conversationId')
             conversation = self.env['ghl.contact.conversation'].search([
                 ('external_id', '=', conversation_id_val),
                 ('location_id', '=', installed_location.id)
@@ -859,7 +866,7 @@ class GhlContactMessage(models.Model):
             if conversation:
                 vals['conversation_id'] = conversation.id
             # Find user by userId
-            user_id_val = data.get('userId')
+            user_id_val = message_data.get('userId')
             user = self.env['ghl.location.user'].search([
                 ('external_id', '=', user_id_val)
             ], limit=1)
@@ -874,7 +881,7 @@ class GhlContactMessage(models.Model):
             else:
                 message = self.sudo().create(vals)
             # Handle attachments
-            attachments = data.get('attachments', [])
+            attachments = message_data.get('attachments', [])
             if attachments:
                 message.attachment_ids.unlink()
                 for att_url in attachments:
@@ -883,7 +890,7 @@ class GhlContactMessage(models.Model):
                         'attachment_url': att_url,
                     })
             # Handle meta
-            meta = data.get('meta')
+            meta = message_data.get('meta')
             if meta:
                 if message.meta_id:
                     message.meta_id.unlink()

@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <!-- Default AI Service Configuration -->
+        <record id="default_ai_service" model="cyclsales.vision.ai">
+            <field name="name">Default OpenAI GPT-4 Service</field>
+            <field name="model_type">gpt-4o</field>
+            <field name="base_url">https://api.openai.com/v1</field>
+            <field name="max_tokens">500</field>
+            <field name="temperature">0.3</field>
+            <field name="is_active">True</field>
+            <field name="default_prompt_template">Analyze the following call transcript and return a JSON response with exactly this structure:
+{
+    "summary": "A concise summary of the call conversation",
+    "keywords": ["keyword1", "keyword2", "keyword3"],
+    "sentiment": "positive|negative|neutral",
+    "action_items": ["action1", "action2", "action3"],
+    "confidence_score": 0.85,
+    "duration_analyzed": "5 minutes 23 seconds",
+    "speakers_detected": 2
+}
+
+Requirements:
+- summary: string, never empty, 2-3 sentences max
+- keywords: array of strings, max 10 items, relevant to the conversation
+- sentiment: only "positive", "negative", or "neutral"
+- action_items: array of strings, max 5 items, specific next steps
+- confidence_score: float between 0.0 and 1.0
+- duration_analyzed: string describing duration
+- speakers_detected: integer >= 0
+
+Call Transcript:
+{transcript}
+
+Return only the JSON object, no additional text.</field>
+        </record>
+    </data>
+</odoo> 

@@ -856,6 +856,72 @@ class GhlContactConversation(models.Model):
                 }
             }
             
+    def _map_message_type(self, message_type):
+        """
+        Map numeric message type from GHL API to string values expected by the model
+        """
+        if not message_type:
+            return ''
+        
+        # GHL API message type mapping
+        type_mapping = {
+            1: 'TYPE_CALL',
+            2: 'TYPE_SMS', 
+            3: 'TYPE_EMAIL',
+            4: 'TYPE_SMS_REVIEW_REQUEST',
+            5: 'TYPE_WEBCHAT',
+            6: 'TYPE_SMS_NO_SHOW_REQUEST',
+            7: 'TYPE_NO_SHOW',
+            8: 'TYPE_CAMPAIGN_SMS',
+            9: 'TYPE_CAMPAIGN_CALL',
+            10: 'TYPE_CAMPAIGN_EMAIL',
+            11: 'TYPE_CAMPAIGN_VOICEMAIL',
+            12: 'TYPE_FACEBOOK',
+            13: 'TYPE_CAMPAIGN_FACEBOOK',
+            14: 'TYPE_CAMPAIGN_MANUAL_CALL',
+            15: 'TYPE_CAMPAIGN_MANUAL_SMS',
+            16: 'TYPE_GMB',
+            17: 'TYPE_CAMPAIGN_GMB',
+            18: 'TYPE_REVIEW',
+            19: 'TYPE_INSTAGRAM',
+            20: 'TYPE_WHATSAPP',
+            21: 'TYPE_CUSTOM_SMS',
+            22: 'TYPE_CUSTOM_EMAIL',
+            23: 'TYPE_CUSTOM_PROVIDER_SMS',
+            24: 'TYPE_CUSTOM_PROVIDER_EMAIL',
+            25: 'TYPE_IVR_CALL',
+            26: 'TYPE_ACTIVITY_CONTACT',
+            27: 'TYPE_ACTIVITY_INVOICE',
+            28: 'TYPE_ACTIVITY_PAYMENT',
+            29: 'TYPE_ACTIVITY_OPPORTUNITY',
+            30: 'TYPE_LIVE_CHAT',
+            31: 'TYPE_LIVE_CHAT_INFO_MESSAGE',
+            32: 'TYPE_ACTIVITY_APPOINTMENT',
+            33: 'TYPE_FACEBOOK_COMMENT',
+            34: 'TYPE_INSTAGRAM_COMMENT',
+            35: 'TYPE_CUSTOM_CALL',
+            36: 'TYPE_INTERNAL_COMMENT',
+        }
+        
+        return type_mapping.get(message_type, '')
+
+    def _map_conversation_type(self, conversation_type):
+        """
+        Map numeric conversation type from GHL API to string values expected by the model
+        """
+        if not conversation_type:
+            return ''
+        
+        # GHL API conversation type mapping
+        type_mapping = {
+            1: 'TYPE_PHONE',
+            2: 'TYPE_SMS',
+            3: 'TYPE_EMAIL',
+            4: 'TYPE_CHAT',
+        }
+        
+        return type_mapping.get(conversation_type, '')
+
     def fetch_conversation_single(self, location_token, conversation_id):
         """
         Fetch a single conversation from GHL using the location token and conversation ID.
@@ -879,15 +945,17 @@ class GhlContactConversation(models.Model):
                 return None
             # Map fields
             vals = {
-                'external_id': data.get('id'),
+                'ghl_id': data.get('id'),  # Required field
                 'contact_id': data.get('contactId'),
-                'location_id': data.get('locationId'),
-                'deleted': data.get('deleted', False),
-                'inbox': data.get('inbox', False),
-                'type': data.get('type'),
+                'location_id': data.get('locationId'),   
                 'unread_count': data.get('unreadCount'),
-                'assigned_to': data.get('assignedTo'),
-                'starred': data.get('starred', False),
+                'type': self._map_conversation_type(data.get('type')),
+                'last_message_body': data.get('lastMessageBody', ''),
+                'last_message_type': self._map_message_type(data.get('lastMessageType')),
+                'full_name': data.get('fullName', ''),
+                'contact_name': data.get('contactName', ''),
+                'email': data.get('email', ''),
+                'phone': data.get('phone', ''),
             }
             # Find installed.location by locationId
             installed_location = self.env['installed.location'].search([
@@ -908,7 +976,7 @@ class GhlContactConversation(models.Model):
                 vals['contact_id'] = contact.id
             # Create or update conversation
             conversation = self.sudo().search([
-                ('external_id', '=', vals['external_id']),
+                ('ghl_id', '=', vals['ghl_id']),
                 ('location_id', '=', installed_location.id)
             ], limit=1)
             if conversation:
