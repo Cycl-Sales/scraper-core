@@ -3,8 +3,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { Clock, Edit, Mail, Pause, Phone, Play, Plus, Trash2, Users, Zap } from "lucide-react";
+import { Clock, Edit, Mail, Pause, Phone, Play, Plus, Trash2, Users, Zap, ArrowLeft } from "lucide-react";
 import { useState } from "react";
+import { Link } from "wouter";
 
 export default function AutomationRules() {
   const [rules] = useState([
@@ -42,6 +43,14 @@ export default function AutomationRules() {
       <TopNavigation />
       
       <main className="p-8 max-w-full">
+        <div className="mb-4">
+          <Link href="/automations">
+            <Button variant="ghost" className="flex items-center gap-2 text-slate-300 hover:text-white mb-2">
+              <ArrowLeft className="w-4 h-4" />
+              Back to Automations
+            </Button>
+          </Link>
+        </div>
         {/* Page Header */}
         <div className="mb-8 flex justify-between items-center">
           <div>

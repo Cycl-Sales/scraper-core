@@ -1,0 +1,211 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Main Template -->
+    <record id="automation_template_real_estate_agent" model="automation.template">
+        <field name="name">Default - Real Estate Agent</field>
+        <field name="is_default">True</field>
+        <field name="business_context">This agency specializes in representing buyers and sellers in residential real estate transactions. The focus is on providing expert guidance, negotiating the best terms, and ensuring a smooth closing process.</field>
+    </record>
+    <!-- Call Transcript Settings -->
+    <record id="call_transcript_setting_rea" model="automation.call.transcript.setting">
+        <field name="template_id" ref="automation_template_real_estate_agent"/>
+        <field name="enabled">True</field>
+        <field name="add_user_data">True</field>
+        <field name="update_contact_name">True</field>
+        <field name="improve_speaker_accuracy">True</field>
+        <field name="improve_word_accuracy">True</field>
+        <field name="assign_speaker_labels">True</field>
+        <field name="save_full_transcript">True</field>
+        <field name="save_transcript_url">True</field>
+    </record>
+    <!-- Call Summary Settings -->
+    <record id="call_summary_setting_rea" model="automation.call.summary.setting">
+        <field name="template_id" ref="automation_template_real_estate_agent"/>
+        <field name="enabled">True</field>
+        <field name="add_url_to_note">True</field>
+        <field name="update_summary_field">True</field>
+        <field name="create_contact_note">True</field>
+    </record>
+    <!-- Extract Details -->
+    <record id="extract_detail_1_rea" model="automation.extract.detail">
+        <field name="call_summary_setting_id" ref="call_summary_setting_rea"/>
+        <field name="question">What is the client’s full name and preferred contact method?</field>
+    </record>
+    <record id="extract_detail_2_rea" model="automation.extract.detail">
+        <field name="call_summary_setting_id" ref="call_summary_setting_rea"/>
+        <field name="question">What is the property address and unique features?</field>
+    </record>
+    <record id="extract_detail_3_rea" model="automation.extract.detail">
+        <field name="call_summary_setting_id" ref="call_summary_setting_rea"/>
+        <field name="question">What is the desired sale or purchase price?</field>
+    </record>
+    <record id="extract_detail_4_rea" model="automation.extract.detail">
+        <field name="call_summary_setting_id" ref="call_summary_setting_rea"/>
+        <field name="question">What is the client’s timeline for buying or selling?</field>
+    </record>
+    <record id="extract_detail_5_rea" model="automation.extract.detail">
+        <field name="call_summary_setting_id" ref="call_summary_setting_rea"/>
+        <field name="question">Are there any privacy or confidentiality concerns?</field>
+    </record>
+    <record id="extract_detail_6_rea" model="automation.extract.detail">
+        <field name="call_summary_setting_id" ref="call_summary_setting_rea"/>
+        <field name="question">What is the reason for buying or selling?</field>
+    </record>
+    <record id="extract_detail_7_rea" model="automation.extract.detail">
+        <field name="call_summary_setting_id" ref="call_summary_setting_rea"/>
+        <field name="question">Has the property been listed before?</field>
+    </record>
+    <record id="extract_detail_8_rea" model="automation.extract.detail">
+        <field name="call_summary_setting_id" ref="call_summary_setting_rea"/>
+        <field name="question">What marketing channels are preferred?</field>
+    </record>
+    <record id="extract_detail_9_rea" model="automation.extract.detail">
+        <field name="call_summary_setting_id" ref="call_summary_setting_rea"/>
+        <field name="question">Are there any staging or improvement needs?</field>
+    </record>
+    <record id="extract_detail_10_rea" model="automation.extract.detail">
+        <field name="call_summary_setting_id" ref="call_summary_setting_rea"/>
+        <field name="question">Who else is involved in the decision (spouse, attorney)?</field>
+    </record>
+    <!-- AI Sales Scoring -->
+    <record id="ai_sales_scoring_setting_rea" model="automation.ai.sales.scoring.setting">
+        <field name="template_id" ref="automation_template_real_estate_agent"/>
+        <field name="enabled">True</field>
+        <field name="framework">CONSULTATIVE SALES FRAMEWORK – REAL ESTATE AGENT</field>
+    </record>
+    <record id="sales_rule_1_rea" model="automation.sales.rule">
+        <field name="sales_scoring_setting_id" ref="ai_sales_scoring_setting_rea"/>
+        <field name="rule_text">Did the agent build rapport and set clear expectations at the start of the engagement?</field>
+    </record>
+    <record id="sales_rule_2_rea" model="automation.sales.rule">
+        <field name="sales_scoring_setting_id" ref="ai_sales_scoring_setting_rea"/>
+        <field name="rule_text">Was the property or buyer’s needs thoroughly assessed and documented?</field>
+    </record>
+    <record id="sales_rule_3_rea" model="automation.sales.rule">
+        <field name="sales_scoring_setting_id" ref="ai_sales_scoring_setting_rea"/>
+        <field name="rule_text">Did the agent avoid pushing for a quick sale and instead focus on the client’s goals?</field>
+    </record>
+    <record id="sales_rule_4_rea" model="automation.sales.rule">
+        <field name="sales_scoring_setting_id" ref="ai_sales_scoring_setting_rea"/>
+        <field name="rule_text">Did the agent handle objections and negotiations professionally?</field>
+    </record>
+    <record id="sales_rule_5_rea" model="automation.sales.rule">
+        <field name="sales_scoring_setting_id" ref="ai_sales_scoring_setting_rea"/>
+        <field name="rule_text">Did the agent clearly define the next steps and keep the client informed?</field>
+    </record>
+    <!-- Run Contact Automations -->
+    <record id="run_contact_automations_setting_rea" model="automation.run.contact.automations.setting">
+        <field name="template_id" ref="automation_template_real_estate_agent"/>
+        <field name="enabled">True</field>
+        <field name="disable_for_tag">True</field>
+        <field name="after_inactivity">True</field>
+        <field name="inactivity_hours">10</field>
+        <field name="after_min_duration">True</field>
+        <field name="min_duration_seconds">20</field>
+        <field name="after_message_count">True</field>
+        <field name="message_count">2</field>
+    </record>
+    <!-- Contact Status -->
+    <record id="contact_status_setting_rea" model="automation.contact.status.setting">
+        <field name="template_id" ref="automation_template_real_estate_agent"/>
+        <field name="enabled">True</field>
+        <field name="add_status_tag">True</field>
+        <field name="update_status_field">True</field>
+    </record>
+    <record id="status_option_1_rea" model="automation.status.option">
+        <field name="contact_status_setting_id" ref="contact_status_setting_rea"/>
+        <field name="name">Active Client</field>
+        <field name="description">The client is actively engaged in a buying or selling process.</field>
+        <field name="icon">user-check</field>
+        <field name="color">sky</field>
+    </record>
+    <record id="status_option_2_rea" model="automation.status.option">
+        <field name="contact_status_setting_id" ref="contact_status_setting_rea"/>
+        <field name="name">Offer Made</field>
+        <field name="description">An offer has been made or received. Awaiting response or negotiation.</field>
+        <field name="icon">badge-check</field>
+        <field name="color">green</field>
+    </record>
+    <record id="status_option_3_rea" model="automation.status.option">
+        <field name="contact_status_setting_id" ref="contact_status_setting_rea"/>
+        <field name="name">Under Contract</field>
+        <field name="description">The property is under contract. Pending closing.</field>
+        <field name="icon">scroll</field>
+        <field name="color">blue</field>
+    </record>
+    <record id="status_option_4_rea" model="automation.status.option">
+        <field name="contact_status_setting_id" ref="contact_status_setting_rea"/>
+        <field name="name">Disqualified – Not Ready</field>
+        <field name="description">The client is not ready to buy or sell at this time.</field>
+        <field name="icon">ban</field>
+        <field name="color">rose</field>
+    </record>
+    <!-- AI Contact Scoring -->
+    <record id="ai_contact_scoring_setting_rea" model="automation.ai.contact.scoring.setting">
+        <field name="template_id" ref="automation_template_real_estate_agent"/>
+        <field name="enabled">True</field>
+        <field name="use_notes_for_context">True</field>
+        <field name="update_score_field">True</field>
+        <field name="add_score_tag">False</field>
+        <field name="examples_rules">A-grade: Client is highly engaged, responsive, and ready to transact. B-grade: Client is interested but has minor delays. C-grade: Client is lukewarm or slow to respond. D-grade: Client is non-committal or has major objections. F-grade: Client is not interested or not a fit.</field>
+    </record>
+    <!-- Full Contact Summary -->
+    <record id="full_contact_summary_setting_rea" model="automation.full.contact.summary.setting">
+        <field name="template_id" ref="automation_template_real_estate_agent"/>
+        <field name="enabled">True</field>
+        <field name="use_call_summary_fields">True</field>
+        <field name="update_status_summary">True</field>
+        <field name="create_summary_note">True</field>
+        <field name="delete_old_summary">True</field>
+    </record>
+    <!-- Contact Value -->
+    <record id="contact_value_setting_rea" model="automation.contact.value.setting">
+        <field name="template_id" ref="automation_template_real_estate_agent"/>
+        <field name="enabled">True</field>
+        <field name="update_value_field">True</field>
+        <field name="use_value_override">True</field>
+    </record>
+    <record id="contact_value_example_1_rea" model="automation.contact.value.example">
+        <field name="contact_value_setting_id" ref="contact_value_setting_rea"/>
+        <field name="example_text">$1M+ property: Value $30,000+ (commission).</field>
+    </record>
+    <record id="contact_value_example_2_rea" model="automation.contact.value.example">
+        <field name="contact_value_setting_id" ref="contact_value_setting_rea"/>
+        <field name="example_text">$500k–$1M property: Value $10,000–$30,000.</field>
+    </record>
+    <record id="contact_value_example_3_rea" model="automation.contact.value.example">
+        <field name="contact_value_setting_id" ref="contact_value_setting_rea"/>
+        <field name="example_text">$250k–$500k property: Value $5,000–$10,000.</field>
+    </record>
+    <record id="contact_value_example_4_rea" model="automation.contact.value.example">
+        <field name="contact_value_setting_id" ref="contact_value_setting_rea"/>
+        <field name="example_text">Under $250k: Value $1,000–$5,000.</field>
+    </record>
+    <record id="contact_value_example_5_rea" model="automation.contact.value.example">
+        <field name="contact_value_setting_id" ref="contact_value_setting_rea"/>
+        <field name="example_text">Not listing: Value $0.</field>
+    </record>
+    <!-- Task Generation -->
+    <record id="task_generation_setting_rea" model="automation.task.generation.setting">
+        <field name="template_id" ref="automation_template_real_estate_agent"/>
+        <field name="enabled">True</field>
+        <field name="auto_complete_tasks">True</field>
+        <field name="auto_reschedule_tasks">True</field>
+    </record>
+    <record id="task_rule_1_rea" model="automation.task.rule">
+        <field name="task_generation_setting_id" ref="task_generation_setting_rea"/>
+        <field name="rule_text">If a new client is onboarded, schedule a consultation within 48 hours.</field>
+    </record>
+    <record id="task_rule_2_rea" model="automation.task.rule">
+        <field name="task_generation_setting_id" ref="task_generation_setting_rea"/>
+        <field name="rule_text">If an offer is made, follow up within 24 hours.</field>
+    </record>
+    <record id="task_rule_3_rea" model="automation.task.rule">
+        <field name="task_generation_setting_id" ref="task_generation_setting_rea"/>
+        <field name="rule_text">If a property is under contract, create a closing checklist task.</field>
+    </record>
+    <record id="task_rule_4_rea" model="automation.task.rule">
+        <field name="task_generation_setting_id" ref="task_generation_setting_rea"/>
+        <field name="rule_text">If the client is not ready, create a follow-up for 30 days later.</field>
+    </record>
+</odoo> 

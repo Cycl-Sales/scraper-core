@@ -30,6 +30,8 @@
         'views/ghl_contact_task_views.xml',
         'views/ghl_contact_conversation_views.xml',
         'views/ghl_contact_opportunity_views.xml',
+        'views/ghl_contact_message_views.xml',
+        'views/ghl_contact_message_transcript_views.xml',
         'views/advanced_dashboard_menu.xml',
         'data/ghl_cron.xml',
         'data/cron.xml',

@@ -1,14 +1,13 @@
-import { useState } from "react";
 import TopNavigation from "@/components/top-navigation";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { MessageSquare, Plus, Edit, Trash2, Copy, Mail, Phone, Calendar, Tag } from "lucide-react";
+import { Calendar, Copy, Edit, Mail, MessageSquare, Phone, Plus, Tag, Trash2, ArrowLeft } from "lucide-react";
+import { useState } from "react";
+import { Link } from "wouter";
 
 export default function ResponseTemplates() {
   const [templates] = useState([
@@ -49,6 +48,14 @@ export default function ResponseTemplates() {
       <TopNavigation />
       
       <main className="p-8 max-w-full">
+        <div className="mb-4">
+          <Link href="/automations">
+            <Button variant="ghost" className="flex items-center gap-2 text-slate-300 hover:text-white mb-2">
+              <ArrowLeft className="w-4 h-4" />
+              Back to Automations
+            </Button>
+          </Link>
+        </div>
         {/* Page Header */}
         <div className="mb-8 flex justify-between items-center">
           <div>

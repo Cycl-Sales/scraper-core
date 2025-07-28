@@ -12,6 +12,7 @@
                 <field name="token_status" widget="badge"/>
                 <field name="is_active"/>
                 <field name="create_date"/>
+                <field name="location_ids"/>
             </list>
         </field>
     </record>
@@ -57,6 +58,7 @@
                             <field name="app_id"/>
                             <field name="client_id"/>
                             <field name="client_secret" password="True"/>
+                            <field name="company_id"/>
                         </group>
                         <group string="Token Information">
                             <field name="token_status" widget="badge"/>
@@ -64,6 +66,9 @@
                             <field name="refresh_token" password="True" invisible="token_status == 'missing'"/>
                             <field name="token_expiry" invisible="token_status == 'missing'"/>
                         </group>
+                    </group>
+                    <group string="Installed Locations">
+                        <field name="location_ids" widget="many2many_tags"/>
                     </group>
                     <notebook>
                         <page string="Notes" name="notes">

@@ -4,6 +4,7 @@ import logging
 import requests
 import json
 from datetime import datetime
+import time
 
 _logger = logging.getLogger(__name__)
 
@@ -91,30 +92,36 @@ class GhlContactTask(models.Model):
 
     @api.model_create_multi
     def create(self, vals):
-        try:
-            # Auto-assign user if assigned_to matches a ghl.location.user
-            if vals.get('assigned_to') and vals.get('contact_id'):
-                _logger.info(f"Creating task with assigned_to: {vals.get('assigned_to')}, contact_id: {vals.get('contact_id')}")
-                contact = self.env['ghl.location.contact'].browse(vals['contact_id'])
-                _logger.info(f"Contact found: {contact.exists()}, location_id: {contact.location_id if contact.exists() else 'N/A'}")
-                if contact and contact.location_id:
-                    # Find the installed.location record
-                    installed_location = self.env['installed.location'].search([
-                        ('location_id', '=', contact.location_id)
-                    ], limit=1)
-                
-                if installed_location:
-                    user = self.env['ghl.location.user'].search([
-                        ('external_id', '=', vals['assigned_to']),
-                        ('location_id', '=', contact.location_id)
-                    ], limit=1)
-                    _logger.info(f"User found: {user.exists() if user else False}")
-                    if user:
-                        vals['assigned_user_id'] = user.id
-        except Exception as e:
-            _logger.error(f"Error in create method: {str(e)}")
-            # Continue with creation even if auto-assignment fails
-        return super().create(vals)
+        def assign_user(val):
+            try:
+                # Auto-assign user if assigned_to matches a ghl.location.user
+                if val.get('assigned_to') and val.get('contact_id'):
+                    _logger.info(f"Creating task with assigned_to: {val.get('assigned_to')}, contact_id: {val.get('contact_id')}")
+                    contact = self.env['ghl.location.contact'].browse(val['contact_id'])
+                    _logger.info(f"Contact found: {contact.exists()}, location_id: {contact.location_id if contact.exists() else 'N/A'}")
+                    if contact and contact.location_id:
+                        installed_location = self.env['installed.location'].search([
+                            ('location_id', '=', contact.location_id.id)
+                        ], limit=1)
+                        if installed_location:
+                            user = self.env['ghl.location.user'].search([
+                                ('external_id', '=', val['assigned_to']),
+                                ('location_id', '=', contact.location_id.id)
+                            ], limit=1)
+                            _logger.info(f"User found: {user.exists() if user else False}")
+                            if user:
+                                val['assigned_user_id'] = user.id
+            except Exception as e:
+                _logger.error(f"Error in create method: {str(e)}")
+                # Continue with creation even if auto-assignment fails
+        # If vals is a list, handle each dict in the list
+        if isinstance(vals, list):
+            for val in vals:
+                assign_user(val)
+            return super(GhlContactTask, self).create(vals)
+        else:
+            assign_user(vals)
+            return super(GhlContactTask, self).create(vals)
 
     def write(self, vals):
         # Auto-assign user if assigned_to is being updated
@@ -134,7 +141,7 @@ class GhlContactTask(models.Model):
             if location_id:
                 user = self.env['ghl.location.user'].search([
                     ('external_id', '=', vals['assigned_to']),
-                    ('location_id', '=', location_id)
+                    ('location_id', '=', location_id.id)
                 ], limit=1)
                 if user:
                     vals['assigned_user_id'] = user.id
@@ -228,7 +235,6 @@ class GhlContactTask(models.Model):
             
             if response.status_code == 200:
                 tasks_data = response.json()
-                _logger.info(f"Raw API response for contact {contact_external_id}: {json.dumps(tasks_data, indent=2)}")
                 
                 # Check if tasks_data is a list or dict
                 if isinstance(tasks_data, list):
@@ -408,6 +414,184 @@ class GhlContactTask(models.Model):
                 'message': f"Bulk sync error: {str(e)}"
             }
 
+    def sync_all_contact_tasks_optimized(self, app_access_token, location_id, company_id):
+        """
+        Optimized version of sync_all_contact_tasks that:
+        1. Gets location token once instead of per contact
+        2. Uses bulk operations where possible
+        3. Reduces API calls by batching
+        4. Uses more efficient database queries
+        
+        Args:
+            app_access_token (str): GHL OAuth agency access token
+            location_id (str): GHL location ID
+            company_id (str): GHL company ID
+            
+        Returns:
+            dict: Overall sync results
+        """
+        try:
+            _logger.info(f"[optimized task sync] Starting for location_id={location_id}")
+            
+            # Get contacts for this location
+            contacts = self.env['ghl.location.contact'].search([
+                ('location_id.location_id', '=', location_id)
+            ])
+            _logger.info(f"[optimized task sync] Found {len(contacts)} contacts")
+            
+            if not contacts:
+                return {
+                    'success': True,
+                    'total_contacts_processed': 0,
+                    'total_tasks_created': 0,
+                    'total_tasks_updated': 0,
+                    'errors': []
+                }
+            
+            # Step 1: Get location token once (instead of per contact)
+            token_url = "https://services.leadconnectorhq.com/oauth/locationToken"
+            headers = {
+                'Accept': 'application/json',
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Authorization': f'Bearer {app_access_token}',
+                'Version': '2021-07-28',
+            }
+            data = {
+                'companyId': company_id,
+                'locationId': location_id,
+            }
+            
+            token_resp = requests.post(token_url, headers=headers, data=data)
+            if token_resp.status_code not in (200, 201):
+                _logger.error(f"Failed to get location token for optimized task sync: {token_resp.text}")
+                return {
+                    'error': True,
+                    'message': f"Failed to get location token: {token_resp.text}",
+                    'total_contacts_processed': 0,
+                    'total_tasks_created': 0,
+                    'total_tasks_updated': 0,
+                    'errors': []
+                }
+                
+            token_json = token_resp.json()
+            location_token = token_json.get('access_token')
+            if not location_token:
+                _logger.error(f"No access_token in location token response for optimized task sync: {token_json}")
+                return {
+                    'error': True,
+                    'message': 'No access_token in location token response',
+                    'total_contacts_processed': 0,
+                    'total_tasks_created': 0,
+                    'total_tasks_updated': 0,
+                    'errors': []
+                }
+            
+            # Step 2: Get all existing tasks for these contacts in one query
+            existing_tasks = self.search([
+                ('contact_id', 'in', contacts.ids)
+            ])
+            existing_task_map = {}
+            for task in existing_tasks:
+                key = (task.external_id, task.contact_id.id)
+                existing_task_map[key] = task
+            
+            _logger.info(f"[optimized task sync] Found {len(existing_tasks)} existing tasks")
+            
+            # Step 3: Process contacts in batches to avoid overwhelming the API
+            batch_size = 10  # Process 10 contacts at a time
+            total_created = 0
+            total_updated = 0
+            errors = []
+            
+            for i in range(0, len(contacts), batch_size):
+                batch_contacts = contacts[i:i + batch_size]
+                _logger.info(f"[optimized task sync] Processing batch {i//batch_size + 1}, contacts {i+1}-{min(i+batch_size, len(contacts))}")
+                
+                # Process each contact in the batch
+                for contact in batch_contacts:
+                    try:
+                        # Fetch tasks for this contact using pagination
+                        from .ghl_api_utils import fetch_contact_tasks_with_pagination
+                        tasks_result = fetch_contact_tasks_with_pagination(location_token, contact.external_id)
+                        
+                        if tasks_result['success']:
+                            tasks_list = tasks_result['items']
+                            _logger.info(f"Fetched {len(tasks_list)} tasks for contact {contact.external_id} from {tasks_result['total_pages']} pages")
+                        else:
+                            _logger.warning(f"Failed to fetch tasks for contact {contact.external_id}: {tasks_result.get('error')}")
+                            continue
+                            
+                        # Process tasks for this contact
+                        for task_data in tasks_list:
+                            task_external_id = task_data.get('id')
+                            if not task_external_id:
+                                continue
+                            
+                            # Check if task already exists
+                            task_key = (task_external_id, contact.id)
+                            existing_task = existing_task_map.get(task_key)
+                            
+                            # Prepare task values
+                            task_vals = {
+                                'external_id': task_external_id,
+                                'title': task_data.get('title', ''),
+                                'body': task_data.get('body', ''),
+                                'contact_id': contact.id,
+                                'assigned_to': task_data.get('assignedTo'),
+                                'completed': task_data.get('completed', False),
+                            }
+                            
+                            # Parse due date if available
+                            due_date_str = task_data.get('dueDate')
+                            if due_date_str:
+                                try:
+                                    due_date = datetime.fromisoformat(due_date_str.replace('Z', '+00:00'))
+                                    if due_date.tzinfo:
+                                        due_date = due_date.replace(tzinfo=None)
+                                    task_vals['due_date'] = due_date
+                                except (ValueError, TypeError) as e:
+                                    _logger.warning(f"Could not parse due date '{due_date_str}' for task {task_external_id}: {e}")
+                            
+                            if existing_task:
+                                # Update existing task
+                                existing_task.write(task_vals)
+                                total_updated += 1
+                            else:
+                                # Create new task
+                                self.create(task_vals)
+                                total_created += 1
+                            
+                    except Exception as e:
+                        error_msg = f"Error processing contact {contact.external_id}: {str(e)}"
+                        errors.append(error_msg)
+                        _logger.error(error_msg)
+                        continue
+                
+                # Small delay between batches to be respectful to the API
+                if i + batch_size < len(contacts):
+                    time.sleep(0.5)
+            
+            _logger.info(f"[optimized task sync] Completed: {total_created} created, {total_updated} updated, {len(errors)} errors")
+            
+            return {
+                'success': True,
+                'total_contacts_processed': len(contacts),
+                'total_tasks_created': total_created,
+                'total_tasks_updated': total_updated,
+                'errors': errors
+            }
+            
+        except Exception as e:
+            _logger.error(f"Error in optimized bulk task sync: {str(e)}")
+            return {
+                'error': True,
+                'message': f"Optimized bulk sync error: {str(e)}",
+                'total_contacts_processed': 0,
+                'total_tasks_created': 0,
+                'total_tasks_updated': 0,
+                'errors': [str(e)]
+            }
+
     def action_sync_tasks_for_contact(self):
         """
         Action method to sync tasks for the current contact from GHL API
@@ -448,7 +632,7 @@ class GhlContactTask(models.Model):
         # This assumes you have OAuth configuration stored somewhere
         # You might need to adjust this based on your OAuth setup
         oauth_config = self.env['ghl.oauth.config'].search([
-            ('location_id', '=', location.location_id)
+            ('location_id', '=', location.location_id.id)
         ], limit=1)
         
         if not oauth_config or not oauth_config.access_token:

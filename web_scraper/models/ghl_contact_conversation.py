@@ -16,10 +16,17 @@ class GhlContactConversation(models.Model):
 
     # GHL API fields
     ghl_id = fields.Char('GHL ID', required=True, index=True)
+    external_id = fields.Char('External ID', related='ghl_id', store=True)  # Alias for ghl_id
     contact_id = fields.Many2one('ghl.location.contact', string='Contact', required=True, ondelete='cascade')
     location_id = fields.Many2one('installed.location', string='Location', required=True, ondelete='cascade')
     
     # Conversation details
+    channel = fields.Char('Channel')  # Add channel field
+    status = fields.Char('Status')  # Add status field
+    subject = fields.Char('Subject')  # Add subject field
+    last_message = fields.Text('Last Message')  # Add last_message field
+    date_created = fields.Datetime('Date Created')  # Add date_created field
+    date_modified = fields.Datetime('Date Modified')  # Add date_modified field
     last_message_body = fields.Text('Last Message Body')
     last_message_type = fields.Selection([
         ('TYPE_CALL', 'Call'),
@@ -111,94 +118,66 @@ class GhlContactConversation(models.Model):
         return result
     
     @api.model
-    def fetch_conversations_from_ghl(self, location_token, location_id, company_id=None):
+    def fetch_conversations_from_ghl(self, location_token, location_id, company_id=None, max_pages=None):
         """
-        Fetch conversations from GHL API for a specific location
+        Fetch conversations from GHL API for a specific location with pagination support
         
         Args:
             location_token (str): Location-level access token
             location_id (str): GHL location ID
             company_id (str): Company ID (optional, for logging)
+            max_pages (int): Maximum number of pages to fetch (None for unlimited)
             
         Returns:
             dict: Result with success status and data
         """
+        from .ghl_api_utils import fetch_conversations_with_pagination
         try:
-            _logger.info(f"Fetching conversations for location {location_id}")
+            _logger.info(f"Fetching conversations for location {location_id} with pagination (max_pages: {max_pages})")
             
-            # GHL API endpoint for conversations
-            url = f"https://services.leadconnectorhq.com/conversations/search"
+            result = fetch_conversations_with_pagination(location_token, location_id, max_pages)
             
-            headers = {
-                'Accept': 'application/json',
-                'Authorization': f'Bearer {location_token}',
-                'Version': '2021-04-15'
-            }
-            
-            params = {
-                'locationId': location_id
-            }
-            
-            _logger.info(f"Making conversations API request to: {url}")
-            _logger.info(f"Request params: {params}")
-            # Don't log headers to avoid exposing access token
-            
-            response = requests.get(url, headers=headers, params=params, timeout=30)
-            
-            _logger.info(f"GHL conversations API response status: {response.status_code}")
-            if response.status_code == 200:
-                _logger.info(f"GHL conversations API response length: {len(response.text)} characters")
-            else:
-                _logger.error(f"GHL conversations API error response: {response.text[:200]}...")
-            
-            if response.status_code == 200:
-                data = response.json()
-                conversations = data.get('conversations', [])
-                total = data.get('total', 0)
-                
-                _logger.info(f"Successfully fetched {len(conversations)} conversations (total: {total})")
-                
+            if result['success']:
+                _logger.info(f"Successfully fetched {result['total_items']} conversations from {result['total_pages']} pages")
                 return {
                     'success': True,
-                    'conversations': conversations,
-                    'total': total,
-                    'message': f'Successfully fetched {len(conversations)} conversations'
+                    'conversations': result['items'],
+                    'total': result['total_items'],
+                    'pages_fetched': result['total_pages'],
+                    'message': f'Successfully fetched {result["total_items"]} conversations from {result["total_pages"]} pages'
                 }
             else:
-                _logger.error(f"Failed to fetch conversations. Status: {response.status_code}, Response: {response.text}")
+                _logger.error(f"Failed to fetch conversations: {result.get('error')}")
                 return {
                     'success': False,
                     'conversations': [],
                     'total': 0,
-                    'message': f'API request failed with status {response.status_code}: {response.text}'
+                    'pages_fetched': 0,
+                    'message': result.get('error', 'Failed to fetch conversations')
                 }
                 
-        except requests.exceptions.RequestException as e:
-            _logger.error(f"Request exception while fetching conversations: {str(e)}")
-            return {
-                'success': False,
-                'conversations': [],
-                'total': 0,
-                'message': f'Request failed: {str(e)}'
-            }
         except Exception as e:
             _logger.error(f"Unexpected error while fetching conversations: {str(e)}")
+            import traceback
+            _logger.error(f"Full traceback: {traceback.format_exc()}")
             return {
                 'success': False,
                 'conversations': [],
                 'total': 0,
+                'pages_fetched': 0,
                 'message': f'Unexpected error: {str(e)}'
             }
     
     @api.model
-    def sync_conversations_for_location(self, app_access_token, location_id, company_id=None):
+    def sync_conversations_for_location(self, app_access_token, location_id, company_id=None, max_pages=None):
         """
-        Sync conversations for a specific location using two-step token process
+        Sync conversations for a specific location using two-step token process with pagination support
         
         Args:
             app_access_token (str): Agency-level access token
             location_id (str): GHL location ID
             company_id (str): Company ID
+            max_pages (int): Maximum number of pages to fetch (None for unlimited)
             
         Returns:
             dict: Result with success status and sync details
@@ -232,8 +211,8 @@ class GhlContactConversation(models.Model):
             
             location_token = location_token_result['access_token']
             
-            # Step 2: Fetch conversations using location token
-            conversations_result = self.fetch_conversations_from_ghl(location_token, location_id, company_id)
+            # Step 2: Fetch conversations using location token with pagination
+            conversations_result = self.fetch_conversations_from_ghl(location_token, location_id, company_id, max_pages)
             
             if not conversations_result['success']:
                 return {
@@ -407,3 +386,536 @@ class GhlContactConversation(models.Model):
                 'updated': 0,
                 'errors': [str(e)]
             } 
+
+    def sync_conversations_for_contact(self, access_token, location_id, contact_id, limit=100):
+        """
+        Sync conversations for a specific contact using the /conversations/search endpoint.
+        After syncing conversations, fetch all messages for each conversation.
+        """
+        import requests
+        import logging
+        import json
+        _logger = logging.getLogger(__name__)
+        
+        def ms_to_datetime(ms):
+            if not ms:
+                return None
+            try:
+                if isinstance(ms, datetime):
+                    return ms
+                ms = int(ms)
+                return datetime.utcfromtimestamp(ms / 1000.0)
+            except Exception:
+                return None
+        
+        # Get company_id from ghl.agency.token (same as other models)
+        agency_token = self.env['ghl.agency.token'].sudo().search([], order='create_date desc', limit=1)
+        if not agency_token:
+            return {
+                'success': False,
+                'message': 'No agency token found. Please ensure ghl.agency.token is configured.',
+                'created': 0,
+                'updated': 0,
+                'errors': ['No agency token found']
+            }
+        
+        company_id = agency_token.company_id
+        if not company_id:
+            return {
+                'success': False,
+                'message': 'No company_id found in agency token.',
+                'created': 0,
+                'updated': 0,
+                'errors': ['No company_id found']
+            }
+        
+        try:
+            # Step 1: Get location token using agency token
+            location_token_result = self._get_location_token(access_token, location_id, company_id)
+            if not location_token_result.get('success'):
+                return {
+                    'success': False,
+                    'message': f"Failed to get location token: {location_token_result.get('error', 'Unknown error')}",
+                    'created': 0,
+                    'updated': 0,
+                    'errors': []
+                }
+            
+            location_token = location_token_result.get('access_token')
+            
+            # Step 2: Fetch conversations using location token
+            url = f"https://services.leadconnectorhq.com/conversations/search?locationId={location_id}&contactId={contact_id}&limit={limit}"
+            headers = {
+                'Accept': 'application/json',
+                'Authorization': f'Bearer {location_token}',
+                'Version': '2021-07-28',
+            }
+            
+            _logger.info(f"Fetching conversations for contact {contact_id} at location {location_id}")
+            response = requests.get(url, headers=headers)
+            
+            if response.status_code == 200:
+                data = response.json()
+                conversations = data.get('conversations', [])
+                _logger.info(f"Found {len(conversations)} conversations for contact {contact_id}")
+                
+                # Find the installed location and contact records
+                installed_location = self.env['installed.location'].sudo().search([
+                    ('location_id', '=', location_id)
+                ], limit=1)
+                
+                if not installed_location:
+                    return {
+                        'success': False,
+                        'message': f'No installed location found for location_id: {location_id}',
+                        'created': 0,
+                        'updated': 0,
+                        'errors': []
+                    }
+                
+                contact_record = self.env['ghl.location.contact'].sudo().search([
+                    ('external_id', '=', contact_id),
+                    ('location_id', '=', installed_location.id)
+                ], limit=1)
+                
+                if not contact_record:
+                    return {
+                        'success': False,
+                        'message': f'No contact record found for external_id: {contact_id}',
+                        'created': 0,
+                        'updated': 0,
+                        'errors': []
+                    }
+                
+                created_count = 0
+                updated_count = 0
+                message_sync_results = []
+                
+                for conv_data in conversations:
+                    try:
+                        # Extract conversation data
+                        conv_id = conv_data.get('id')
+                        if not conv_id:
+                            continue
+                        
+                        # Check if conversation already exists
+                        existing_conv = self.sudo().search([
+                            ('ghl_id', '=', conv_id),
+                            ('contact_id', '=', contact_record.id)
+                        ], limit=1)
+                        
+                        # Prepare conversation values
+                        conv_vals = {
+                            'ghl_id': conv_id,
+                            'contact_id': contact_record.id,
+                            'location_id': installed_location.id,
+                            'subject': conv_data.get('title', ''),  # Map 'title' from API to 'subject' field
+                            'status': conv_data.get('status', ''),
+                            'date_created': ms_to_datetime(conv_data.get('dateCreated')),
+                            'date_modified': ms_to_datetime(conv_data.get('dateUpdated')),
+                            'last_message': conv_data.get('lastMessage', ''),
+                            'unread_count': conv_data.get('unreadCount', 0),
+                            'channel': conv_data.get('channel', ''),
+                        }
+                        
+                        # Create or update conversation
+                        if existing_conv:
+                            existing_conv.write(conv_vals)
+                            updated_count += 1
+                            conversation_record = existing_conv
+                            _logger.info(f"Updated conversation {conv_id} for contact {contact_id}")
+                        else:
+                            conversation_record = self.sudo().create(conv_vals)
+                            created_count += 1
+                            _logger.info(f"Created conversation {conv_id} for contact {contact_id}")
+                        
+                        # Fetch messages for this conversation
+                        message_result = self.env['ghl.contact.message'].sudo().fetch_messages_for_conversation(
+                            conversation_id=conv_id,
+                            access_token=location_token,  # Use location token
+                            location_id=installed_location.id,
+                            contact_id=contact_record.id,
+                            limit=100
+                        )
+                        
+                        message_sync_results.append({
+                            'conversation_id': conv_id,
+                            'success': message_result.get('success', False),
+                            'message_count': message_result.get('message_count', 0),
+                            'error': message_result.get('error') if not message_result.get('success') else None
+                        })
+                        
+                    except Exception as e:
+                        _logger.error(f"Error processing conversation {conv_data.get('id', 'unknown')}: {e}")
+                        continue
+                
+                _logger.info(f"Conversation sync completed for contact {contact_id}: {created_count} created, {updated_count} updated")
+                return {
+                    'success': True,
+                    'message': f'Successfully synced {len(conversations)} conversations',
+                    'created': created_count,
+                    'updated': updated_count,
+                    'total_conversations': len(conversations),
+                    'message_sync_results': message_sync_results,
+                    'errors': []
+                }
+            else:
+                _logger.error(f"Failed to fetch conversations. Status: {response.status_code}, Response: {response.text}")
+                return {
+                    'success': False,
+                    'message': f'API request failed with status {response.status_code}',
+                    'created': 0,
+                    'updated': 0,
+                    'errors': [f'API error: {response.status_code} {response.text}']
+                }
+                
+        except Exception as e:
+            _logger.error(f"Error in sync_conversations_for_contact: {str(e)}")
+            return {
+                'success': False,
+                'message': f'Unexpected error: {str(e)}',
+                'created': 0,
+                'updated': 0,
+                'errors': [str(e)]
+            } 
+
+    def sync_conversations_for_contact_with_location_token(self, location_token, location_id, contact_id, limit=100):
+        """
+        Sync conversations for a specific contact using a location token directly.
+        After syncing conversations, fetch all messages for each conversation.
+        """
+        import requests
+        import logging
+        import json
+        _logger = logging.getLogger(__name__)
+        
+        def ms_to_datetime(ms):
+            if not ms:
+                return None
+            try:
+                if isinstance(ms, datetime):
+                    return ms
+                ms = int(ms)
+                return datetime.utcfromtimestamp(ms / 1000.0)
+            except Exception:
+                return None
+
+        try:
+            # Fetch conversations using location token
+            url = f"https://services.leadconnectorhq.com/conversations/search?locationId={location_id}&contactId={contact_id}&limit={limit}"
+            headers = {
+                'Accept': 'application/json',
+                'Authorization': f'Bearer {location_token}',
+                'Version': '2021-07-28',
+            }
+            
+            _logger.info(f"Fetching conversations for contact {contact_id} at location {location_id}")
+            response = requests.get(url, headers=headers)
+            
+            if response.status_code == 200:
+                data = response.json()
+                conversations = data.get('conversations', [])
+                _logger.info(f"Found {len(conversations)} conversations for contact {contact_id}")
+                
+                # Find the installed location and contact records
+                installed_location = self.env['installed.location'].sudo().search([
+                    ('location_id', '=', location_id)
+                ], limit=1)
+                
+                if not installed_location:
+                    return {
+                        'success': False,
+                        'message': f'No installed location found for location_id: {location_id}',
+                        'created': 0,
+                        'updated': 0,
+                        'errors': []
+                    }
+                
+                contact_record = self.env['ghl.location.contact'].sudo().search([
+                    ('external_id', '=', contact_id),
+                    ('location_id', '=', installed_location.id)
+                ], limit=1)
+                
+                if not contact_record:
+                    return {
+                        'success': False,
+                        'message': f'No contact record found for external_id: {contact_id}',
+                        'created': 0,
+                        'updated': 0,
+                        'errors': []
+                    }
+                
+                created_count = 0
+                updated_count = 0
+                message_sync_results = []
+                
+                for conv_data in conversations:
+                    try:
+                        # Extract conversation data
+                        conv_id = conv_data.get('id')
+                        if not conv_id:
+                            continue
+                        
+                        # Check if conversation already exists
+                        existing_conv = self.sudo().search([
+                            ('ghl_id', '=', conv_id),
+                            ('contact_id', '=', contact_record.id)
+                        ], limit=1)
+                        
+                        # Prepare conversation values
+                        conv_vals = {
+                            'ghl_id': conv_id,
+                            'contact_id': contact_record.id,
+                            'location_id': installed_location.id,
+                            'subject': conv_data.get('title', ''),  # Map 'title' from API to 'subject' field
+                            'status': conv_data.get('status', ''),
+                            'date_created': ms_to_datetime(conv_data.get('dateCreated')),
+                            'date_modified': ms_to_datetime(conv_data.get('dateUpdated')),
+                            'last_message': conv_data.get('lastMessage', ''),
+                            'unread_count': conv_data.get('unreadCount', 0),
+                            'channel': conv_data.get('channel', ''),
+                        }
+                        
+                        # Create or update conversation
+                        if existing_conv:
+                            existing_conv.write(conv_vals)
+                            updated_count += 1
+                            conversation_record = existing_conv
+                            _logger.info(f"Updated conversation {conv_id} for contact {contact_id}")
+                        else:
+                            conversation_record = self.sudo().create(conv_vals)
+                            created_count += 1
+                            _logger.info(f"Created conversation {conv_id} for contact {contact_id}")
+                        
+                        # Fetch messages for this conversation
+                        message_result = self.env['ghl.contact.message'].sudo().fetch_messages_for_conversation(
+                            conversation_id=conv_id,
+                            access_token=location_token,  # Use location token
+                            location_id=installed_location.id,
+                            contact_id=contact_record.id,
+                            limit=100
+                        )
+                        
+                        message_sync_results.append({
+                            'conversation_id': conv_id,
+                            'success': message_result.get('success', False),
+                            'message_count': message_result.get('message_count', 0),
+                            'error': message_result.get('error') if not message_result.get('success') else None
+                        })
+                        
+                    except Exception as e:
+                        _logger.error(f"Error processing conversation {conv_data.get('id', 'unknown')}: {e}")
+                        continue
+                
+                _logger.info(f"Conversation sync completed for contact {contact_id}: {created_count} created, {updated_count} updated")
+                return {
+                    'success': True,
+                    'message': f'Successfully synced {len(conversations)} conversations',
+                    'created': created_count,
+                    'updated': updated_count,
+                    'total_conversations': len(conversations),
+                    'message_sync_results': message_sync_results,
+                    'errors': []
+                }
+            else:
+                _logger.error(f"Failed to fetch conversations. Status: {response.status_code}, Response: {response.text}")
+                return {
+                    'success': False,
+                    'message': f'API request failed with status {response.status_code}',
+                    'created': 0,
+                    'updated': 0,
+                    'errors': [f'API error: {response.status_code} {response.text}']
+                }
+                
+        except Exception as e:
+            _logger.error(f"Error in sync_conversations_for_contact_with_location_token: {str(e)}")
+            return {
+                'success': False,
+                'message': f'Unexpected error: {str(e)}',
+                'created': 0,
+                'updated': 0,
+                'errors': [str(e)]
+            } 
+
+    def action_fetch_messages(self):
+        """
+        Button to fetch all messages for this conversation from the GHL API.
+        Requires the conversation to have a valid ghl_id and a valid access token for the location.
+        """
+        self.ensure_one()
+        
+        # Find the access token for this location
+        app = self.env['cyclsales.application'].sudo().search([
+            ('app_id', '=', self.location_id.app_id),
+            ('is_active', '=', True)
+        ], limit=1)
+        if not app or not app.access_token:
+            raise ValidationError(_('No valid access token found for this location.'))
+        
+        # Get company_id from ghl.agency.token (same as other models)
+        agency_token = self.env['ghl.agency.token'].sudo().search([], order='create_date desc', limit=1)
+        if not agency_token:
+            raise ValidationError(_('No agency token found. Please ensure ghl.agency.token is configured.'))
+        
+        company_id = agency_token.company_id
+        if not company_id:
+            raise ValidationError(_('No company_id found in agency token.'))
+        
+        try:
+            # Step 1: Get location token using agency token
+            location_token_result = self._get_location_token(app.access_token, self.location_id.location_id, company_id)
+            _logger.info(f"Location token result type: {type(location_token_result)}, Result: {location_token_result}")
+            
+            if not isinstance(location_token_result, dict):
+                raise ValidationError(_('Location token result is not a dictionary: %s') % str(location_token_result))
+                
+            if not location_token_result.get('success'):
+                raise ValidationError(_('Failed to get location token: %s') % location_token_result.get('error', 'Unknown error'))
+            
+            location_token = location_token_result.get('access_token')
+            _logger.info(f"Location token: {location_token[:20] if location_token else 'None'}...")
+            
+            # Step 2: Fetch messages using location token
+            _logger.info(f"About to call fetch_messages_for_conversation with conversation_id={self.ghl_id}")
+            try:
+                result = self.env['ghl.contact.message'].sudo().fetch_messages_for_conversation(
+                    conversation_id=self.ghl_id,
+                    access_token=location_token,  # Use location token, not agency token
+                    location_id=self.location_id.id,
+                    contact_id=self.contact_id.id,
+                    limit=100
+                )
+                _logger.info(f"fetch_messages_for_conversation completed successfully")
+            except Exception as e:
+                _logger.error(f"Exception in fetch_messages_for_conversation: {str(e)}")
+                import traceback
+                _logger.error(f"Full traceback: {traceback.format_exc()}")
+                raise
+            
+            # Debug: Check what result contains
+            _logger.info(f"Result type: {type(result)}, Result: {result}")
+            _logger.info(f"About to check result.get('success')")
+            
+            if isinstance(result, dict) and result.get('success'):
+                message_count = result.get('total_messages', 0)
+                return {
+                    'type': 'ir.actions.client',
+                    'tag': 'display_notification',
+                    'params': {
+                        'title': 'Success',
+                        'message': f'Successfully fetched {message_count} messages for this conversation.',
+                        'type': 'success',
+                    }
+                }
+            else:
+                error_msg = result.get("error", "Unknown error") if isinstance(result, dict) else str(result)
+                return {
+                    'type': 'ir.actions.client',
+                    'tag': 'display_notification',
+                    'params': {
+                        'title': 'Error',
+                        'message': f'Failed to fetch messages: {error_msg}',
+                        'type': 'danger',
+                    }
+                }
+                
+        except Exception as e:
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': 'Error',
+                    'message': f'Exception occurred while fetching messages: {str(e)}',
+                    'type': 'danger',
+                }
+            } 
+    
+    def action_update_touch_information(self):
+        """
+        Button to update touch information for all contacts with messages
+        """
+        try:
+            result = self.env['ghl.location.contact'].sudo().update_all_contacts_touch_information()
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': 'Success',
+                    'message': f'Updated touch information for {result.get("contacts_updated", 0)} contacts.',
+                    'type': 'success',
+                }
+            }
+        except Exception as e:
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': 'Error',
+                    'message': f'Error updating touch information: {str(e)}',
+                    'type': 'danger',
+                }
+            }
+            
+    def fetch_conversation_single(self, location_token, conversation_id):
+        """
+        Fetch a single conversation from GHL using the location token and conversation ID.
+        :return: The created/updated conversation record, or None on failure
+        """ 
+        url = f"https://services.leadconnectorhq.com/conversations/{conversation_id}"
+        headers = {
+            'Accept': 'application/json',
+            'Authorization': f'Bearer {location_token}',
+            'Version': '2021-04-15',
+        }
+        try:
+            resp = requests.get(url, headers=headers)
+            _logger.info(f"[GHLContactConversation] fetch_conversation_single response: {resp.status_code} {resp.text}")
+            if resp.status_code != 200:
+                _logger.error(f"Failed to fetch conversation: {resp.text}")
+                return None
+            data = resp.json()
+            if not data:
+                _logger.error(f"No conversation data in response: {resp.text}")
+                return None
+            # Map fields
+            vals = {
+                'external_id': data.get('id'),
+                'contact_id': data.get('contactId'),
+                'location_id': data.get('locationId'),
+                'deleted': data.get('deleted', False),
+                'inbox': data.get('inbox', False),
+                'type': data.get('type'),
+                'unread_count': data.get('unreadCount'),
+                'assigned_to': data.get('assignedTo'),
+                'starred': data.get('starred', False),
+            }
+            # Find installed.location by locationId
+            installed_location = self.env['installed.location'].search([
+                ('location_id', '=', vals['location_id'])
+            ], limit=1)
+            if not installed_location:
+                _logger.error(f"No installed.location found for locationId: {vals['location_id']}")
+                return None
+            vals['location_id'] = installed_location.id
+            # Find contact by contactId and location
+            contact = self.env['ghl.location.contact'].search([
+                ('external_id', '=', vals['contact_id']),
+                ('location_id', '=', installed_location.id)
+            ], limit=1)
+            if not contact:
+                _logger.warning(f"No ghl.location.contact found for contactId: {vals['contact_id']} at location {installed_location.id}")
+            else:
+                vals['contact_id'] = contact.id
+            # Create or update conversation
+            conversation = self.sudo().search([
+                ('external_id', '=', vals['external_id']),
+                ('location_id', '=', installed_location.id)
+            ], limit=1)
+            if conversation:
+                conversation.write(vals)
+            else:
+                conversation = self.sudo().create(vals)
+            return conversation
+        except Exception as e:
+            _logger.error(f"Error fetching single conversation: {e}")
+            return None 

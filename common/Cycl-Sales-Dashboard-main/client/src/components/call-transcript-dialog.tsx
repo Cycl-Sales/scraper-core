@@ -17,7 +17,7 @@ import {
   TrendingUp,
   Volume2
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 
 interface CallData {
   id: string;
@@ -30,6 +30,9 @@ interface CallData {
   agent: string;
   direction: "inbound" | "outbound";
   recordingUrl?: string;
+  recording_filename?: string;
+  recording_size?: number;
+  recording_content_type?: string;
   transcript: TranscriptEntry[];
   summary: CallSummary;
   aiAnalysis: AIAnalysis;
@@ -69,10 +72,69 @@ interface CallTranscriptDialogProps {
   callData: CallData | null;
 }
 
+// Helper to parse timestamp string to seconds
+function parseTimestamp(ts: string): number {
+  const parts = ts.split(":").map(Number);
+  if (parts.length === 3) {
+    return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  } else if (parts.length === 2) {
+    return parts[0] * 60 + parts[1];
+  }
+  return 0;
+}
+
 export default function CallTranscriptDialog({ open, onOpenChange, callData }: CallTranscriptDialogProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
-  if (!callData) return null;
+  const [duration, setDuration] = useState(0);
+  const [audioRef, setAudioRef] = useState<HTMLAudioElement | null>(null);
+  const transcriptRefs = useRef<(HTMLDivElement | null)[]>([]);
+
+  // Auto-scroll to active transcript entry
+  useEffect(() => {
+    if (!callData) return;
+    
+    // Find the active transcript index
+    let activeIndex = -1;
+    const transcriptTimes = callData.transcript.map(entry => parseTimestamp(entry.timestamp));
+    for (let i = 0; i < transcriptTimes.length; i++) {
+      const time = transcriptTimes[i];
+      const nextTime = transcriptTimes[i + 1] ?? Infinity;
+      if (currentTime >= time && currentTime < nextTime) {
+        activeIndex = i;
+        break;
+      }
+    }
+    if (activeIndex === -1 && transcriptTimes.length > 0 && currentTime >= transcriptTimes[transcriptTimes.length - 1]) {
+      activeIndex = transcriptTimes.length - 1;
+    }
+
+    if (activeIndex !== -1 && transcriptRefs.current[activeIndex]) {
+      transcriptRefs.current[activeIndex]?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [currentTime, callData]);
+
+  // Show loading state when callData is null
+  if (!callData) {
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-6xl h-[90vh] bg-slate-900 border-slate-800 text-slate-50 flex flex-col overflow-hidden">
+          <DialogHeader className="pb-4 flex-shrink-0">
+            <DialogTitle className="text-xl font-bold text-white flex items-center gap-2">
+              <Phone className="w-5 h-5 text-blue-500" />
+              Call Details
+            </DialogTitle>
+            <DialogDescription className="text-slate-400">
+              Loading call information...
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-slate-400">Loading call details...</div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   const getSentimentColor = (sentiment: string) => {
     switch (sentiment) {
@@ -91,10 +153,81 @@ export default function CallTranscriptDialog({ open, onOpenChange, callData }: C
   };
 
   const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
+    if (!isFinite(seconds) || seconds < 0) return "00:00";
+    const rounded = Math.floor(seconds);
+    const mins = Math.floor(rounded / 60);
+    const secs = rounded % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
+
+  const handlePlayPause = () => {
+    if (audioRef) {
+      if (isPlaying) {
+        audioRef.pause();
+      } else {
+        audioRef.play();
+      }
+    }
+  };
+
+  const handleSkipBack = () => {
+    if (audioRef) {
+      audioRef.currentTime = Math.max(0, audioRef.currentTime - 10);
+    }
+  };
+
+  const handleSkipForward = () => {
+    if (audioRef) {
+      audioRef.currentTime = Math.min(audioRef.duration, audioRef.currentTime + 10);
+    }
+  };
+
+  const handleTimeUpdate = () => {
+    if (audioRef) {
+      setCurrentTime(audioRef.currentTime);
+    }
+  };
+
+  const handleLoadedMetadata = () => {
+    if (audioRef) {
+      setDuration(audioRef.duration);
+    }
+  };
+
+  const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (audioRef) {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      const percentage = clickX / rect.width;
+      audioRef.currentTime = percentage * audioRef.duration;
+    }
+  };
+
+  const handleDownload = () => {
+    if (callData.recordingUrl) {
+      const link = document.createElement('a');
+      link.href = callData.recordingUrl;
+      link.download = callData.recordingUrl.split('/').pop() || 'recording.mp3';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  };
+
+  // Find the active transcript index for highlighting
+  let activeIndex = -1;
+  const transcriptTimes = callData.transcript.map(entry => parseTimestamp(entry.timestamp));
+  for (let i = 0; i < transcriptTimes.length; i++) {
+    const time = transcriptTimes[i];
+    const nextTime = transcriptTimes[i + 1] ?? Infinity;
+    if (currentTime >= time && currentTime < nextTime) {
+      activeIndex = i;
+      break;
+    }
+  }
+  if (activeIndex === -1 && transcriptTimes.length > 0 && currentTime >= transcriptTimes[transcriptTimes.length - 1]) {
+    activeIndex = transcriptTimes.length - 1;
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -282,53 +415,104 @@ export default function CallTranscriptDialog({ open, onOpenChange, callData }: C
               <div className="mb-6">
                 <div className="flex items-center gap-2 mb-2">
                   <span className="text-xs text-slate-400">Audio</span>
-                  <Button variant="ghost" size="sm" className="text-slate-400 hover:text-white ml-auto">
-                    <Download className="w-4 h-4" />
-                  </Button>
+                  {callData.recordingUrl && (
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="text-slate-400 hover:text-white ml-auto"
+                      onClick={handleDownload}
+                    >
+                      <Download className="w-4 h-4" />
+                    </Button>
+                  )}
                 </div>
+                
+                {/* Hidden Audio Element */}
+                {callData.recordingUrl && (
+                  <audio
+                    ref={(el) => setAudioRef(el)}
+                    src={callData.recordingUrl}
+                    onTimeUpdate={handleTimeUpdate}
+                    onLoadedMetadata={handleLoadedMetadata}
+                    onPlay={() => setIsPlaying(true)}
+                    onPause={() => setIsPlaying(false)}
+                    onEnded={() => setIsPlaying(false)}
+                    preload="metadata"
+                  />
+                )}
+                
                 {/* Audio Progress Bar */}
                 <div className="space-y-2">
                   <div className="flex justify-between text-xs text-slate-400">
                     <span>{formatTime(currentTime)}</span>
-                    <span>{callData.duration}</span>
+                    <span>{formatTime(duration)}</span>
                   </div>
-                  <div className="w-full bg-slate-700 rounded-full h-2">
+                  <div 
+                    className="w-full bg-slate-700 rounded-full h-2 cursor-pointer"
+                    onClick={handleProgressClick}
+                  >
                     <div
                       className="bg-blue-500 h-2 rounded-full transition-all duration-300"
-                      style={{ width: "35%" }}
+                      style={{ width: duration > 0 ? `${(currentTime / duration) * 100}%` : '0%' }}
                     />
                   </div>
                 </div>
+                
                 {/* Audio Controls */}
                 <div className="flex items-center justify-center gap-4 mt-2">
-                  <Button variant="ghost" size="sm" className="text-slate-400 hover:text-white">
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className="text-slate-400 hover:text-white"
+                    onClick={handleSkipBack}
+                    disabled={!callData.recordingUrl}
+                  >
                     <SkipBack className="w-4 h-4" />
                   </Button>
                   <Button
-                    onClick={() => setIsPlaying(!isPlaying)}
+                    onClick={handlePlayPause}
                     className="bg-blue-600 hover:bg-blue-700 rounded-full w-10 h-10 p-0"
+                    disabled={!callData.recordingUrl}
                   >
                     {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
                   </Button>
-                  <Button variant="ghost" size="sm" className="text-slate-400 hover:text-white">
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className="text-slate-400 hover:text-white"
+                    onClick={handleSkipForward}
+                    disabled={!callData.recordingUrl}
+                  >
                     <SkipForward className="w-4 h-4" />
                   </Button>
                   <Button variant="ghost" size="sm" className="text-slate-400 hover:text-white">
                     <Volume2 className="w-4 h-4" />
                   </Button>
                 </div>
+                
+                {/* No Recording Message */}
+                {!callData.recordingUrl && (
+                  <div className="text-center py-4 text-slate-400 text-sm">
+                    No recording available for this call
+                  </div>
+                )}
               </div>
               {/* Transcript */}
               <div className="flex-1 overflow-y-auto pr-2">
                 <div className="space-y-4 pb-4">
                   {callData.transcript.map((entry, index) => (
-                    <div key={index} className="space-y-2">
+                    <div
+                      key={index}
+                      ref={el => (transcriptRefs.current[index] = el)}
+                      className={`space-y-2 transition-colors duration-200 ${
+                        index === activeIndex ? "bg-blue-900/40 border-l-4 border-blue-400" : ""
+                      }`}
+                    >
                       <div className="flex items-center gap-2 text-xs">
                         <span className="text-slate-400">{entry.timestamp}</span>
                         <Badge
                           variant="outline"
-                          className={`border-slate-600 text-xs ${entry.speaker === 'agent' ? 'text-blue-400' : 'text-green-400'
-                            }`}
+                          className={`border-slate-600 text-xs ${entry.speaker === 'agent' ? 'text-blue-400' : 'text-green-400'}`}
                         >
                           {entry.speakerName}
                         </Badge>

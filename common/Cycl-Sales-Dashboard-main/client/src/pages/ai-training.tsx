@@ -1,15 +1,16 @@
-import { useState } from "react";
 import TopNavigation from "@/components/top-navigation";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Brain, Upload, FileText, Database, BarChart3, Play, Pause } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { Brain, Database, FileText, Pause, Play, Upload, ArrowLeft } from "lucide-react";
+import { useState } from "react";
+import { Link } from "wouter";
 
 export default function AITraining() {
   const [trainingProgress, setTrainingProgress] = useState(67);
@@ -48,6 +49,14 @@ export default function AITraining() {
       <TopNavigation />
       
       <main className="p-8 max-w-full">
+        <div className="mb-4">
+          <Link href="/automations">
+            <Button variant="ghost" className="flex items-center gap-2 text-slate-300 hover:text-white mb-2">
+              <ArrowLeft className="w-4 h-4" />
+              Back to Automations
+            </Button>
+          </Link>
+        </div>
         {/* Page Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-white mb-2">AI Training Data</h1>

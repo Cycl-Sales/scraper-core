@@ -17,4 +17,32 @@ class ResConfigSettings(models.TransientModel):
         string='OpenAI API Key',
         config_parameter='web_scraper.openai_api_key',
         help='The OpenAI API key for vision analysis.'
+    )
+
+    # GHL Installed Locations Sync Status Fields
+    ghl_locations_sync_status = fields.Char(string="GHL Locations Sync Status")
+    ghl_locations_sync_started = fields.Datetime(string="GHL Locations Sync Started")
+    ghl_locations_sync_completed = fields.Datetime(string="GHL Locations Sync Completed")
+    ghl_locations_sync_result = fields.Char(string="GHL Locations Sync Result")
+    ghl_locations_sync_error = fields.Text(string="GHL Locations Sync Error")
+    ghl_locations_sync_app_id = fields.Char(string="GHL Locations Sync App ID")
+
+    # GHL Contacts Sync Status Fields
+    ghl_contacts_sync_status = fields.Char(string="GHL Contacts Sync Status")
+    ghl_contacts_sync_started = fields.Datetime(string="GHL Contacts Sync Started")
+    ghl_contacts_sync_completed = fields.Datetime(string="GHL Contacts Sync Completed")
+    ghl_contacts_sync_result = fields.Char(string="GHL Contacts Sync Result")
+    ghl_contacts_sync_error = fields.Text(string="GHL Contacts Sync Error")
+    ghl_contacts_sync_location_id = fields.Char(string="GHL Contacts Sync Location ID")
+
+    # GHL API Pagination Settings
+    ghl_api_max_pages = fields.Integer(
+        string="GHL API Max Pages",
+        default=50,
+        help="Maximum number of pages to fetch from GHL API (None for unlimited). Set to 0 for unlimited."
+    )
+    ghl_api_delay_between_requests = fields.Float(
+        string="GHL API Delay Between Requests (seconds)",
+        default=0.1,
+        help="Delay between API requests to avoid rate limiting"
     ) 

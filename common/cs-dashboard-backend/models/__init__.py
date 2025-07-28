@@ -2,3 +2,4 @@
 
 from . import models
 from . import ghl_oauth_config
+from . import automation_template

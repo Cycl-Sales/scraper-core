@@ -1,0 +1,228 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        <!-- List View -->
+        <record id="view_ghl_contact_message_list" model="ir.ui.view">
+            <field name="name">ghl.contact.message.list</field>
+            <field name="model">ghl.contact.message</field>
+            <field name="arch" type="xml">
+                <list string="GHL Contact Messages" default_group_by="contact_id">
+                    <field name="ghl_id"/>
+                    <field name="contact_id"/>
+                    <field name="location_id"/>
+                    <field name="conversation_id"/>
+                    <field name="type"/>
+                    <field name="message_type"/>
+                    <field name="direction"/>
+                    <field name="status"/>
+                    <field name="user_id_rel"/>
+                    <field name="date_added"/>
+                    <field name="body"/>
+                </list>
+            </field>
+        </record>
+
+        <!-- Form View -->
+        <record id="view_ghl_contact_message_form" model="ir.ui.view">
+            <field name="name">ghl.contact.message.form</field>
+            <field name="model">ghl.contact.message</field>
+            <field name="arch" type="xml">
+                <form string="GHL Contact Message">
+                    <header>
+                        <button name="fetch_recording_url" 
+                                string="Fetch Recording" 
+                                type="object" 
+                                class="btn-primary"
+                                invisible="message_type != 'TYPE_CALL'"/>
+                        <button name="download_recording" 
+                                string="Download Recording" 
+                                type="object" 
+                                class="btn-secondary"
+                                invisible="not recording_fetched or message_type != 'TYPE_CALL'"/>
+                        <button name="play_recording" 
+                                string="Play Recording" 
+                                type="object" 
+                                class="btn-info"
+                                invisible="not recording_fetched or message_type != 'TYPE_CALL'"/>
+                        <button name="refetch_recording" 
+                                string="Re-fetch Recording" 
+                                type="object" 
+                                class="btn-warning"
+                                invisible="message_type != 'TYPE_CALL'"/>
+                        <button name="fetch_transcript" 
+                                string="Fetch Transcript" 
+                                type="object" 
+                                class="btn-success"
+                                invisible="message_type != 'TYPE_CALL'"/>
+                    </header>
+                    <sheet>
+                        <group>
+                            <group string="Basic Information">
+                                <field name="ghl_id"/>
+                                <field name="contact_id"/>
+                                <field name="location_id"/>
+                                <field name="conversation_id"/>
+                                <field name="type"/>
+                                <field name="message_type"/>
+                                <field name="direction"/>
+                                <field name="status"/>
+                                <field name="content_type"/>
+                                <field name="source"/>
+                                <field name="user_id"/>
+                                <field name="user_id_rel"/>
+                                <field name="conversation_provider_id"/>
+                                <field name="date_added"/>
+                            </group>
+                        </group>
+                        <group>
+                            <group string="Message Body">
+                                <field name="body"/>
+                            </group>
+                            <group string="Recording Information" invisible="message_type != 'TYPE_CALL'">
+                                <field name="recording_fetched"/>
+                                <field name="recording_filename"/>
+                                <field name="recording_content_type"/>
+                                <field name="recording_size"/>
+                                <field name="recording_data" invisible="1"/>
+                            </group>
+                        </group>
+                        <notebook>
+                            <page string="Attachments">
+                                <field name="attachment_ids">
+                                    <list>
+                                        <field name="attachment_url"/>
+                                        <field name="attachment_name"/>
+                                        <field name="attachment_type"/>
+                                        <field name="attachment_size"/>
+                                    </list>
+                                    <form string="Attachment">
+                                        <group>
+                                            <field name="attachment_url"/>
+                                            <field name="attachment_name"/>
+                                            <field name="attachment_type"/>
+                                            <field name="attachment_size"/>
+                                        </group>
+                                    </form>
+                                </field>
+                            </page>
+                            <page string="Meta Data">
+                                <field name="meta_id"/>
+                            </page>
+                        </notebook>
+                    </sheet>
+                </form>
+            </field>
+        </record>
+
+        <!-- Search View -->
+        <record id="view_ghl_contact_message_search" model="ir.ui.view">
+            <field name="name">ghl.contact.message.search</field>
+            <field name="model">ghl.contact.message</field>
+            <field name="arch" type="xml">
+                <search string="Search GHL Contact Messages">
+                    <field name="ghl_id"/>
+                    <field name="contact_id"/>
+                    <field name="location_id"/>
+                    <field name="conversation_id"/>
+                    <field name="type"/>
+                    <field name="message_type"/>
+                    <field name="direction"/>
+                    <field name="status"/>
+                    <field name="date_added"/>
+                    <field name="body"/>
+                    <group expand="0" string="Group By">
+                        <filter string="Contact" name="group_contact" context="{'group_by': 'contact_id'}"/>
+                        <filter string="Location" name="group_location" context="{'group_by': 'location_id'}"/>
+                        <filter string="Conversation" name="group_conversation" context="{'group_by': 'conversation_id'}"/>
+                        <filter string="Type" name="group_type" context="{'group_by': 'type'}"/>
+                        <filter string="Message Type" name="group_message_type" context="{'group_by': 'message_type'}"/>
+                        <filter string="Direction" name="group_direction" context="{'group_by': 'direction'}"/>
+                        <filter string="Status" name="group_status" context="{'group_by': 'status'}"/>
+                        <filter string="Date Added" name="group_date_added" context="{'group_by': 'date_added:day'}"/>
+                    </group>
+                </search>
+            </field>
+        </record>
+
+        <!-- Action -->
+        <record id="action_ghl_contact_message" model="ir.actions.act_window">
+            <field name="name">Messages</field>
+            <field name="res_model">ghl.contact.message</field>
+            <field name="view_mode">list,form</field>
+            <field name="context">{'search_default_group_contact': 1}</field>
+            <field name="help" type="html">
+                <p class="o_view_nocontent_smiling_face">
+                    No messages found
+                </p>
+                <p>
+                    Messages will appear here when synced from GHL.
+                </p>
+            </field>
+        </record>
+
+        <!-- Menu Item -->
+        <menuitem id="menu_ghl_contact_message"
+                  name="Messages"
+                  parent="menu_advanced_dashboard_contacts"
+                  action="action_ghl_contact_message"
+                  sequence="25"/>
+
+        <!-- Attachment Submodel Views -->
+        <record id="view_ghl_contact_message_attachment_list" model="ir.ui.view">
+            <field name="name">ghl.contact.message.attachment.list</field>
+            <field name="model">ghl.contact.message.attachment</field>
+            <field name="arch" type="xml">
+                <list string="Message Attachments">
+                    <field name="message_id"/>
+                    <field name="attachment_url"/>
+                    <field name="attachment_name"/>
+                    <field name="attachment_type"/>
+                    <field name="attachment_size"/>
+                </list>
+            </field>
+        </record>
+        <record id="view_ghl_contact_message_attachment_form" model="ir.ui.view">
+            <field name="name">ghl.contact.message.attachment.form</field>
+            <field name="model">ghl.contact.message.attachment</field>
+            <field name="arch" type="xml">
+                <form string="Message Attachment">
+                    <group>
+                        <field name="message_id"/>
+                        <field name="attachment_url"/>
+                        <field name="attachment_name"/>
+                        <field name="attachment_type"/>
+                        <field name="attachment_size"/>
+                    </group>
+                </form>
+            </field>
+        </record>
+
+        <!-- Meta Submodel Views -->
+        <record id="view_ghl_contact_message_meta_list" model="ir.ui.view">
+            <field name="name">ghl.contact.message.meta.list</field>
+            <field name="model">ghl.contact.message.meta</field>
+            <field name="arch" type="xml">
+                <list string="Message Meta Data">
+                    <field name="message_id"/>
+                    <field name="call_duration"/>
+                    <field name="call_status"/>
+                    <field name="email_message_ids"/>
+                </list>
+            </field>
+        </record>
+        <record id="view_ghl_contact_message_meta_form" model="ir.ui.view">
+            <field name="name">ghl.contact.message.meta.form</field>
+            <field name="model">ghl.contact.message.meta</field>
+            <field name="arch" type="xml">
+                <form string="Message Meta Data">
+                    <group>
+                        <field name="message_id"/>
+                        <field name="call_duration"/>
+                        <field name="call_status"/>
+                        <field name="email_message_ids"/>
+                    </group>
+                </form>
+            </field>
+        </record>
+    </data>
+</odoo> 

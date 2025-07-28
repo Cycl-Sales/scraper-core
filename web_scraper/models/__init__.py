@@ -19,4 +19,6 @@ from . import ghl_location_user
 from . import ghl_location_contact
 from . import ghl_contact_task
 from . import ghl_contact_conversation
+from . import ghl_contact_message
+from . import ghl_contact_message_transcript
 from . import ghl_contact_opportunity

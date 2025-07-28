@@ -90,6 +90,45 @@ export class DashboardAPI {
     }
   }
 
+  // Fast contacts endpoint for immediate data with background sync
+  async getContactsFast(locationId: string): Promise<{ contacts: Contact[], sync_status?: string, message?: string }> {
+    try {
+      const response = await apiClient.get('/api/get-location-contacts-fast', {
+        params: { location_id: locationId }
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching contacts (fast):', error);
+      throw error;
+    }
+  }
+
+  // Original contacts endpoint for fresh data sync
+  async getContactsFresh(locationId: string): Promise<{ success: boolean, message?: string, error?: string }> {
+    try {
+      const response = await apiClient.get('/api/get-location-contacts', {
+        params: { location_id: locationId }
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching contacts (fresh):', error);
+      throw error;
+    }
+  }
+
+  // Database contacts endpoint for cached data
+  async getContactsFromDB(locationId: string): Promise<{ contacts: Contact[], success: boolean }> {
+    try {
+      const response = await apiClient.get('/api/location-contacts', {
+        params: { location_id: locationId }
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching contacts from DB:', error);
+      throw error;
+    }
+  }
+
   async getContactDetail(contactId: string): Promise<Contact> {
     try {
       const response = await apiClient.get(`/api/dashboard/contacts/${contactId}`);

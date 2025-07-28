@@ -7,8 +7,7 @@
             <search string="Search Installed Locations">
                 <field name="name"/>
                 <field name="location_id"/>
-                <field name="address"/>
-                <field name="app_id"/>
+                <field name="address"/> 
                 <filter string="Installed" name="installed" domain="[('is_installed', '=', True)]"/>
                 <filter string="Not Installed" name="not_installed" domain="[('is_installed', '=', False)]"/>
                 <group expand="0" string="Group By">
@@ -28,8 +27,7 @@
                 <field name="name"/>
                 <field name="location_id"/>
                 <field name="address"/>
-                <field name="is_installed" widget="boolean_toggle"/>
-                <field name="app_id"/>
+                <field name="is_installed" widget="boolean_toggle"/> 
                 <field name="count"/>
                 <field name="install_to_future_locations" widget="boolean_toggle"/>
                 <field name="automation_group"/>
@@ -50,6 +48,7 @@
                 <field name="close_rate"/>
                 <field name="revenue_per_contact"/>
                 <field name="gross_roas"/>
+                <field name="application_ids"/>
             </list>
         </field>
     </record>
@@ -71,6 +70,7 @@
                             <field name="location_id"/>
                             <field name="app_id"/>
                             <field name="address"/>
+                            <field name="application_ids" widget="many2many_tags"/>
                         </group>
                         <group string="Status">
                             <field name="is_installed" widget="boolean_toggle"/>

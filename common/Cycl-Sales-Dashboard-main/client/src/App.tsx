@@ -13,6 +13,7 @@ import Overview from "@/pages/overview";
 import Analytics from "@/pages/analytics";
 import CallDetails from "@/pages/call-details";
 import Settings from "@/pages/settings";
+import Automations from "@/pages/automations";
 import { ThemeProvider } from "./theme-context";
 
 function Router() {
@@ -30,6 +31,7 @@ function Router() {
       <Route path="/ai-training" component={AITraining} />
       <Route path="/call-details" component={CallDetails} />
       <Route path="/settings" component={Settings} />
+      <Route path="/automations" component={Automations} />
       <Route component={NotFound} />
     </Switch>
   );

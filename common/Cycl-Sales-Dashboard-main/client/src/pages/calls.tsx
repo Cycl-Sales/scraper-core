@@ -1,17 +1,13 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import TopNavigation from "@/components/top-navigation";
-import CallVolumeChart from "@/components/charts/call-volume-chart";
-import EngagementChart from "@/components/charts/engagement-chart";
 import CallTranscriptDialog from "@/components/call-transcript-dialog";
+import TopNavigation from "@/components/top-navigation";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Search, Filter, Calendar, MapPin, Phone, Clock, TrendingUp, Users, FileText } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Calendar, Clock, FileText, Filter, Phone, Search, TrendingUp, Users } from "lucide-react";
+import { useState } from "react";
 
-export default function Calls() {
-  const [selectedLocation, setSelectedLocation] = useState<string>("all");
+export default function Calls() { 
   const [searchTerm, setSearchTerm] = useState("");
   const [dateRange, setDateRange] = useState<string>("last_30_days");
   const [selectedCall, setSelectedCall] = useState<any>(null);

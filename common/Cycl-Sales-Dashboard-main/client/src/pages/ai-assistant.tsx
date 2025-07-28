@@ -1,15 +1,15 @@
-import { useState } from "react";
 import TopNavigation from "@/components/top-navigation";
-import AILoading, { ButtonSpinner, DataOrbs } from "@/components/ai-loading";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
-import { Bot, Brain, MessageSquare, Settings, Zap } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
+import { Bot, Brain, MessageSquare, Settings, Zap, ArrowLeft } from "lucide-react";
+import { useState } from "react";
+import { Link } from "wouter";
 
 export default function AIAssistant() {
   const [assistantName, setAssistantName] = useState("AI Assistant");
@@ -24,6 +24,14 @@ export default function AIAssistant() {
       <TopNavigation />
       
       <main className="p-8 max-w-full">
+        <div className="mb-4">
+          <Link href="/automations">
+            <Button variant="ghost" className="flex items-center gap-2 text-slate-300 hover:text-white mb-2">
+              <ArrowLeft className="w-4 h-4" />
+              Back to Automations
+            </Button>
+          </Link>
+        </div>
         {/* Page Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-white mb-2">AI Assistant Configuration</h1>

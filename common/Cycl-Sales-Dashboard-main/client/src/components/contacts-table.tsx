@@ -8,7 +8,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useContacts } from "@/hooks/use-api";
 import { useToast } from "@/hooks/use-toast";
-import type { Contact } from "@shared/schema";
+import type { Contact as BaseContact } from "@shared/schema";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+
+// Extend Contact type to include details_fetched
+interface Contact extends BaseContact {
+  details_fetched?: boolean;
+}
 
 function getSourceBadgeClass(source: string | null) {
   if (!source) return "bg-slate-500/10 text-slate-500 hover:bg-slate-500/20";
@@ -64,6 +70,16 @@ function formatTimeAgo(date: Date | string | null): string {
 export default function ContactsTable() {
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState("");
+  const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
+  const [details, setDetails] = useState<any>(null);
+  const [detailsLoading, setDetailsLoading] = useState(false);
+  const [detailsError, setDetailsError] = useState<string | null>(null);
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [allContacts, setAllContacts] = useState<Contact[]>([]);
   
   const { 
     data: contacts, 
@@ -90,6 +106,71 @@ export default function ContactsTable() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Update allContacts when initial contacts load
+  useEffect(() => {
+    if (contacts && contacts.length > 0) {
+      setAllContacts(contacts);
+      setCurrentPage(1);
+      setHasMore(true);
+    }
+  }, [contacts]);
+
+  // Load more contacts function
+  const loadMoreContacts = async () => {
+    if (loadingMore || !hasMore) return;
+    
+    setLoadingMore(true);
+    try {
+      // Get location_id from the first contact (assuming all contacts are from same location)
+      const locationId = allContacts[0]?.locationId;
+      if (!locationId) {
+        console.error("No location ID found");
+        return;
+      }
+      
+      const response = await fetch("/api/load-more-contacts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          location_id: locationId,
+          page: currentPage + 1,
+          page_size: 100
+        }),
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        setAllContacts(prev => [...prev, ...data.contacts]);
+        setCurrentPage(prev => prev + 1);
+        setHasMore(data.has_more);
+      } else {
+        toast({
+          title: "Error",
+          description: data.error || "Failed to load more contacts",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error("Failed to load more contacts:", error);
+      toast({
+        title: "Error",
+        description: "Failed to load more contacts. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
+  // Infinite scroll handler
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
+    if (scrollHeight - scrollTop <= clientHeight * 1.5) {
+      loadMoreContacts();
+    }
+  };
+
   // Handle API errors
   useEffect(() => {
     if (contactsError) {
@@ -101,7 +182,7 @@ export default function ContactsTable() {
     }
   }, [contactsError, toast]);
 
-  const filteredContacts = contacts?.filter((contact) => {
+  const filteredContacts = allContacts?.filter((contact) => {
     const fullName = `${contact.firstName || ''} ${contact.lastName || ''}`.trim();
     const searchLower = searchTerm.toLowerCase();
     
@@ -111,6 +192,34 @@ export default function ContactsTable() {
            (contact.companyName && contact.companyName.toLowerCase().includes(searchLower)) ||
            (contact.source && contact.source.toLowerCase().includes(searchLower));
   }) || [];
+
+  const handleViewDetails = async (contact: Contact) => {
+    setSelectedContact(contact);
+    setDetails(null);
+    setDetailsError(null);
+    if (contact.details_fetched) {
+      setDetails(contact);
+      return;
+    }
+    setDetailsLoading(true);
+    try {
+      const res = await fetch("/api/contact-details", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contact_id: contact.id }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setDetails(data.contact);
+      } else {
+        setDetailsError(data.error || "Failed to fetch details");
+      }
+    } catch (e) {
+      setDetailsError("Failed to fetch details");
+    } finally {
+      setDetailsLoading(false);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -148,98 +257,273 @@ export default function ContactsTable() {
       </CardHeader>
       <CardContent>
         <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow className="border-slate-700 hover:bg-transparent">
-                <TableHead className="text-slate-400">Contact Name</TableHead>
-                <TableHead className="text-slate-400">Email</TableHead>
-                <TableHead className="text-slate-400">Phone</TableHead>
-                <TableHead className="text-slate-400">Company</TableHead>
-                <TableHead className="text-slate-400">Source</TableHead>
-                <TableHead className="text-slate-400">Tags</TableHead>
-                <TableHead className="text-slate-400">Created</TableHead>
-                <TableHead className="text-slate-400">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredContacts.map((contact) => {
-                const fullName = `${contact.firstName || ''} ${contact.lastName || ''}`.trim() || 'Unknown';
-                const initials = contact.firstName && contact.lastName 
-                  ? `${contact.firstName[0]}${contact.lastName[0]}` 
-                  : fullName.split(' ').map(n => n[0]).join('').slice(0, 2);
-                
-                return (
-                  <TableRow 
-                    key={contact.id} 
-                    className="border-slate-700 hover:bg-slate-700/50 transition-colors"
-                  >
-                    <TableCell>
-                      <div className="flex items-center space-x-3">
-                        <div className="w-8 h-8 bg-green-600 rounded-full flex items-center justify-center">
-                          <span className="text-sm font-medium text-white">
-                            {initials}
-                          </span>
+          <div className="max-h-96 overflow-y-auto" onScroll={handleScroll}>
+            <Table>
+              <TableHeader>
+                <TableRow className="border-slate-700 hover:bg-transparent">
+                  <TableHead className="text-slate-400">Contact Name</TableHead>
+                  <TableHead className="text-slate-400">Email</TableHead>
+                  <TableHead className="text-slate-400">Phone</TableHead>
+                  <TableHead className="text-slate-400">Company</TableHead>
+                  <TableHead className="text-slate-400">Source</TableHead>
+                  <TableHead className="text-slate-400">Tags</TableHead>
+                  <TableHead className="text-slate-400">Created</TableHead>
+                  <TableHead className="text-slate-400">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredContacts.map((contact) => {
+                  const fullName = `${contact.firstName || ''} ${contact.lastName || ''}`.trim() || 'Unknown';
+                  const initials = contact.firstName && contact.lastName 
+                    ? `${contact.firstName[0]}${contact.lastName[0]}` 
+                    : fullName.split(' ').map(n => n[0]).join('').slice(0, 2);
+                  
+                  return (
+                    <TableRow 
+                      key={contact.id} 
+                      className="border-slate-700 hover:bg-slate-700/50 transition-colors"
+                    >
+                      <TableCell>
+                        <div className="flex items-center space-x-3">
+                          <div className="w-8 h-8 bg-green-600 rounded-full flex items-center justify-center">
+                            <span className="text-sm font-medium text-white">
+                              {initials}
+                            </span>
+                          </div>
+                          <span className="text-white font-medium">{fullName}</span>
                         </div>
-                        <span className="text-white font-medium">{fullName}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-slate-300">{contact.email || '-'}</span>
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-slate-300">{contact.phone || '-'}</span>
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-slate-300">{contact.companyName || '-'}</span>
-                    </TableCell>
-                    <TableCell>
-                      <Badge className={getSourceBadgeClass(contact.source)}>
-                        {contact.source ? contact.source.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()) : "Unknown"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      {contact.tags && contact.tags.length > 0 ? (
-                        <div className="flex flex-wrap gap-1">
-                          {contact.tags.slice(0, 2).map((tag: string, index: number) => (
-                            <Badge key={index} className={getTagsBadgeClass(contact.tags)} variant="outline">
-                              {tag}
-                            </Badge>
-                          ))}
-                          {contact.tags.length > 2 && (
-                            <Badge variant="outline" className="bg-slate-500/10 text-slate-500">
-                              +{contact.tags.length - 2}
-                            </Badge>
-                          )}
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-slate-300">{contact.email || '-'}</span>
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-slate-300">{contact.phone || '-'}</span>
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-slate-300">{contact.companyName || '-'}</span>
+                      </TableCell>
+                      <TableCell>
+                        <Badge className={getSourceBadgeClass(contact.source)}>
+                          {contact.source ? contact.source.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()) : "Unknown"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {contact.tags && contact.tags.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {contact.tags.slice(0, 2).map((tag: string, index: number) => (
+                              <Badge key={index} className={getTagsBadgeClass(contact.tags)} variant="outline">
+                                {tag}
+                              </Badge>
+                            ))}
+                            {contact.tags.length > 2 && (
+                              <Badge variant="outline" className="bg-slate-500/10 text-slate-500">
+                                +{contact.tags.length - 2}
+                              </Badge>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-slate-400">No tags</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-slate-300">
+                          {formatTimeAgo(contact.dateCreated)}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center space-x-2">
+                          <Button variant="ghost" size="sm" className="text-slate-400 hover:text-white" onClick={() => handleViewDetails(contact)}>
+                            <Eye className="w-4 h-4" />
+                          </Button>
+                          <Button variant="ghost" size="sm" className="text-slate-400 hover:text-white">
+                            <Phone className="w-4 h-4" />
+                          </Button>
+                          <Button variant="ghost" size="sm" className="text-slate-400 hover:text-white">
+                            <Edit className="w-4 h-4" />
+                          </Button>
                         </div>
-                      ) : (
-                        <span className="text-slate-400">No tags</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-slate-300">
-                        {formatTimeAgo(contact.dateCreated)}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center space-x-2">
-                        <Button variant="ghost" size="sm" className="text-slate-400 hover:text-white">
-                          <Eye className="w-4 h-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm" className="text-slate-400 hover:text-white">
-                          <Phone className="w-4 h-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm" className="text-slate-400 hover:text-white">
-                          <Edit className="w-4 h-4" />
-                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+                {loadingMore && (
+                  <TableRow>
+                    <TableCell colSpan={8} className="text-center py-8">
+                      <div className="flex items-center justify-center">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
+                        <span className="ml-2 text-slate-400">Loading more contacts...</span>
                       </div>
                     </TableCell>
                   </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
+                )}
+              </TableBody>
+            </Table>
+          </div>
         </div>
       </CardContent>
+      <Dialog open={!!selectedContact} onOpenChange={() => setSelectedContact(null)}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Contact Details</DialogTitle>
+          </DialogHeader>
+          {detailsLoading ? (
+            <div className="flex items-center justify-center p-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+              <span className="ml-2 text-slate-400">Loading contact details...</span>
+            </div>
+          ) : detailsError ? (
+            <div className="text-red-500 p-4 bg-red-50 rounded-lg">{detailsError}</div>
+          ) : details ? (
+            <div className="space-y-6">
+              {/* Basic Information */}
+              <div className="bg-slate-50 p-4 rounded-lg">
+                <h3 className="text-lg font-semibold mb-3 text-slate-800">Basic Information</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <span className="font-medium text-slate-600">Name:</span>
+                    <span className="ml-2 text-slate-800">{details.firstName} {details.lastName}</span>
+                  </div>
+                  <div>
+                    <span className="font-medium text-slate-600">Email:</span>
+                    <span className="ml-2 text-slate-800">{details.email || 'N/A'}</span>
+                  </div>
+                  <div>
+                    <span className="font-medium text-slate-600">Phone:</span>
+                    <span className="ml-2 text-slate-800">{details.phone || 'N/A'}</span>
+                  </div>
+                  <div>
+                    <span className="font-medium text-slate-600">Company:</span>
+                    <span className="ml-2 text-slate-800">{details.companyName || 'N/A'}</span>
+                  </div>
+                  <div>
+                    <span className="font-medium text-slate-600">Source:</span>
+                    <span className="ml-2 text-slate-800">{details.source || 'N/A'}</span>
+                  </div>
+                  <div>
+                    <span className="font-medium text-slate-600">Created:</span>
+                    <span className="ml-2 text-slate-800">
+                      {details.dateCreated ? new Date(details.dateCreated).toLocaleDateString() : 'N/A'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Tasks */}
+              {details.tasks && details.tasks.length > 0 && (
+                <div className="bg-slate-50 p-4 rounded-lg">
+                  <h3 className="text-lg font-semibold mb-3 text-slate-800">Tasks ({details.tasks.length})</h3>
+                  <div className="space-y-3">
+                    {details.tasks.map((task: any, index: number) => (
+                      <div key={index} className="bg-white p-3 rounded border">
+                        <div className="flex justify-between items-start">
+                          <div className="flex-1">
+                            <h4 className="font-medium text-slate-800">{task.title}</h4>
+                            {task.description && (
+                              <p className="text-sm text-slate-600 mt-1">{task.description}</p>
+                            )}
+                          </div>
+                          <div className="text-right">
+                            <span className={`px-2 py-1 rounded text-xs font-medium ${
+                              task.status === 'completed' ? 'bg-green-100 text-green-800' :
+                              task.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                              'bg-slate-100 text-slate-800'
+                            }`}>
+                              {task.status}
+                            </span>
+                          </div>
+                        </div>
+                        {task.due_date && (
+                          <div className="text-xs text-slate-500 mt-2">
+                            Due: {new Date(task.due_date).toLocaleDateString()}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Conversations */}
+              {details.conversations && details.conversations.length > 0 && (
+                <div className="bg-slate-50 p-4 rounded-lg">
+                  <h3 className="text-lg font-semibold mb-3 text-slate-800">Conversations ({details.conversations.length})</h3>
+                  <div className="space-y-3">
+                    {details.conversations.map((conv: any, index: number) => (
+                      <div key={index} className="bg-white p-3 rounded border">
+                        <div className="flex justify-between items-start">
+                          <div className="flex-1">
+                            <h4 className="font-medium text-slate-800">{conv.subject || 'No Subject'}</h4>
+                            <p className="text-sm text-slate-600 mt-1">Channel: {conv.channel}</p>
+                            {conv.last_message && (
+                              <p className="text-sm text-slate-600 mt-1">{conv.last_message}</p>
+                            )}
+                          </div>
+                          <span className={`px-2 py-1 rounded text-xs font-medium ${
+                            conv.status === 'active' ? 'bg-green-100 text-green-800' :
+                            conv.status === 'closed' ? 'bg-red-100 text-red-800' :
+                            'bg-slate-100 text-slate-800'
+                          }`}>
+                            {conv.status}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Opportunities */}
+              {details.opportunities && details.opportunities.length > 0 && (
+                <div className="bg-slate-50 p-4 rounded-lg">
+                  <h3 className="text-lg font-semibold mb-3 text-slate-800">Opportunities ({details.opportunities.length})</h3>
+                  <div className="space-y-3">
+                    {details.opportunities.map((opp: any, index: number) => (
+                      <div key={index} className="bg-white p-3 rounded border">
+                        <div className="flex justify-between items-start">
+                          <div className="flex-1">
+                            <h4 className="font-medium text-slate-800">{opp.name || opp.title}</h4>
+                            {opp.description && (
+                              <p className="text-sm text-slate-600 mt-1">{opp.description}</p>
+                            )}
+                            <div className="flex gap-4 mt-2 text-sm text-slate-600">
+                              <span>Stage: {opp.stage}</span>
+                              {opp.monetary_value && (
+                                <span>Value: ${opp.monetary_value.toLocaleString()}</span>
+                              )}
+                            </div>
+                          </div>
+                          <span className={`px-2 py-1 rounded text-xs font-medium ${
+                            opp.status === 'open' ? 'bg-blue-100 text-blue-800' :
+                            opp.status === 'won' ? 'bg-green-100 text-green-800' :
+                            opp.status === 'lost' ? 'bg-red-100 text-red-800' :
+                            'bg-slate-100 text-slate-800'
+                          }`}>
+                            {opp.status}
+                          </span>
+                        </div>
+                        {opp.expected_close_date && (
+                          <div className="text-xs text-slate-500 mt-2">
+                            Expected Close: {new Date(opp.expected_close_date).toLocaleDateString()}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* No Details Message */}
+              {(!details.tasks || details.tasks.length === 0) && 
+               (!details.conversations || details.conversations.length === 0) && 
+               (!details.opportunities || details.opportunities.length === 0) && (
+                <div className="text-center py-8 text-slate-500">
+                  <p>No detailed information available for this contact.</p>
+                </div>
+              )}
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }

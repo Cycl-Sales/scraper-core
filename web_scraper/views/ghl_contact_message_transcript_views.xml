@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        <!-- List View -->
+        <record id="view_ghl_contact_message_transcript_tree" model="ir.ui.view">
+            <field name="name">ghl.contact.message.transcript.tree</field>
+            <field name="model">ghl.contact.message.transcript</field>
+            <field name="arch" type="xml">
+                <list string="Call Transcripts">
+                    <field name="sentence_index"/>
+                    <field name="start_time_seconds"/>
+                    <field name="end_time_seconds"/>
+                    <field name="duration"/>
+                    <field name="transcript"/>
+                    <field name="confidence"/>
+                    <field name="media_channel"/>
+                    <field name="contact_id"/>
+                    <field name="message_id"/>
+                </list>
+            </field>
+        </record>
+
+        <!-- Form View -->
+        <record id="view_ghl_contact_message_transcript_form" model="ir.ui.view">
+            <field name="name">ghl.contact.message.transcript.form</field>
+            <field name="model">ghl.contact.message.transcript</field>
+            <field name="arch" type="xml">
+                <form string="Call Transcript">
+                    <sheet>
+                        <group>
+                            <field name="message_id"/>
+                            <field name="contact_id"/>
+                            <field name="location_id"/>
+                            <field name="media_channel"/>
+                            <field name="sentence_index"/>
+                            <field name="start_time_seconds"/>
+                            <field name="end_time_seconds"/>
+                            <field name="duration"/>
+                            <field name="transcript"/>
+                            <field name="confidence"/>
+                        </group>
+                    </sheet>
+                </form>
+            </field>
+        </record>
+
+        <!-- Search View -->
+        <record id="view_ghl_contact_message_transcript_search" model="ir.ui.view">
+            <field name="name">ghl.contact.message.transcript.search</field>
+            <field name="model">ghl.contact.message.transcript</field>
+            <field name="arch" type="xml">
+                <search string="Search Call Transcripts">
+                    <field name="transcript"/>
+                    <field name="contact_id"/>
+                    <field name="message_id"/>
+                    <field name="location_id"/>
+                    <field name="confidence"/>
+                    <field name="media_channel"/>
+                </search>
+            </field>
+        </record>
+
+        <!-- Action -->
+        <record id="action_ghl_contact_message_transcript" model="ir.actions.act_window">
+            <field name="name">Call Transcripts</field>
+            <field name="res_model">ghl.contact.message.transcript</field>
+            <field name="view_mode">list,form</field>
+        </record>
+
+        <!-- Menu Item -->
+        <menuitem id="menu_ghl_contact_message_transcript"
+                  name="Call Transcripts"
+                  parent="web_scraper.menu_advanced_dashboard_contacts"
+                  action="action_ghl_contact_message_transcript"
+                  sequence="20"/>
+    </data>
+</odoo> 

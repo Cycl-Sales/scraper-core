@@ -16,6 +16,7 @@ const navigationSections = [
   {
     title: "Management", 
     items: [
+      { name: "Automations", icon: Sliders, href: "/automations" },
       { name: "AI Assistant", icon: Settings, href: "/ai-assistant" },
       { name: "Automation Rules", icon: Sliders, href: "/automation-rules" },
       { name: "Response Templates", icon: Bell, href: "/response-templates" },
@@ -32,6 +33,8 @@ const navigationSections = [
 
 export default function Sidebar() {
   const [location] = useLocation();
+  // Assume selectedLocation is available from context or state
+  const selectedLocation = typeof window !== 'undefined' && window.localStorage ? window.localStorage.getItem('selectedLocation') || 'all' : 'all';
 
   return (
     <aside className="w-80 bg-slate-900 border-r border-slate-800 flex flex-col">
@@ -56,9 +59,13 @@ export default function Sidebar() {
               {section.items.map((item) => {
                 const Icon = item.icon;
                 const isActive = location === item.href;
+                // If Automations, add location_id as query param
+                const href = item.name === "Automations"
+                  ? `/automations?location_id=${encodeURIComponent(selectedLocation)}`
+                  : item.href;
                 return (
                   <li key={item.name}>
-                    <Link href={item.href}>
+                    <Link href={href}>
                       <Button
                         variant={isActive ? "secondary" : "ghost"}
                         className={`w-full justify-start px-3 py-2 text-sm font-medium transition-colors ${

@@ -30,14 +30,22 @@ Features:
     'version': '1.0',
 
     # any module necessary for this one to work correctly
-    'depends': ['base'],
+    'depends': ['base', 'web_scraper'],
 
     # always loaded
     'data': [
         'security/ir.model.access.csv',
         'data/oauth_config_data.xml',
+        'data/automation_template_real_estate_investor.xml',
+        'data/automation_template_business_acquisition.xml',
+        'data/automation_template_real_estate_agent.xml',
+        'data/automation_template_coaching_programs.xml',
+        'data/automation_template_cleaning_companies.xml',
+        'data/automation_template_universal_business.xml',
+        'data/automation_template_custom_business.xml',
         'views/views.xml',
         'views/templates.xml',
+        'views/automation_template_views.xml',
     ],
 }
 

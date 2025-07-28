@@ -1,15 +1,14 @@
-import { useState, useEffect } from "react";
-import TopNavigation from "@/components/top-navigation";
-import KPICards from "@/components/kpi-cards";
 import CallVolumeChart from "@/components/charts/call-volume-chart";
 import EngagementChart from "@/components/charts/engagement-chart";
 import PipelineChart from "@/components/charts/pipeline-chart";
 import StatusChart from "@/components/charts/status-chart";
 import ContactsTable from "@/components/contacts-table";
+import KPICards from "@/components/kpi-cards";
 import LoadingAnimation, { LoadingSkeleton } from "@/components/loading-animation";
-import { useDashboardMetrics, useCallVolumeAnalytics, useEngagementAnalytics, usePipelineAnalytics } from "@/hooks/use-api";
+import TopNavigation from "@/components/top-navigation";
+import { useCallVolumeAnalytics, useDashboardMetrics, useEngagementAnalytics, usePipelineAnalytics } from "@/hooks/use-api";
 import { useToast } from "@/hooks/use-toast";
-import type { DashboardMetrics } from "@shared/schema";
+import { useEffect, useState } from "react";
 
 export default function Dashboard() {
   const { toast } = useToast();

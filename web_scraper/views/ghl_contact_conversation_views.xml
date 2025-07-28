@@ -29,6 +29,9 @@
             <field name="model">ghl.contact.conversation</field>
             <field name="arch" type="xml">
                 <form string="GHL Contact Conversation">
+                    <header>
+                        <button name="action_fetch_messages" type="object" string="Fetch Messages" class="btn-primary"/>
+                    </header>
                     <sheet>
                         <group>
                             <group string="Basic Information">

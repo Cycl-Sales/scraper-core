@@ -1,0 +1,69 @@
+<odoo>
+    <record id="view_cyclsales_vision_trigger_list" model="ir.ui.view">
+        <field name="name">cyclsales.vision.trigger.list</field>
+        <field name="model">cyclsales.vision.trigger</field>
+        <field name="arch" type="xml">
+            <list>
+                <field name="external_id"/>
+                <field name="key"/>
+                <field name="event_type"/>
+                <field name="location_id"/>
+                <field name="workflow_id"/>
+                <field name="company_id"/>
+                <field name="meta_key"/>
+                <field name="meta_version"/>
+                <field name="target_url"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_cyclsales_vision_trigger_form" model="ir.ui.view">
+        <field name="name">cyclsales.vision.trigger.form</field>
+        <field name="model">cyclsales.vision.trigger</field>
+        <field name="arch" type="xml">
+            <form string="Trigger">
+                <sheet>
+                    <group>
+                        <field name="external_id"/>
+                        <field name="key"/>
+                        <field name="event_type"/>
+                        <field name="filters" widget="text"/>
+                        <field name="location_id"/>
+                        <field name="workflow_id"/>
+                        <field name="company_id"/>
+                        <field name="meta_key"/>
+                        <field name="meta_version"/>
+                        <field name="target_url"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_cyclsales_vision_trigger_search" model="ir.ui.view">
+        <field name="name">cyclsales.vision.trigger.search</field>
+        <field name="model">cyclsales.vision.trigger</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="external_id"/>
+                <field name="key"/>
+                <field name="event_type"/>
+                <field name="location_id"/>
+                <field name="workflow_id"/>
+                <field name="company_id"/>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_cyclsales_vision_trigger" model="ir.actions.act_window">
+        <field name="name">Triggers</field>
+        <field name="res_model">cyclsales.vision.trigger</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="view_cyclsales_vision_trigger_search"/>
+    </record>
+
+    <!-- Main menu: WorkFlow (beside Automations) -->
+    <menuitem id="menu_workflow_root" name="WorkFlow" parent="web_scraper.menu_advanced_dashboard" sequence="2"/>
+    <!-- Submenu: Triggers -->
+    <menuitem id="menu_workflow_triggers" name="Triggers" parent="menu_workflow_root" action="action_cyclsales_vision_trigger" sequence="1"/>
+</odoo> 

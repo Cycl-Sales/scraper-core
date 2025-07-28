@@ -1,37 +1,14 @@
-import { useState, useEffect } from "react";
 import TopNavigation from "@/components/top-navigation";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
-import { Calendar as CalendarIcon, HelpCircle } from "lucide-react";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Switch } from "@/components/ui/switch";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { format } from "date-fns";
+import { Calendar as CalendarIcon, HelpCircle, RefreshCw } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import type { DateRange } from "react-day-picker";
-import { useLocation } from "wouter";
-
-// Generate 17 mock records
-const mockRows = Array.from({ length: 17 }, (_, i) => ({
-  location: `Blue Peak Property & Investments ${i + 1}`,
-  automationGroup: "Template: Generic Default",
-  adAccounts: Math.floor(Math.random() * 5),
-  totalAdSpend: `$${(Math.random() * 1000).toFixed(2)}`,
-  costPerConversion: `${Math.floor(Math.random() * 100)}%`,
-  newContacts: `${Math.floor(Math.random() * 2000)}`,
-  newContactsChange: `${Math.random() > 0.5 ? "+" : "-"}${Math.floor(Math.random() * 100)}%`,
-  medianAIQualityGrade: ["Lead Grade C (3/5)", "Lead Grade B (4/5)", "Lead Grade D (2/5)"][i % 3],
-  medianAIQualityGradeColor: ["bg-yellow-700 text-yellow-300", "bg-green-700 text-green-300", "bg-orange-700 text-orange-300"][i % 3],
-  touchRate: `${(Math.random() * 2).toFixed(2)}%`,
-  touchRateChange: `${Math.random() > 0.5 ? "+" : "-"}${Math.floor(Math.random() * 100)}%`,
-  engagementRate: `${(Math.random() * 100).toFixed(2)}%`,
-  engagementRateChange: `${Math.random() > 0.5 ? "+" : "-"}${Math.floor(Math.random() * 200)}%`,
-  speedToLead: `${Math.floor(Math.random() * 100)}%`,
-  medianAISalesGrade: ["Sales Grade D (2/5)", "Sales Grade C (3/5)", "Sales Grade B (4/5)"][i % 3],
-  medianAISalesGradeColor: ["bg-orange-700 text-orange-300", "bg-yellow-700 text-yellow-300", "bg-green-700 text-green-300"][i % 3],
-  closeRate: `${(Math.random() * 10).toFixed(2)}%`,
-  revenuePerContact: `$${(Math.random() * 100).toFixed(2)}`,
-  grossROAS: `${Math.floor(Math.random() * 100)}%`,
-}));
+import { useLocation } from "wouter"; 
 
 const columnHelpers: Record<string, string> = {
   "Location Name": "Name of the business location.",
@@ -129,7 +106,10 @@ export default function Overview() {
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [fetchedLocations, setFetchedLocations] = useState<any[]>([]);
+  const [syncStatus, setSyncStatus] = useState<string>("");
+  const [refreshing, setRefreshing] = useState(false);
   const [location, setLocation] = useLocation();
+  const pollRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -137,13 +117,70 @@ export default function Overview() {
       .then((res) => res.json())
       .then((data) => {
         setFetchedLocations(data.locations || []);
-        console.log("Fetched locations:", data.locations);
+        if (data.sync_status === "background") {
+          setSyncStatus(data.message || "Background sync in progress...");
+          // Start polling
+          if (!pollRef.current) {
+            pollRef.current = setInterval(async () => {
+              const statusResponse = await fetch("/api/installed-locations-sync-status");
+              const statusData = await statusResponse.json();
+              if (statusData.status === "completed") {
+                setFetchedLocations(statusData.locations || []);
+                setSyncStatus("Data updated successfully!");
+                setTimeout(() => setSyncStatus(""), 3000);
+                clearInterval(pollRef.current!);
+                pollRef.current = null;
+              } else if (statusData.status === "failed") {
+                setSyncStatus(`Sync failed: ${statusData.error || "Unknown error"}`);
+                setTimeout(() => setSyncStatus(""), 5000);
+                clearInterval(pollRef.current!);
+                pollRef.current = null;
+              }
+            }, 2000);
+          }
+        } else {
+          setSyncStatus("");
+        }
       })
       .catch((err) => {
-        console.error("Failed to fetch installed locations:", err);
+        setSyncStatus("");
       })
       .finally(() => setLoading(false));
-  }, []);
+
+  // Cleanup on unmount
+  return () => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+  };
+}, []);
+
+  // Function to refresh locations with fresh data
+  const refreshLocations = async () => {
+    setRefreshing(true);
+    try {
+      // Use the fresh endpoint for immediate sync
+      const response = await fetch("/api/installed-locations-fresh");
+      const data = await response.json();
+      
+      if (data.locations) {
+        setFetchedLocations(data.locations || []);
+        setSyncStatus("Data refreshed successfully");
+        setTimeout(() => setSyncStatus(""), 3000);
+      } else {
+        console.error("Failed to refresh locations:", data.error);
+        setSyncStatus("Failed to refresh data");
+        setTimeout(() => setSyncStatus(""), 3000);
+      }
+    } catch (error) {
+      console.error("Error refreshing locations:", error);
+      setSyncStatus("Error refreshing data");
+      setTimeout(() => setSyncStatus(""), 3000);
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const totalPages = Math.ceil(fetchedLocations.length / rowsPerPage);
   const paginatedRows = fetchedLocations.slice((page - 1) * rowsPerPage, page * rowsPerPage);
@@ -185,8 +222,25 @@ export default function Overview() {
                 <Switch checked={activeOnly} onCheckedChange={setActiveOnly} />
               </div>
               <DateRangePicker from={dateRange.from} to={dateRange.to} setRange={(range) => setDateRange(range ?? { from: undefined, to: undefined })} />
+              <Button 
+                variant="outline" 
+                className="flex gap-2 items-center bg-slate-800 text-slate-200 border-slate-700"
+                onClick={refreshLocations}
+                disabled={refreshing}
+              >
+                <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+                {refreshing ? 'Refreshing...' : 'Refresh'}
+              </Button>
             </div>
           </div>
+
+          {/* Sync Status Indicator */}
+          {syncStatus && (
+            <div className="flex items-center gap-2 px-3 py-2 bg-blue-900/50 border border-blue-700 rounded-md mb-4">
+              <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
+              <span className="text-blue-300 text-sm">{syncStatus}</span>
+            </div>    
+          )}
 
           {/* Table or Skeleton */}
           {loading ? (
@@ -349,4 +403,4 @@ export default function Overview() {
       </main>
     </div>
   );
-} 
+}

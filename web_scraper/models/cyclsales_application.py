@@ -3,6 +3,7 @@
 from odoo import models, fields, api, _
 from odoo.exceptions import ValidationError
 from datetime import timedelta
+import logging
 
 
 class CyclSalesApplication(models.Model):
@@ -19,6 +20,17 @@ class CyclSalesApplication(models.Model):
     token_expiry = fields.Datetime(string='Token Expiry', help='When the current access token expires')
     is_active = fields.Boolean(string='Active', default=True, help='Whether this application is currently active')
     notes = fields.Text(string='Notes', help='Additional notes about this application')
+    company_id = fields.Char(string='Company ID', help='GHL Company ID', default='Ipg8nKDPLYKsbtodR6LN')
+    
+    # Add this field to relate to installed.location
+    location_ids = fields.Many2many(
+        'installed.location',
+        'cyclsales_application_location_rel',  # relation table name
+        'application_id',                      # column for this model
+        'location_id',                         # column for the other model
+        string='Installed Locations',
+        help='Locations where this app is installed'
+    )
 
     # Computed fields
     token_status = fields.Selection([
@@ -205,3 +217,73 @@ class CyclSalesApplication(models.Model):
                     'type': 'danger',
                 }
             }
+
+    def fetch_and_sync_installed_locations(self, company_id):
+        """
+        Fetch installed locations for this application from GHL API and create/update installed.location records.
+        :param company_id: The GHL company ID (string)
+        :return: dict with summary of created/updated records
+        """
+        self.ensure_one()
+        import requests
+        _logger = logging.getLogger(__name__)
+        if not self.access_token:
+            raise ValidationError(_('No access token available for this application.'))
+        if not self.app_id:
+            raise ValidationError(_('No app_id set for this application.'))
+        url = f"https://services.leadconnectorhq.com/oauth/installedLocations?limit=100&isInstalled=true&companyId={company_id}&appId={self.app_id}"
+        headers = {
+            'Accept': 'application/json',
+            'Version': '2021-07-28',
+            'Authorization': f'Bearer {self.access_token}',
+        }
+        resp = requests.get(url, headers=headers)
+        _logger.info(f"[CyclSalesApplication] Fetch installed locations response: {resp.status_code} {resp.text}")
+        if resp.status_code != 200:
+            raise ValidationError(_(f"Failed to fetch installed locations: {resp.text}"))
+        data = resp.json()
+        locations = data.get('locations', [])
+        InstalledLocation = self.env['installed.location'].sudo()
+        created = 0
+        updated = 0
+        for loc in locations:
+            location_id = loc.get('_id')
+            name = loc.get('name')
+            address = loc.get('address')
+            is_installed = loc.get('isInstalled', False)
+            if not location_id:
+                continue
+            vals = {
+                'location_id': location_id,
+                'name': name or f'Location {location_id}',
+                'address': address or '',
+                'is_installed': is_installed,
+            }
+            rec = InstalledLocation.search([('location_id', '=', location_id)], limit=1)
+            if rec:
+                rec.write(vals)
+                if self.id not in rec.application_ids.ids:
+                    rec.application_ids = [(4, self.id)]
+                updated += 1
+            else:
+                new_loc = InstalledLocation.create(vals)
+                new_loc.application_ids = [(4, self.id)]
+                created += 1
+        return {
+            'created': created,
+            'updated': updated,
+            'total': len(locations),
+        }
+
+
+    @api.model
+    def cron_refresh_all_tokens(cls):
+        """Cron job to refresh tokens for all active CyclSalesApplication records"""
+        apps = cls.search([('is_active', '=', True)])
+        for app in apps:
+            try:
+                app.action_refresh_token()
+            except Exception as e:
+                import logging
+                _logger = logging.getLogger(__name__)
+                _logger.error(f"Failed to refresh token for app {app.name}: {e}")

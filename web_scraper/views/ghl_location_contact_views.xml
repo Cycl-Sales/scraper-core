@@ -34,6 +34,7 @@
         <field name="arch" type="xml">
             <form string="GHL Location Contact">
                 <header>
+                    <button name="action_fetch_conversations" type="object" string="Fetch Conversations" class="btn-primary"/>
                     <button name="action_view_tasks" type="object" string="View Tasks" class="oe_highlight"/>
                     <button name="action_view_attributions" type="object" string="View Attributions"/>
                     <button name="action_view_custom_fields" type="object" string="View Custom Fields"/>

@@ -1,0 +1,191 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Main Template -->
+    <record id="automation_template_custom_business" model="automation.template">
+        <field name="name">Default - Custom Business</field>
+        <field name="is_default">True</field>
+        <field name="business_context">This template is intended for businesses with unique or specialized needs. It provides a customizable starting point for any business type not covered by other templates.</field>
+    </record>
+    <!-- Call Transcript Settings -->
+    <record id="call_transcript_setting_cb" model="automation.call.transcript.setting">
+        <field name="template_id" ref="automation_template_custom_business"/>
+        <field name="enabled">True</field>
+        <field name="add_user_data">True</field>
+        <field name="update_contact_name">True</field>
+        <field name="improve_speaker_accuracy">True</field>
+        <field name="improve_word_accuracy">True</field>
+        <field name="assign_speaker_labels">True</field>
+        <field name="save_full_transcript">True</field>
+        <field name="save_transcript_url">True</field>
+    </record>
+    <!-- Call Summary Settings -->
+    <record id="call_summary_setting_cb" model="automation.call.summary.setting">
+        <field name="template_id" ref="automation_template_custom_business"/>
+        <field name="enabled">True</field>
+        <field name="add_url_to_note">True</field>
+        <field name="update_summary_field">True</field>
+        <field name="create_contact_note">True</field>
+    </record>
+    <!-- Extract Details -->
+    <record id="extract_detail_1_cb" model="automation.extract.detail">
+        <field name="call_summary_setting_id" ref="call_summary_setting_cb"/>
+        <field name="question">What is the business’s unique value proposition?</field>
+    </record>
+    <record id="extract_detail_2_cb" model="automation.extract.detail">
+        <field name="call_summary_setting_id" ref="call_summary_setting_cb"/>
+        <field name="question">Who are the primary stakeholders or decision-makers?</field>
+    </record>
+    <record id="extract_detail_3_cb" model="automation.extract.detail">
+        <field name="call_summary_setting_id" ref="call_summary_setting_cb"/>
+        <field name="question">What are the main goals for this engagement?</field>
+    </record>
+    <record id="extract_detail_4_cb" model="automation.extract.detail">
+        <field name="call_summary_setting_id" ref="call_summary_setting_cb"/>
+        <field name="question">What challenges or pain points are being addressed?</field>
+    </record>
+    <record id="extract_detail_5_cb" model="automation.extract.detail">
+        <field name="call_summary_setting_id" ref="call_summary_setting_cb"/>
+        <field name="question">What is the expected timeline for results?</field>
+    </record>
+    <record id="extract_detail_6_cb" model="automation.extract.detail">
+        <field name="call_summary_setting_id" ref="call_summary_setting_cb"/>
+        <field name="question">Are there any special requirements or considerations?</field>
+    </record>
+    <!-- AI Sales Scoring -->
+    <record id="ai_sales_scoring_setting_cb" model="automation.ai.sales.scoring.setting">
+        <field name="template_id" ref="automation_template_custom_business"/>
+        <field name="enabled">True</field>
+        <field name="framework">CUSTOM BUSINESS SALES FRAMEWORK</field>
+    </record>
+    <record id="sales_rule_1_cb" model="automation.sales.rule">
+        <field name="sales_scoring_setting_id" ref="ai_sales_scoring_setting_cb"/>
+        <field name="rule_text">Did the rep establish rapport and clarify the business’s unique needs?</field>
+    </record>
+    <record id="sales_rule_2_cb" model="automation.sales.rule">
+        <field name="sales_scoring_setting_id" ref="ai_sales_scoring_setting_cb"/>
+        <field name="rule_text">Was the business’s value proposition and goals clearly documented?</field>
+    </record>
+    <record id="sales_rule_3_cb" model="automation.sales.rule">
+        <field name="sales_scoring_setting_id" ref="ai_sales_scoring_setting_cb"/>
+        <field name="rule_text">Did the rep avoid generic solutions and instead tailor the approach?</field>
+    </record>
+    <record id="sales_rule_4_cb" model="automation.sales.rule">
+        <field name="sales_scoring_setting_id" ref="ai_sales_scoring_setting_cb"/>
+        <field name="rule_text">Did the rep handle objections or special requirements professionally?</field>
+    </record>
+    <record id="sales_rule_5_cb" model="automation.sales.rule">
+        <field name="sales_scoring_setting_id" ref="ai_sales_scoring_setting_cb"/>
+        <field name="rule_text">Did the rep confirm the next steps and follow up?</field>
+    </record>
+    <!-- Run Contact Automations -->
+    <record id="run_contact_automations_setting_cb" model="automation.run.contact.automations.setting">
+        <field name="template_id" ref="automation_template_custom_business"/>
+        <field name="enabled">True</field>
+        <field name="disable_for_tag">True</field>
+        <field name="after_inactivity">True</field>
+        <field name="inactivity_hours">10</field>
+        <field name="after_min_duration">True</field>
+        <field name="min_duration_seconds">20</field>
+        <field name="after_message_count">True</field>
+        <field name="message_count">2</field>
+    </record>
+    <!-- Contact Status -->
+    <record id="contact_status_setting_cb" model="automation.contact.status.setting">
+        <field name="template_id" ref="automation_template_custom_business"/>
+        <field name="enabled">True</field>
+        <field name="add_status_tag">True</field>
+        <field name="update_status_field">True</field>
+    </record>
+    <record id="status_option_1_cb" model="automation.status.option">
+        <field name="contact_status_setting_id" ref="contact_status_setting_cb"/>
+        <field name="name">Active Client</field>
+        <field name="description">The client is actively engaged in a custom business engagement.</field>
+        <field name="icon">user-check</field>
+        <field name="color">sky</field>
+    </record>
+    <record id="status_option_2_cb" model="automation.status.option">
+        <field name="contact_status_setting_id" ref="contact_status_setting_cb"/>
+        <field name="name">Proposal Sent</field>
+        <field name="description">A proposal has been sent to the client. Awaiting response.</field>
+        <field name="icon">badge-check</field>
+        <field name="color">green</field>
+    </record>
+    <record id="status_option_3_cb" model="automation.status.option">
+        <field name="contact_status_setting_id" ref="contact_status_setting_cb"/>
+        <field name="name">In Progress</field>
+        <field name="description">The engagement is in progress.</field>
+        <field name="icon">scroll</field>
+        <field name="color">blue</field>
+    </record>
+    <record id="status_option_4_cb" model="automation.status.option">
+        <field name="contact_status_setting_id" ref="contact_status_setting_cb"/>
+        <field name="name">Disqualified – Not Interested</field>
+        <field name="description">The client is not interested or not a fit.</field>
+        <field name="icon">ban</field>
+        <field name="color">rose</field>
+    </record>
+    <!-- AI Contact Scoring -->
+    <record id="ai_contact_scoring_setting_cb" model="automation.ai.contact.scoring.setting">
+        <field name="template_id" ref="automation_template_custom_business"/>
+        <field name="enabled">True</field>
+        <field name="use_notes_for_context">True</field>
+        <field name="update_score_field">True</field>
+        <field name="add_score_tag">False</field>
+        <field name="examples_rules">A-grade: Client is highly engaged, provides clear requirements, and responds quickly. B-grade: Client is engaged but has minor delays. C-grade: Client is inconsistent. D-grade: Client is non-committal or has major objections. F-grade: Client is not interested or not a fit.</field>
+    </record>
+    <!-- Full Contact Summary -->
+    <record id="full_contact_summary_setting_cb" model="automation.full.contact.summary.setting">
+        <field name="template_id" ref="automation_template_custom_business"/>
+        <field name="enabled">True</field>
+        <field name="use_call_summary_fields">True</field>
+        <field name="update_status_summary">True</field>
+        <field name="create_summary_note">True</field>
+        <field name="delete_old_summary">True</field>
+    </record>
+    <!-- Contact Value -->
+    <record id="contact_value_setting_cb" model="automation.contact.value.setting">
+        <field name="template_id" ref="automation_template_custom_business"/>
+        <field name="enabled">True</field>
+        <field name="update_value_field">True</field>
+        <field name="use_value_override">True</field>
+    </record>
+    <record id="contact_value_example_1_cb" model="automation.contact.value.example">
+        <field name="contact_value_setting_id" ref="contact_value_setting_cb"/>
+        <field name="example_text">High-value custom project: Value $20,000+.</field>
+    </record>
+    <record id="contact_value_example_2_cb" model="automation.contact.value.example">
+        <field name="contact_value_setting_id" ref="contact_value_setting_cb"/>
+        <field name="example_text">Standard engagement: Value $5,000–$20,000.</field>
+    </record>
+    <record id="contact_value_example_3_cb" model="automation.contact.value.example">
+        <field name="contact_value_setting_id" ref="contact_value_setting_cb"/>
+        <field name="example_text">Small project: Value $1,000–$5,000.</field>
+    </record>
+    <record id="contact_value_example_4_cb" model="automation.contact.value.example">
+        <field name="contact_value_setting_id" ref="contact_value_setting_cb"/>
+        <field name="example_text">Not interested: Value $0.</field>
+    </record>
+    <!-- Task Generation -->
+    <record id="task_generation_setting_cb" model="automation.task.generation.setting">
+        <field name="template_id" ref="automation_template_custom_business"/>
+        <field name="enabled">True</field>
+        <field name="auto_complete_tasks">True</field>
+        <field name="auto_reschedule_tasks">True</field>
+    </record>
+    <record id="task_rule_1_cb" model="automation.task.rule">
+        <field name="task_generation_setting_id" ref="task_generation_setting_cb"/>
+        <field name="rule_text">If a new client is onboarded, schedule a kickoff meeting within 48 hours.</field>
+    </record>
+    <record id="task_rule_2_cb" model="automation.task.rule">
+        <field name="task_generation_setting_id" ref="task_generation_setting_cb"/>
+        <field name="rule_text">If a proposal is sent, follow up within 24 hours.</field>
+    </record>
+    <record id="task_rule_3_cb" model="automation.task.rule">
+        <field name="task_generation_setting_id" ref="task_generation_setting_cb"/>
+        <field name="rule_text">If the engagement is in progress, create a status update task every week.</field>
+    </record>
+    <record id="task_rule_4_cb" model="automation.task.rule">
+        <field name="task_generation_setting_id" ref="task_generation_setting_cb"/>
+        <field name="rule_text">If the client is not interested, create a task to mark as disqualified.</field>
+    </record>
+</odoo> 

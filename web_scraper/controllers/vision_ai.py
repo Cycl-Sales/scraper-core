@@ -271,3 +271,48 @@ class VisionAIController(http.Controller):
                 status=500,
                 headers=get_cors_headers(request)
             ) 
+
+    @http.route('/cs-vision-ai', type='http', auth='none', methods=['POST', 'OPTIONS'], cors='*', csrf=False)
+    def cs_vision_ai_receiver(self, **post):
+        try:
+            raw_data = request.httprequest.data
+            _logger.info(f"[CSVisionAI] Received request: {raw_data}")
+            try:
+                data = json.loads(raw_data)
+                _logger.info(f"[CSVisionAI] Parsed JSON: {data}")
+            except Exception as e:
+                _logger.error(f"[CSVisionAI] JSON decode error: {str(e)} | Raw data: {raw_data}")
+                error_response = {
+                    'error_code': 'invalid_json',
+                    'message': 'Invalid JSON in request body',
+                    'details': str(e)
+                }
+                return Response(
+                    json.dumps(error_response),
+                    content_type='application/json',
+                    status=400,
+                    headers=get_cors_headers(request)
+                )
+            # Just return a success response
+            success_response = {
+                'status_code': 200,
+                'message': 'CS Vision AI data received successfully.'
+            }
+            return Response(
+                json.dumps(success_response),
+                content_type='application/json',
+                headers=get_cors_headers(request)
+            )
+        except Exception as e:
+            _logger.error(f"[CSVisionAI] Unexpected error: {str(e)}", exc_info=True)
+            error_response = {
+                'error_code': 'unexpected_error',
+                'message': 'An unexpected error occurred',
+                'details': str(e)
+            }
+            return Response(
+                json.dumps(error_response),
+                content_type='application/json',
+                status=500,
+                headers=get_cors_headers(request)
+            ) 

@@ -4,7 +4,7 @@ import TopNavigation from "@/components/top-navigation";
 import KPICards from "@/components/kpi-cards";
 import AnalyticsContactsTable from "@/components/analytics-contacts-table";
 import { Button } from "@/components/ui/button";
-import { Calendar as CalendarIcon, Filter, Share2, User, Users, ChevronDown } from "lucide-react";
+import { Calendar as CalendarIcon, Filter, Share2, User, Users, ChevronDown, RefreshCw } from "lucide-react";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { format } from "date-fns";
@@ -71,6 +71,8 @@ export default function Analytics() {
   const [loading, setLoading] = useState(false);
   const [contacts, setContacts] = useState<any[]>([]);
   const [contactsLoading, setContactsLoading] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<string>("");
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     console.log("locationId from query:", locationId);
@@ -111,20 +113,24 @@ export default function Analytics() {
           setLoading(false);
         });
 
-      // Fetch contacts data
+      // Fetch contacts data using the optimized fast endpoint
       setContactsLoading(true);
-      fetch(`/api/get-location-contacts?location_id=${encodeURIComponent(locationId)}`)
+              fetch(`/api/location-contacts-optimized?location_id=${encodeURIComponent(locationId)}&page=1&limit=10`)
         .then(res => res.json())
         .then(data => {
-          console.log("Triggered GHL contacts fetch:", data);
-          // Then fetch contacts from our database
-          return fetch(`/api/location-contacts?location_id=${encodeURIComponent(locationId)}`);
-        })
-        .then(res => res.json())
-        .then(data => {
-          console.log("Fetched contacts from database:", data);
+          console.log("Fetched contacts using fast endpoint:", data);
           if (data.success) {
             setContacts(data.contacts || []);
+            // Show sync status if available
+            if (data.sync_status === 'background') {
+              console.log("Background sync in progress:", data.message);
+              setSyncStatus(data.message || "Background sync in progress...");
+            } else {
+              setSyncStatus("");
+            }
+          } else {
+            console.error("Failed to fetch contacts:", data.error);
+            setSyncStatus("");
           }
         })
         .catch(err => {
@@ -137,6 +143,40 @@ export default function Analytics() {
       setLocationName("");
     }
   }, [locationId]);
+
+  // Function to refresh contacts with fresh data
+  const refreshContacts = async () => {
+    if (!locationId) return;
+    
+    setRefreshing(true);
+    try {
+      // Use the original endpoint for fresh data
+              const response = await fetch(`/api/location-contacts-optimized?location_id=${encodeURIComponent(locationId)}&page=1&limit=10`);
+      const data = await response.json();
+      
+      if (data.success) {
+        // After fresh sync, fetch the updated data
+        const updatedResponse = await fetch(`/api/location-contacts-optimized?location_id=${encodeURIComponent(locationId)}&page=1&limit=10`);
+        const updatedData = await updatedResponse.json();
+        
+        if (updatedData.success) {
+          setContacts(updatedData.contacts || []);
+          setSyncStatus("Data refreshed successfully");
+          setTimeout(() => setSyncStatus(""), 3000);
+        }
+      } else {
+        console.error("Failed to refresh contacts:", data.error);
+        setSyncStatus("Failed to refresh data");
+        setTimeout(() => setSyncStatus(""), 3000);
+      }
+    } catch (error) {
+      console.error("Error refreshing contacts:", error);
+      setSyncStatus("Error refreshing data");
+      setTimeout(() => setSyncStatus(""), 3000);
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   return (
     <div className="min-h-screen w-full bg-slate-950 text-slate-50 overflow-x-hidden">
@@ -215,46 +255,59 @@ export default function Analytics() {
         </div>
 
         {/* KPI Cards Row */}
-        <KPICards metrics={undefined} />
+        {/* <KPICards metrics={undefined} /> */}
 
         {/* Funnel and Speed to Lead Section */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-          {/* Funnel Chart Placeholder */}
+        {/* <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6"> 
           <div className="lg:col-span-2 bg-slate-900 rounded-2xl p-6 shadow-lg flex flex-col">
             <div className="flex items-center justify-between mb-2">
               <span className="text-slate-200 font-semibold">Template: Generic Default</span>
-              {/* Dropdown for template selection can go here */}
             </div>
-            <div className="flex-1 flex items-center justify-center">
-              {/* Funnel Chart Placeholder */}
+            <div className="flex-1 flex items-center justify-center"> 
               <div className="w-full h-64 flex items-center justify-center">
-                <span className="text-blue-500 text-6xl">&#x25B2;</span>
-                {/* Replace with actual funnel chart */}
+                <span className="text-blue-500 text-6xl">&#x25B2;</span> 
               </div>
             </div>
-          </div>
-          {/* Speed to Lead Distribution Placeholder */}
+          </div> 
           <div className="bg-slate-900 rounded-2xl p-6 shadow-lg flex flex-col">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-slate-200 font-semibold">Speed to Lead Distribution</span>
-              {/* Dropdown for chart type can go here */}
+              <span className="text-slate-200 font-semibold">Speed to Lead Distribution</span> 
             </div>
             <div className="flex-1 flex items-center justify-center">
               <span className="text-slate-400 text-3xl">¯\\_(ツ)_/¯<br />No data available.</span>
             </div>
           </div>
-        </div>
+        </div> */}
 
         {/* Contacts Table Section */}
         <div className="bg-slate-900 rounded-2xl p-6 shadow-lg">
           <div className="flex items-center justify-between mb-4">
-            <span className="text-lg font-semibold text-white">Contacts</span>
-            <Button variant="outline" className="flex gap-2 items-center bg-slate-800 text-slate-200 border-slate-700">
-              <Filter className="w-4 h-4" />
-              Customize Columns
-            </Button>
+            <div className="flex items-center gap-3">
+              <span className="text-lg font-semibold text-white">Contacts</span>
+              {syncStatus && (
+                <div className="flex items-center gap-2 px-3 py-1 bg-blue-900/50 border border-blue-700 rounded-md">
+                  <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
+                  <span className="text-blue-300 text-sm">{syncStatus}</span>
+                </div>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <Button 
+                variant="outline" 
+                className="flex gap-2 items-center bg-slate-800 text-slate-200 border-slate-700"
+                onClick={refreshContacts}
+                disabled={refreshing}
+              >
+                <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+                {refreshing ? 'Refreshing...' : 'Refresh'}
+              </Button>
+              <Button variant="outline" className="flex gap-2 items-center bg-slate-800 text-slate-200 border-slate-700">
+                <Filter className="w-4 h-4" />
+                Customize Columns
+              </Button>
+            </div>
           </div>
-          <AnalyticsContactsTable contacts={contacts} loading={contactsLoading} />
+          <AnalyticsContactsTable contacts={contacts} loading={contactsLoading} locationId={locationId} />
         </div>
       </main>
     </div>

@@ -10,5 +10,11 @@
         </xpath>
     </template>
     
+    <template id="automation_template_views" inherit_id="web.layout">
+        <xpath expr="//head" position="inside">
+            <link rel="stylesheet" href="/cs-dashboard-backend/static/src/css/automation_template.css"/>
+        </xpath>
+    </template>
+    
   </data>
 </odoo>

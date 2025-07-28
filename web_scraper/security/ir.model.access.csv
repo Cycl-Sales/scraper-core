@@ -47,3 +47,8 @@ access_ghl_contact_opportunity_admin,ghl.contact.opportunity admin,model_ghl_con
 access_ghl_contact_opportunity_user,ghl.contact.opportunity user,model_ghl_contact_opportunity,base.group_user,1,0,0,0
 access_ghl_contact_opportunity_custom_field_admin,ghl.contact.opportunity.custom.field admin,model_ghl_contact_opportunity_custom_field,base.group_system,1,1,1,1
 access_ghl_contact_opportunity_custom_field_user,ghl.contact.opportunity.custom.field user,model_ghl_contact_opportunity_custom_field,base.group_user,1,0,0,0
+access_ghl_contact_message_user,ghl.contact.message,model_ghl_contact_message,base.group_user,1,1,1,1
+access_ghl_contact_message_attachment_user,ghl.contact.message.attachment,model_ghl_contact_message_attachment,base.group_user,1,1,1,1
+access_ghl_contact_message_meta_user,ghl.contact.message.meta,model_ghl_contact_message_meta,base.group_user,1,1,1,1
+access_ghl_contact_message_transcript_user,ghl.contact.message.transcript.user,model_ghl_contact_message_transcript,base.group_user,1,1,1,1
+access_ghl_contact_message_transcript_manager,ghl.contact.message.transcript.manager,model_ghl_contact_message_transcript,base.group_system,1,1,1,1

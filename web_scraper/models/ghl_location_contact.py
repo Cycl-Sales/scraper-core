@@ -1,4 +1,7 @@
 from odoo import models, fields, api
+import requests
+from odoo.exceptions import ValidationError
+from odoo.tools.translate import _
 
 class GHLLocationContactCustomField(models.Model):
     _name = 'ghl.location.contact.custom.field'
@@ -53,11 +56,14 @@ class GHLLocationContact(models.Model):
     custom_field_ids = fields.One2many('ghl.location.contact.custom.field', 'contact_id', string='Custom Fields')
     attribution_ids = fields.One2many('ghl.location.contact.attribution', 'contact_id', string='Attributions')
     task_ids = fields.One2many('ghl.contact.task', 'contact_id', string='Tasks')
+    conversation_ids = fields.One2many('ghl.contact.conversation', 'contact_id', string='Conversations')
+    opportunity_ids = fields.One2many('ghl.contact.opportunity', 'contact_id', string='Opportunities')
     
     # Additional Fields
     tags = fields.Text(string='Tags')  # Store as JSON string for now
     business_id = fields.Char(string='Business ID')
     followers = fields.Char(string='Followers')
+    details_fetched = fields.Boolean(string='Details Fetched', default=False)
     
     # Computed Fields
     name = fields.Char(string='Name', compute='_compute_name', store=True)
@@ -114,12 +120,7 @@ class GHLLocationContact(models.Model):
     assigned_to = fields.Char(string='Assigned To')
     speed_to_lead = fields.Char(string='Speed to Lead')
     
-    touch_summary = fields.Selection([
-        ('no_touches', 'No Touches'),
-        ('1_touch', '1 Touch'),
-        ('2_touches', '2 Touches'),
-        ('3_touches', '3 Touches')
-    ], string='Touch Summary', default='no_touches')
+    touch_summary = fields.Char(string='Touch Summary', default='no_touches')
     
     engagement_summary = fields.Text(string='Engagement Summary')  # JSON string for complex data
     last_touch_date = fields.Datetime(string='Last Touch Date')
@@ -181,6 +182,143 @@ class GHLLocationContact(models.Model):
             opportunities = self.env['ghl.contact.opportunity'].search([('contact_id', '=', rec.id)])
             rec.opportunities = len(opportunities)
             rec.total_pipeline_value = sum(op.monetary_value or 0.0 for op in opportunities)
+    
+    def _compute_touch_summary(self):
+        """Compute touch summary based on message types"""
+        for contact in self:
+            # Get all messages for this contact
+            messages = self.env['ghl.contact.message'].search([
+                ('contact_id', '=', contact.id)
+            ])
+            
+            if not messages:
+                contact.touch_summary = 'no_touches'
+                continue
+            
+            # Count messages by type
+            message_counts = {}
+            for message in messages:
+                message_type = message.message_type or 'UNKNOWN'
+                message_counts[message_type] = message_counts.get(message_type, 0) + 1
+            
+            # Create touch summary string
+            touch_parts = []
+            for msg_type, count in message_counts.items():
+                # Map message types to readable names
+                type_name = self._get_message_type_display_name(msg_type)
+                touch_parts.append(f"{count} {type_name}")
+            
+            if touch_parts:
+                contact.touch_summary = ', '.join(touch_parts)
+            else:
+                contact.touch_summary = 'no_touches'
+    
+    def _get_message_type_display_name(self, message_type):
+        """Convert message type to readable display name"""
+        type_mapping = {
+            'TYPE_SMS': 'SMS',
+            'TYPE_CALL': 'PHONE CALL',
+            'TYPE_EMAIL': 'EMAIL',
+            'TYPE_SMS_REVIEW_REQUEST': 'SMS REVIEW',
+            'TYPE_WEBCHAT': 'WEBCHAT',
+            'TYPE_SMS_NO_SHOW_REQUEST': 'SMS NO SHOW',
+            'TYPE_NO_SHOW': 'NO SHOW',
+            'TYPE_CAMPAIGN_SMS': 'CAMPAIGN SMS',
+            'TYPE_CAMPAIGN_CALL': 'CAMPAIGN CALL',
+            'TYPE_CAMPAIGN_EMAIL': 'CAMPAIGN EMAIL',
+            'TYPE_CAMPAIGN_VOICEMAIL': 'CAMPAIGN VOICEMAIL',
+            'TYPE_FACEBOOK': 'FACEBOOK',
+            'TYPE_CAMPAIGN_FACEBOOK': 'CAMPAIGN FACEBOOK',
+            'TYPE_CAMPAIGN_MANUAL_CALL': 'MANUAL CALL',
+            'TYPE_CAMPAIGN_MANUAL_SMS': 'MANUAL SMS',
+            'TYPE_GMB': 'GOOGLE MY BUSINESS',
+            'TYPE_CAMPAIGN_GMB': 'CAMPAIGN GMB',
+            'TYPE_REVIEW': 'REVIEW',
+            'TYPE_INSTAGRAM': 'INSTAGRAM',
+            'TYPE_WHATSAPP': 'WHATSAPP',
+            'TYPE_CUSTOM_SMS': 'CUSTOM SMS',
+            'TYPE_CUSTOM_EMAIL': 'CUSTOM EMAIL',
+            'TYPE_CUSTOM_PROVIDER_SMS': 'PROVIDER SMS',
+            'TYPE_CUSTOM_PROVIDER_EMAIL': 'PROVIDER EMAIL',
+            'TYPE_IVR_CALL': 'IVR CALL',
+            'TYPE_ACTIVITY_CONTACT': 'ACTIVITY',
+            'TYPE_ACTIVITY_INVOICE': 'INVOICE',
+            'TYPE_ACTIVITY_PAYMENT': 'PAYMENT',
+            'TYPE_ACTIVITY_OPPORTUNITY': 'OPPORTUNITY',
+            'TYPE_LIVE_CHAT': 'LIVE CHAT',
+            'TYPE_LIVE_CHAT_INFO_MESSAGE': 'CHAT INFO',
+            'TYPE_ACTIVITY_APPOINTMENT': 'APPOINTMENT',
+            'TYPE_FACEBOOK_COMMENT': 'FB COMMENT',
+            'TYPE_INSTAGRAM_COMMENT': 'IG COMMENT',
+            'TYPE_CUSTOM_CALL': 'CUSTOM CALL',
+            'TYPE_INTERNAL_COMMENT': 'INTERNAL COMMENT',
+        }
+        return type_mapping.get(message_type, message_type.replace('TYPE_', ''))
+    
+    def _compute_last_touch_date(self):
+        """Compute last touch date from most recent message"""
+        for contact in self:
+            # Get the most recent message for this contact
+            last_message = self.env['ghl.contact.message'].search([
+                ('contact_id', '=', contact.id)
+            ], order='date_added desc', limit=1)
+            
+            if last_message and last_message.date_added:
+                contact.last_touch_date = last_message.date_added
+            else:
+                contact.last_touch_date = False
+    
+    def _compute_last_message_content(self):
+        """Compute last message content from most recent message"""
+        for contact in self:
+            # Get the most recent message for this contact
+            last_message = self.env['ghl.contact.message'].search([
+                ('contact_id', '=', contact.id)
+            ], order='date_added desc', limit=1)
+            
+            if last_message and last_message.body:
+                # Store as JSON for consistency with existing pattern
+                import json
+                message_data = {
+                    'body': last_message.body,
+                    'type': last_message.message_type,
+                    'direction': last_message.direction,
+                    'date_added': last_message.date_added.isoformat() if last_message.date_added else '',
+                    'id': last_message.ghl_id
+                }
+                contact.last_message = json.dumps(message_data)
+            else:
+                contact.last_message = ''
+    
+    def update_touch_information(self):
+        """Update touch summary, last touch date, and last message for this contact"""
+        self._compute_touch_summary()
+        self._compute_last_touch_date()
+        self._compute_last_message_content()
+    
+    @api.model
+    def update_all_contacts_touch_information(self):
+        """Update touch information for all contacts that have messages"""
+        import logging
+        _logger = logging.getLogger(__name__)
+        
+        contacts_with_messages = self.search([
+            ('id', 'in', self.env['ghl.contact.message'].search([]).mapped('contact_id.id'))
+        ])
+        
+        _logger.info(f"Updating touch information for {len(contacts_with_messages)} contacts with messages")
+        
+        for contact in contacts_with_messages:
+            try:
+                contact.update_touch_information()
+            except Exception as e:
+                _logger.error(f"Error updating touch information for contact {contact.id}: {str(e)}")
+        
+        _logger.info("Touch information update completed")
+        return {
+            'success': True,
+            'contacts_updated': len(contacts_with_messages)
+        }
 
     ghl_contact_opportunity_ids = fields.One2many('ghl.contact.opportunity', 'contact_id', string='Opportunities')
     
@@ -279,95 +417,344 @@ class GHLLocationContact(models.Model):
             'context': {'default_contact_id': self.id, 'default_location_id': self.location_id},
         }
 
-    @api.model
-    def fetch_contacts_from_ghl_api(self, company_id, location_id, app_access_token):
+    def action_fetch_conversations(self):
         """
-        Fetch contacts for a location using the GHL API.
-        This method handles the API calls and returns the raw contact data.
+        Button to fetch all conversations for this contact from the GHL API.
+        Requires the contact to have a valid external_id, location, and access token.
+        """
+        self.ensure_one()
         
+        # Validate required fields
+        if not self.external_id:
+            raise ValidationError(_('Contact must have a valid external_id to fetch conversations.'))
+        
+        if not self.location_id or not self.location_id.location_id:
+            raise ValidationError(_('Contact must be associated with a valid location to fetch conversations.'))
+        
+        # Find the access token for this location's app
+        app = self.env['cyclsales.application'].sudo().search([
+            ('app_id', '=', self.location_id.app_id),
+            ('is_active', '=', True)
+        ], limit=1)
+        
+        if not app or not app.access_token:
+            raise ValidationError(_('No valid access token found for this location. Please check the application configuration.'))
+        
+        # Hardcode company_id (same as controller)
+        company_id = 'Ipg8nKDPLYKsbtodR6LN'
+        
+        try:
+            # Step 1: Get location token using agency token and company_id
+            location_token_result = self.env['ghl.contact.conversation'].sudo()._get_location_token(
+                app_access_token=app.access_token,  # Agency access token
+                location_id=self.location_id.location_id,  # GHL location ID
+                company_id=company_id  # Company ID
+            )
+            
+            if not location_token_result.get('success'):
+                raise ValidationError(_('Failed to get location token: %s') % location_token_result.get('message', 'Unknown error'))
+            
+            location_token = location_token_result.get('access_token')
+            
+            # Step 2: Call the conversation sync method with location token
+            result = self.env['ghl.contact.conversation'].sudo().sync_conversations_for_contact_with_location_token(
+                location_token=location_token,  # Location access token (not agency token)
+                location_id=self.location_id.location_id,  # GHL location ID
+                contact_id=self.external_id,  # Contact's external_id from GHL
+                limit=100
+            )
+            
+            if result.get('success'):
+                # Show success notification with details
+                message = _('Successfully fetched conversations for contact %s. Created: %d, Updated: %d') % (
+                    self.name or self.external_id,
+                    result.get('created_count', 0),
+                    result.get('updated_count', 0)
+                )
+                
+                # If messages were also synced, include that info
+                if result.get('message_sync_results'):
+                    total_messages = sum(msg.get('messages_fetched', 0) for msg in result.get('message_sync_results', []))
+                    if total_messages > 0:
+                        message += _('. Messages fetched: %d') % total_messages
+                
+                return {
+                    'type': 'ir.actions.client',
+                    'tag': 'display_notification',
+                    'params': {
+                        'title': _('Conversations Fetched'),
+                        'message': message,
+                        'type': 'success',
+                    }
+                }
+            else:
+                # Show error notification
+                error_msg = result.get('error', _('Unknown error occurred while fetching conversations.'))
+                return {
+                    'type': 'ir.actions.client',
+                    'tag': 'display_notification',
+                    'params': {
+                        'title': _('Error'),
+                        'message': _('Failed to fetch conversations: %s') % error_msg,
+                        'type': 'danger',
+                    }
+                }
+                
+        except Exception as e:
+            # Show error notification for exceptions
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': _('Error'),
+                    'message': _('Exception occurred while fetching conversations: %s') % str(e),
+                    'type': 'danger',
+                }
+            }
+
+    @api.model
+    def fetch_contacts_from_ghl_api_paginated(self, company_id, location_id, app_access_token, limit=10, skip=0):
+        """
+        Fetch contacts for a location using the GHL API with specific pagination parameters.
         Args:
             company_id (str): GHL company ID
             location_id (str): GHL location ID
             app_access_token (str): GHL agency access token
-            
+            limit (int): Number of contacts to fetch per page
+            skip (int): Number of contacts to skip (for pagination)
         Returns:
             dict: API response with contacts data or error information
         """
-        import requests
+        from .ghl_api_utils import get_location_token
         import logging
         _logger = logging.getLogger(__name__)
         
         try:
             # Step 1: Get location access token
-            token_url = "https://services.leadconnectorhq.com/oauth/locationToken"
-            headers = {
-                'Accept': 'application/json',
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'Authorization': f'Bearer {app_access_token}',
-                'Version': '2021-07-28',
-            }
-            data = {
-                'companyId': company_id,
-                'locationId': location_id,
-            }
-            
-            token_resp = requests.post(token_url, headers=headers, data=data)
-            _logger.info(f"Location token response: {token_resp.status_code} {token_resp.text}")
-            if token_resp.status_code not in (200, 201):
-                _logger.error(f"Failed to get location token: {token_resp.text}")
-                return {
-                    'success': False,
-                    'error': f"Failed to get location token: {token_resp.text}",
-                    'status_code': token_resp.status_code
-                }
-                
-            token_json = token_resp.json()
-            location_token = token_json.get('access_token')
+            location_token = get_location_token(app_access_token, company_id, location_id)
             if not location_token:
-                _logger.error(f"No access_token in location token response: {token_json}")
                 return {
                     'success': False,
-                    'error': f"No access_token in location token response: {token_json}"
+                    'error': "Failed to get location access token"
                 }
-                
-            # Step 2: Fetch contacts
-            contacts_url = f"https://services.leadconnectorhq.com/contacts/?locationId={location_id}&limit=100"
-            contact_headers = {
+            # Step 2: Fetch contacts using POST /contacts/search with specific pagination
+            url = "https://services.leadconnectorhq.com/contacts/search"
+            headers = {
                 'Accept': 'application/json',
                 'Authorization': f'Bearer {location_token}',
                 'Version': '2021-07-28',
             }
-            contacts_resp = requests.get(contacts_url, headers=contact_headers)
-            _logger.info(f"Contacts API response: {contacts_resp.status_code} {contacts_resp.text}")
-            
-            if contacts_resp.status_code == 200:
-                contacts_json = contacts_resp.json()
-                _logger.info(f"Fetched contacts for location {location_id}: {contacts_json}")
-                
+            # Calculate page number (1-based)
+            page = (skip // limit) + 1
+            # Prepare search data with correct pagination keys
+            data = {
+                'locationId': location_id,
+                'pageLimit': limit,
+                'page': page
+            }
+            _logger.info(f"Fetching contacts for location {location_id} with pageLimit={limit}, page={page}")
+            response = requests.post(url, headers=headers, json=data, timeout=30)
+            if response.status_code == 200:
+                result = response.json()
+                contacts = result.get('contacts', [])
+                total_count = result.get('total', 0)
+                _logger.info(f"Successfully fetched {len(contacts)} contacts (total: {total_count})")
                 return {
                     'success': True,
-                    'contacts_data': contacts_json.get('contacts', []),
-                    'meta': contacts_json.get('meta', {}),
-                    'trace_id': contacts_json.get('traceId', ''),
-                    'total_contacts': len(contacts_json.get('contacts', []))
+                    'contacts_data': contacts,
+                    'total_contacts': total_count,
+                    'has_more': (skip + limit) < total_count,
+                    'page_info': {
+                        'limit': limit,
+                        'skip': skip,
+                        'total': total_count,
+                        'current_page': page
+                    }
                 }
             else:
-                _logger.error(f"Failed to fetch contacts: {contacts_resp.text}")
+                _logger.error(f"Failed to fetch contacts. Status: {response.status_code}, Response: {response.text}")
                 return {
                     'success': False,
-                    'error': f"Failed to fetch contacts: {contacts_resp.text}",
-                    'status_code': contacts_resp.status_code
+                    'error': f'API request failed with status {response.status_code}'
                 }
                 
-        except requests.exceptions.RequestException as e:
-            _logger.error(f"Request error while fetching contacts: {str(e)}")
-            return {
-                'success': False,
-                'error': f"Request error: {str(e)}"
-            }
         except Exception as e:
             _logger.error(f"Unexpected error while fetching contacts: {str(e)}")
+            import traceback
+            _logger.error(f"Full traceback: {traceback.format_exc()}")
+            return {
+                'success': False,
+                'error': f"Unexpected error: {str(e)}"
+            }
+
+    @api.model
+    def fetch_contacts_from_ghl_api(self, company_id, location_id, app_access_token, max_pages=None):
+        """
+        Fetch contacts for a location using the GHL API with pagination support (POST /contacts/search).
+        Args:
+            company_id (str): GHL company ID
+            location_id (str): GHL location ID
+            app_access_token (str): GHL agency access token
+            max_pages (int): Maximum number of pages to fetch (None for unlimited)
+        Returns:
+            dict: API response with contacts data or error information
+        """
+        from .ghl_api_utils import get_location_token, fetch_contacts_with_pagination
+        import logging
+        _logger = logging.getLogger(__name__)
+        try:
+            # Step 1: Get location access token
+            location_token = get_location_token(app_access_token, company_id, location_id)
+            if not location_token:
+                return {
+                    'success': False,
+                    'error': "Failed to get location access token"
+                }
+            # Step 2: Fetch all contacts using new pagination utility (POST /contacts/search)
+            _logger.info(f"Fetching contacts for location {location_id} with pagination (max_pages: {max_pages})")
+            result = fetch_contacts_with_pagination(location_token, location_id, max_pages)
+            if result['success']:
+                _logger.info(f"Successfully fetched {result['total_items']} contacts from {result['total_pages']} pages")
+                return {
+                    'success': True,
+                    'contacts_data': result['items'],
+                    'meta': {
+                        'total': result['total_count'],
+                        'pages_fetched': result['total_pages'],
+                        'items_fetched': result['total_items']
+                    },
+                    'total_contacts': result['total_items'],
+                    'pages_fetched': result['total_pages']
+                }
+            else:
+                return {
+                    'success': False,
+                    'error': result.get('error', 'Failed to fetch contacts')
+                }
+        except Exception as e:
+            _logger.error(f"Unexpected error while fetching contacts: {str(e)}")
+            import traceback
+            _logger.error(f"Full traceback: {traceback.format_exc()}")
             return {
                 'success': False,
                 'error': f"Unexpected error: {str(e)}"
             } 
+
+    def fetch_contact_single(self, location_token, contact_id):
+        """
+        Fetch a single contact from GHL and create/update the record in Odoo.
+        :param location_token: The location access token (string)
+        :param contact_id: The GHL contact ID (string)
+        :return: The created/updated contact record, or None on failure
+        """
+        import requests
+        import logging
+        from datetime import datetime
+        _logger = logging.getLogger(__name__)
+        url = f'https://services.leadconnectorhq.com/contacts/{contact_id}'
+        headers = {
+            'Accept': 'application/json',
+            'Authorization': f'Bearer {location_token}',
+            'Version': '2021-07-28',
+        }
+        try:
+            resp = requests.get(url, headers=headers)
+            _logger.info(f"[GHLLocationContact] fetch_contact_single response: {resp.status_code} {resp.text}")
+            if resp.status_code != 200:
+                _logger.error(f"Failed to fetch contact: {resp.text}")
+                return None
+            data = resp.json().get('contact')
+            if not data:
+                _logger.error(f"No contact data in response: {resp.text}")
+                return None
+            # Map fields
+            vals = {
+                'external_id': data.get('id'),
+                'contact_name': data.get('name'),
+                'first_name': data.get('firstName'),
+                'last_name': data.get('lastName'),
+                'email': data.get('email'),
+                'timezone': data.get('timezone'),
+                'country': data.get('country'),
+                'source': data.get('source'),
+                'date_added': data.get('dateAdded'),
+                'business_id': data.get('businessId'),
+                'assigned_to': data.get('assignedTo'),
+                'address': data.get('address1'),
+                'city': data.get('city'),
+                'state': data.get('state'),
+                'postal_code': data.get('postalCode'),
+                'website': data.get('website'),
+                'phone': data.get('phone'),
+                'tags': str(data.get('tags')) if data.get('tags') else None,
+                'last_touch_date': data.get('lastActivity'),
+                'details_fetched': True,
+            }
+            # Find installed.location by locationId
+            location_id = data.get('locationId')
+            installed_location = self.env['installed.location'].search([
+                ('location_id', '=', location_id)
+            ], limit=1)
+            if not installed_location:
+                _logger.error(f"No installed.location found for locationId: {location_id}")
+                return None
+            vals['location_id'] = installed_location.id
+            # Parse datetimes
+            for dt_field in ['date_added', 'last_touch_date']:
+                if vals.get(dt_field):
+                    try:
+                        vals[dt_field] = datetime.strptime(vals[dt_field].replace('Z', ''), '%Y-%m-%dT%H:%M:%S.%f')
+                    except Exception:
+                        try:
+                            vals[dt_field] = datetime.strptime(vals[dt_field].replace('Z', ''), '%Y-%m-%dT%H:%M:%S')
+                        except Exception:
+                            _logger.warning(f"Could not parse date: {vals[dt_field]}")
+                            vals[dt_field] = False
+            # Create or update contact
+            contact = self.sudo().search([
+                ('external_id', '=', vals['external_id']),
+                ('location_id', '=', installed_location.id)
+            ], limit=1)
+            if contact:
+                contact.write(vals)
+            else:
+                contact = self.sudo().create(vals)
+            # Handle custom fields
+            custom_fields = data.get('customFields', [])
+            if custom_fields:
+                contact.custom_field_ids.unlink()
+                for cf in custom_fields:
+                    self.env['ghl.location.contact.custom.field'].sudo().create({
+                        'contact_id': contact.id,
+                        'custom_field_id': cf.get('id'),
+                        'value': cf.get('value'),
+                    })
+            # Handle attributions
+            for attr_key in ['attributionSource', 'lastAttributionSource']:
+                attr = data.get(attr_key)
+                if attr:
+                    self.env['ghl.location.contact.attribution'].sudo().create({
+                        'contact_id': contact.id,
+                        'url': attr.get('url'),
+                        'campaign': attr.get('campaign'),
+                        'utm_source': attr.get('utmSource'),
+                        'utm_medium': attr.get('utmMedium'),
+                        'utm_content': attr.get('utmContent'),
+                        'referrer': attr.get('referrer'),
+                        'campaign_id': attr.get('campaignId'),
+                        'fbclid': attr.get('fbclid'),
+                        'gclid': attr.get('gclid'),
+                        'msclikid': attr.get('msclikid'),
+                        'dclid': attr.get('dclid'),
+                        'fbc': attr.get('fbc'),
+                        'fbp': attr.get('fbp'),
+                        'fb_event_id': attr.get('fbEventId'),
+                        'user_agent': attr.get('userAgent'),
+                        'ip': attr.get('ip'),
+                        'medium': attr.get('medium'),
+                        'medium_id': attr.get('mediumId'),
+                    })
+            return contact
+        except Exception as e:
+            _logger.error(f"Error fetching single contact: {e}")
+            return None 
