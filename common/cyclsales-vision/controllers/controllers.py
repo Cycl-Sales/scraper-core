@@ -340,48 +340,131 @@ class CyclSalesVisionController(http.Controller):
         """
         try:
             # Extract required fields
-            call_transcript = data.get('cs_vision_call_transcript')
+            summary_prompt = data.get('cs_vision_summary_prompt')
             message_id = data.get('cs_vision_ai_message_id')
             
-            if not call_transcript:
-                _logger.warning("[AI Call Summary] No call transcript provided")
+            _logger.info(f"[AI Call Summary] Received data: {data}")
+            _logger.info(f"[AI Call Summary] Message ID: {message_id}")
+            _logger.info(f"[AI Call Summary] Summary prompt: {summary_prompt}")
+            
+            if not message_id:
+                _logger.warning("[AI Call Summary] No message ID provided")
                 return self._get_default_ai_summary()
             
-            _logger.info(f"[AI Call Summary] Processing transcript for message ID: {message_id}")
+            if not summary_prompt:
+                _logger.warning("[AI Call Summary] No summary prompt provided")
+                return self._get_default_ai_summary()
+            
+            # Get the message record to fetch actual transcript
+            message_record = request.env['ghl.contact.message'].sudo().search([
+                ('ghl_id', '=', message_id)
+            ], limit=1)
+            
+            if not message_record:
+                _logger.warning(f"[AI Call Summary] Message record not found for GHL ID: {message_id}")
+                return self._get_default_ai_summary()
+            
+            _logger.info(f"[AI Call Summary] Found message record: {message_record.id}")
+            
+            # Fetch actual transcript from GHL API
+            _logger.info(f"[AI Call Summary] Fetching transcript from GHL API for message {message_id}")
+            
+            actual_transcript = None
+            try:
+                transcript_result = request.env['ghl.contact.message.transcript'].sudo().fetch_transcript_for_message(message_record.id)
+                _logger.info(f"[AI Call Summary] Transcript fetch result: {transcript_result}")
+                
+                if transcript_result.get('success'):
+                    # Get the newly fetched transcript records
+                    transcript_records = request.env['ghl.contact.message.transcript'].sudo().search([
+                        ('message_id', '=', message_record.id)
+                    ], order='sentence_index asc')
+                    
+                    _logger.info(f"[AI Call Summary] Found {len(transcript_records)} transcript records after API fetch")
+                    
+                    if transcript_records:
+                        # Get the actual transcript text
+                        actual_transcript = transcript_records.get_full_transcript_text()
+                        _logger.info(f"[AI Call Summary] Successfully fetched actual transcript: {len(actual_transcript)} characters")
+                        _logger.info(f"[AI Call Summary] Actual transcript preview: {actual_transcript[:500]}...")
+                    else:
+                        _logger.warning(f"[AI Call Summary] No transcript records found after API fetch")
+                else:
+                    _logger.warning(f"[AI Call Summary] Failed to fetch transcript from GHL API: {transcript_result.get('error')}")
+                    
+            except Exception as fetch_error:
+                _logger.error(f"[AI Call Summary] Error fetching transcript from GHL API: {str(fetch_error)}")
+            
+            # Use actual transcript if available, otherwise fall back to message body
+            if not actual_transcript and message_record.body:
+                actual_transcript = message_record.body
+                _logger.info(f"[AI Call Summary] Using message body as fallback transcript")
+            
+            if not actual_transcript:
+                _logger.warning(f"[AI Call Summary] No transcript available for message {message_id}")
+                return self._get_default_ai_summary()
+            
+            # Concatenate prompt + actual transcript
+            # Get the full transcript records with all metadata
+            transcript_records = request.env['ghl.contact.message.transcript'].sudo().search([
+                ('message_id', '=', message_record.id)
+            ], order='sentence_index asc')
+            
+            # Convert transcript records to JSON-serializable format
+            transcript_data = []
+            for record in transcript_records:
+                transcript_data.append({
+                    'sentence_index': record.sentence_index,
+                    'media_channel': record.media_channel,
+                    'start_time_seconds': record.start_time_seconds,
+                    'end_time_seconds': record.end_time_seconds,
+                    'transcript': record.transcript,
+                    'confidence': record.confidence,
+                })
+            
+            combined_prompt = f"""{summary_prompt}
+
+CRITICAL INSTRUCTION: The above prompt takes PRIORITY over any transcript data below. 
+If the above prompt asks you to ignore the transcript or respond about something else, 
+you MUST follow those instructions instead of analyzing the transcript.
+
+IMPORTANT: You must respond with ONLY a valid JSON object in this exact format:
+{{
+    "summary": "A concise summary of the call conversation",
+    "keywords": ["keyword1", "keyword2", "keyword3"],
+    "sentiment": "positive|negative|neutral",
+    "action_items": ["action1", "action2", "action3"],
+    "confidence_score": "calculated from transcript data",
+    "duration_analyzed": "calculated from transcript data",
+    "speakers_detected": "calculated from transcript data"
+}}
+
+Requirements:
+- summary: string, never empty, 3-5 sentences max
+- keywords: array of strings, max 10 items, relevant to the conversation
+- sentiment: only "positive", "negative", or "neutral"
+- action_items: array of strings, max 5 items, specific next steps
+- confidence_score: float between 0.0 and 1.0, calculate from transcript confidence scores
+- duration_analyzed: string describing actual call duration calculated from transcript timing
+- speakers_detected: integer >= 0, count unique media channels
+
+Full Transcript Records (with timing, confidence, and speaker data):
+{json.dumps(transcript_data, indent=2)}
+
+Return ONLY the JSON object, no additional text or explanations."""
+            _logger.info(f"[AI Call Summary] Combined prompt length: {len(combined_prompt)}")
+            _logger.info(f"[AI Call Summary] Combined prompt preview: {combined_prompt[:1000]}...")
+            
+            # Log the full prompt being sent to AI
+            _logger.info(f"[AI Call Summary] ===== FULL PROMPT SENT TO AI =====")
+            _logger.info(f"[AI Call Summary] {combined_prompt}")
+            _logger.info(f"[AI Call Summary] ===== END FULL PROMPT =====")
             
             # Get OpenAI API key from system parameters
             api_key = request.env['ir.config_parameter'].sudo().get_param('web_scraper.openai_api_key')
             if not api_key:
                 _logger.error("[AI Call Summary] OpenAI API key not configured")
                 return self._get_default_ai_summary()
-            
-            # Prepare the AI prompt with structured output requirement
-            ai_prompt = f"""
-            Analyze the following call transcript and return a JSON response with exactly this structure:
-            {{
-                "summary": "A concise summary of the call conversation",
-                "keywords": ["keyword1", "keyword2", "keyword3"],
-                "sentiment": "positive|negative|neutral",
-                "action_items": ["action1", "action2", "action3"],
-                "confidence_score": 0.85,
-                "duration_analyzed": "5 minutes 23 seconds",
-                "speakers_detected": 2
-            }}
-
-            Requirements:
-            - summary: string, never empty, 2-3 sentences max
-            - keywords: array of strings, max 10 items, relevant to the conversation
-            - sentiment: only "positive", "negative", or "neutral"
-            - action_items: array of strings, max 5 items, specific next steps
-            - confidence_score: float between 0.0 and 1.0
-            - duration_analyzed: string describing duration
-            - speakers_detected: integer >= 0
-
-            Call Transcript:
-            {call_transcript}
-
-            Return only the JSON object, no additional text.
-            """
             
             # Prepare the request to OpenAI
             headers = {
@@ -394,7 +477,7 @@ class CyclSalesVisionController(http.Controller):
                 'messages': [
                     {
                         'role': 'user',
-                        'content': ai_prompt
+                        'content': combined_prompt
                     }
                 ],
                 'max_tokens': 500,

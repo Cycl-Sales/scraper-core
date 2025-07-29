@@ -447,56 +447,6 @@ class CyclSalesVisionTrigger(models.Model):
             return {'success': False, 'error': str(e)}
 
     # Helper methods for workflow execution
-    def _get_or_fetch_transcript(self, message_record):
-        """
-        Get transcript for a message record, fetching from API if not available
-        Args:
-            message_record: ghl.contact.message record
-        Returns:
-            tuple: (transcript_text, transcript_records, fetch_status)
-        """
-        if not message_record:
-            return None, None, {'success': False, 'error': 'No message record provided'}
-        
-        # First, try to get existing transcript records
-        transcript_records = self.env['ghl.contact.message.transcript'].sudo().search([
-            ('message_id', '=', message_record.id)
-        ], order='sentence_index asc')
-        
-        if transcript_records:
-            # Use existing transcript records
-            transcript_text = transcript_records.get_full_transcript_text()
-            _logger.info(f"[Transcript Helper] Found {len(transcript_records)} existing transcript records for message {message_record.ghl_id}")
-            return transcript_text, transcript_records, {'success': True, 'source': 'database'}
-        
-        # If no existing records, try to fetch from GHL API
-        _logger.info(f"[Transcript Helper] No existing transcript records, attempting to fetch from GHL API for message {message_record.ghl_id}")
-        
-        try:
-            transcript_result = self.env['ghl.contact.message.transcript'].sudo().fetch_transcript_for_message(message_record.id)
-            _logger.info(f"[Transcript Helper] Transcript fetch result: {transcript_result}")
-            
-            if transcript_result.get('success'):
-                # Re-fetch the newly created records
-                transcript_records = self.env['ghl.contact.message.transcript'].sudo().search([
-                    ('message_id', '=', message_record.id)
-                ], order='sentence_index asc')
-                
-                if transcript_records:
-                    transcript_text = transcript_records.get_full_transcript_text()
-                    _logger.info(f"[Transcript Helper] Successfully fetched transcript from GHL API: {len(transcript_text)} characters")
-                    return transcript_text, transcript_records, {'success': True, 'source': 'api', 'count': len(transcript_records)}
-                else:
-                    _logger.warning(f"[Transcript Helper] No transcript records found after API fetch")
-                    return None, None, {'success': False, 'error': 'No transcript records created after API fetch'}
-            else:
-                _logger.warning(f"[Transcript Helper] Failed to fetch transcript from GHL API: {transcript_result.get('error')}")
-                return None, None, {'success': False, 'error': transcript_result.get('error'), 'source': 'api_failed'}
-                
-        except Exception as fetch_error:
-            _logger.error(f"[Transcript Helper] Error fetching transcript from GHL API: {str(fetch_error)}")
-            return None, None, {'success': False, 'error': str(fetch_error), 'source': 'exception'}
-
     def _generate_call_summary(self, message_id, contact_id, recording_url=None):
         """Generate AI summary for call"""
         try:
@@ -518,20 +468,52 @@ class CyclSalesVisionTrigger(models.Model):
                         _logger.info(f"[AI Call Summary] Using location_id from message: {location_id}")
                     elif hasattr(message_record, 'conversation_id') and message_record.conversation_id:
                         # Try to get location from conversation
-                        if hasattr(message_record.conversation_id, 'location_id') and message_record.conversation_id.location_id:
+                        if hasattr(message_record, 'conversation_id', 'location_id') and message_record.conversation_id.location_id:
                             location_id = message_record.conversation_id.location_id.id
                             _logger.info(f"[AI Call Summary] Using location_id from conversation: {location_id}")
                     
-                    # Use the new helper method to get or fetch transcript
-                    transcript, transcript_records, fetch_status = self._get_or_fetch_transcript(message_record)
+                    # Always try to fetch transcript from GHL API
+                    _logger.info(f"[AI Call Summary] Fetching transcript from GHL API for message {message_id}")
+                    _logger.info(f"[AI Call Summary] Message location_id: {message_record.location_id.location_id if message_record.location_id else 'None'}")
+                    _logger.info(f"[AI Call Summary] Message ghl_id: {message_record.ghl_id}")
                     
-                    if not transcript:
-                        # Fallback to message body if no transcript available
-                        if message_record.body:
-                            transcript = message_record.body
-                            _logger.info(f"[AI Call Summary] Using message body as fallback transcript")
+                    try:
+                        transcript_result = self.env['ghl.contact.message.transcript'].sudo().fetch_transcript_for_message(message_record.id)
+                        _logger.info(f"[AI Call Summary] Transcript fetch result: {transcript_result}")
+                        
+                        if transcript_result.get('success'):
+                            # Get the newly fetched transcript records
+                            transcript_records = self.env['ghl.contact.message.transcript'].sudo().search([
+                                ('message_id', '=', message_record.id)
+                            ], order='sentence_index asc')
+                            
+                            _logger.info(f"[AI Call Summary] Found {len(transcript_records)} transcript records after API fetch")
+                            
+                            # Log each transcript record
+                            for i, record in enumerate(transcript_records):
+                                _logger.info(f"[AI Call Summary] Transcript Record {i+1}:")
+                                _logger.info(f"  - Sentence Index: {record.sentence_index}")
+                                _logger.info(f"  - Media Channel: {record.media_channel}")
+                                _logger.info(f"  - Start Time: {record.start_time_seconds}")
+                                _logger.info(f"  - End Time: {record.end_time_seconds}")
+                                _logger.info(f"  - Confidence: {record.confidence}")
+                                _logger.info(f"  - Transcript Text: '{record.transcript}'")
+                            
+                            if transcript_records:
+                                transcript = transcript_records.get_full_transcript_text()
+                                _logger.info(f"[AI Call Summary] Successfully fetched transcript from GHL API: {len(transcript)} characters")
+                                _logger.info(f"[AI Call Summary] Full transcript text: '{transcript}'")
+                            else:
+                                _logger.warning(f"[AI Call Summary] No transcript records found after API fetch")
                         else:
-                            _logger.warning(f"[AI Call Summary] No transcript or message body available for message {message_id}")
+                            _logger.warning(f"[AI Call Summary] Failed to fetch transcript from GHL API: {transcript_result.get('error')}")
+                    except Exception as fetch_error:
+                        _logger.error(f"[AI Call Summary] Error fetching transcript from GHL API: {str(fetch_error)}")
+                    
+                    # Fallback to message body if no transcript available
+                    if not transcript and message_record.body:
+                        transcript = message_record.body
+                        _logger.info(f"[AI Call Summary] Using message body as fallback transcript")
                 
                 # Fallback to trigger's location if not found
                 if not location_id and self.location_id:
@@ -542,6 +524,7 @@ class CyclSalesVisionTrigger(models.Model):
                 
                 if transcript:
                     _logger.info(f"[AI Call Summary] Generating AI summary for message {message_id} with transcript length: {len(transcript)}")
+                    _logger.info(f"[AI Call Summary] Transcript preview: {transcript[:500]}...")
                     summary = ai_service.generate_summary(
                         message_id=message_id,
                         contact_id=contact_id,
@@ -877,56 +860,4 @@ class CyclSalesVisionTrigger(models.Model):
                 'error': str(e)
             }
 
-    def check_and_fetch_transcript(self, message_id):
-        """
-        Check if transcript exists for a message and fetch it if needed
-        Args:
-            message_id (str): GHL message ID
-        Returns:
-            dict: Status and transcript information
-        """
-        try:
-            _logger.info(f"[Check Transcript] Checking transcript for message {message_id}")
-            
-            # Get the message record
-            message_record = self.env['ghl.contact.message'].sudo().search([
-                ('ghl_id', '=', message_id)
-            ], limit=1)
-            
-            if not message_record:
-                return {
-                    'success': False,
-                    'error': f'Message {message_id} not found',
-                    'message_id': message_id
-                }
-            
-            # Use the helper method to get or fetch transcript
-            transcript_text, transcript_records, fetch_status = self._get_or_fetch_transcript(message_record)
-            
-            result = {
-                'success': fetch_status.get('success', False),
-                'message_id': message_id,
-                'ghl_message_id': message_record.ghl_id,
-                'has_transcript': bool(transcript_text),
-                'transcript_length': len(transcript_text) if transcript_text else 0,
-                'transcript_records_count': len(transcript_records) if transcript_records else 0,
-                'source': fetch_status.get('source', 'unknown'),
-                'fetch_status': fetch_status
-            }
-            
-            if transcript_text:
-                result['transcript_preview'] = transcript_text[:200] + "..." if len(transcript_text) > 200 else transcript_text
-                result['message'] = f"Transcript available ({len(transcript_text)} characters)"
-            else:
-                result['message'] = f"No transcript available: {fetch_status.get('error', 'Unknown error')}"
-            
-            _logger.info(f"[Check Transcript] Result: {result}")
-            return result
-            
-        except Exception as e:
-            _logger.error(f"[Check Transcript] Error: {str(e)}", exc_info=True)
-            return {
-                'success': False,
-                'error': str(e),
-                'message_id': message_id
-            } 
+ 

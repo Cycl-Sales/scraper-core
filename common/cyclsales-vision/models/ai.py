@@ -102,6 +102,15 @@ Return only the JSON object, no additional text.""")
             
             _logger.info(f"[AI Service] Generating summary for message_id: {message_id}, contact_id: {contact_id}")
             
+            # DEBUG: Log the transcript being passed
+            _logger.info(f"[AI Service] Transcript received: {transcript}")
+            _logger.info(f"[AI Service] Transcript type: {type(transcript)}")
+            _logger.info(f"[AI Service] Transcript length: {len(transcript) if transcript else 0}")
+            if transcript:
+                _logger.info(f"[AI Service] Transcript preview (first 500 chars): {transcript[:500]}...")
+            else:
+                _logger.warning(f"[AI Service] No transcript provided!")
+            
             # Get API key from record or system parameters
             api_key = self.api_key or self.env['ir.config_parameter'].sudo().get_param('web_scraper.openai_api_key')
             if not api_key:
@@ -115,7 +124,13 @@ Return only the JSON object, no additional text.""")
                 prompt = custom_prompt
             else:
                 # Use string replacement instead of format to avoid JSON brace conflicts
-                prompt = self.default_prompt_template.replace('{transcript}', transcript or "No transcript available")
+                transcript_for_prompt = transcript or "No transcript available"
+                _logger.info(f"[AI Service] Using transcript for prompt: {transcript_for_prompt[:200]}...")
+                prompt = self.default_prompt_template.replace('{transcript}', transcript_for_prompt)
+            
+            # DEBUG: Log the final prompt being sent to AI
+            _logger.info(f"[AI Service] Final prompt length: {len(prompt)}")
+            _logger.info(f"[AI Service] Final prompt preview: {prompt[:1000]}...")
             
             # Update usage log with prompt length
             if usage_log:
