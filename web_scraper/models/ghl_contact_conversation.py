@@ -255,16 +255,23 @@ class GhlContactConversation(models.Model):
                 'locationId': location_id
             }
             
-            _logger.info(f"Getting location token for location {location_id}")
+            _logger.info(f"[Location Token] Getting location token for location {location_id}")
+            _logger.info(f"[Location Token] Company ID: {company_id}")
+            _logger.info(f"[Location Token] App access token: {app_access_token[:20] if app_access_token else 'None'}...")
+            _logger.info(f"[Location Token] Request URL: {url}")
+            _logger.info(f"[Location Token] Request data: {data}")
             
             response = requests.post(url, headers=headers, data=data, timeout=30)
             
-            _logger.info(f"Location token response for conversations: {response.status_code}")
+            _logger.info(f"[Location Token] Response status: {response.status_code}")
+            _logger.info(f"[Location Token] Response text: {response.text[:200]}...")
+            
             if response.status_code != 201:
                 _logger.error(f"Location token error response: {response.text[:200]}...")
             
             if response.status_code == 201:
                 token_data = response.json()
+                _logger.info(f"[Location Token] Success - token data: {token_data}")
                 return {
                     'success': True,
                     'access_token': token_data.get('access_token'),

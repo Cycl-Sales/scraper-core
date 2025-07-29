@@ -27,6 +27,7 @@ Features:
         'views/templates.xml',
         'views/trigger_views.xml',
         'views/ai_views.xml',
+        'views/ai_usage_log_views.xml',
     ],
     'installable': True,
     'application': True,

@@ -2893,7 +2893,8 @@ class InstalledLocationController(http.Controller):
                                         contact.write({'details_fetched': True})
                                         cr.commit()
                                     except Exception as write_error:
-                                        _logger.error(f"Background: Error marking contact {contact.external_id} as details_fetched: {str(write_error)}")
+                                        _logger.error(
+                                            f"Background: Error marking contact {contact.external_id} as details_fetched: {str(write_error)}")
                                         cr.rollback()
 
                                     _logger.info(f"Background: Starting sync for contact {contact.external_id}")
@@ -2915,10 +2916,12 @@ class InstalledLocationController(http.Controller):
                                             )
                                             cr.commit()
                                         except Exception as task_error:
-                                            _logger.error(f"Background: Error syncing tasks for contact {contact.external_id}: {str(task_error)}")
+                                            _logger.error(
+                                                f"Background: Error syncing tasks for contact {contact.external_id}: {str(task_error)}")
                                             cr.rollback()
                             except Exception as e:
-                                _logger.error(f"Background: Error in task sync transaction for contact {contact_id}: {str(e)}")
+                                _logger.error(
+                                    f"Background: Error in task sync transaction for contact {contact_id}: {str(e)}")
 
                             # Sync conversations for this contact (separate transaction)
                             try:
@@ -2926,17 +2929,20 @@ class InstalledLocationController(http.Controller):
                                     env = api.Environment(cr, SUPERUSER_ID, {})
                                     contact = env['ghl.location.contact'].browse(contact_id)
                                     if contact.exists():
-                                        _logger.info(f"Background: Syncing conversations for contact {contact.external_id}")
+                                        _logger.info(
+                                            f"Background: Syncing conversations for contact {contact.external_id}")
                                         try:
                                             env['ghl.contact.conversation'].sync_conversations_for_contact(
                                                 access_token, contact.location_id.location_id, contact.external_id
                                             )
                                             cr.commit()
                                         except Exception as conv_error:
-                                            _logger.error(f"Background: Error syncing conversations for contact {contact.external_id}: {str(conv_error)}")
+                                            _logger.error(
+                                                f"Background: Error syncing conversations for contact {contact.external_id}: {str(conv_error)}")
                                             cr.rollback()
                             except Exception as e:
-                                _logger.error(f"Background: Error in conversation sync transaction for contact {contact_id}: {str(e)}")
+                                _logger.error(
+                                    f"Background: Error in conversation sync transaction for contact {contact_id}: {str(e)}")
 
                             # Sync opportunities for this contact (separate transaction)
                             try:
@@ -2944,17 +2950,21 @@ class InstalledLocationController(http.Controller):
                                     env = api.Environment(cr, SUPERUSER_ID, {})
                                     contact = env['ghl.location.contact'].browse(contact_id)
                                     if contact.exists():
-                                        _logger.info(f"Background: Syncing opportunities for contact {contact.external_id}")
+                                        _logger.info(
+                                            f"Background: Syncing opportunities for contact {contact.external_id}")
                                         try:
                                             env['ghl.contact.opportunity'].sync_opportunities_for_contact(
-                                                access_token, contact.location_id.location_id, contact.external_id, company_id
+                                                access_token, contact.location_id.location_id, contact.external_id,
+                                                company_id
                                             )
                                             cr.commit()
                                         except Exception as opp_error:
-                                            _logger.error(f"Background: Error syncing opportunities for contact {contact.external_id}: {str(opp_error)}")
+                                            _logger.error(
+                                                f"Background: Error syncing opportunities for contact {contact.external_id}: {str(opp_error)}")
                                             cr.rollback()
                             except Exception as e:
-                                _logger.error(f"Background: Error in opportunity sync transaction for contact {contact_id}: {str(e)}")
+                                _logger.error(
+                                    f"Background: Error in opportunity sync transaction for contact {contact_id}: {str(e)}")
 
                             # Fetch messages for conversations (separate transaction per conversation)
                             try:
@@ -2968,22 +2978,26 @@ class InstalledLocationController(http.Controller):
                                             ])
                                             cr.commit()
                                         except Exception as conv_search_error:
-                                            _logger.error(f"Background: Error searching conversations for contact {contact.external_id}: {str(conv_search_error)}")
+                                            _logger.error(
+                                                f"Background: Error searching conversations for contact {contact.external_id}: {str(conv_search_error)}")
                                             cr.rollback()
                                             continue
-                                        
+
                                         for conversation in conversations:
                                             # Each conversation gets its own transaction
                                             try:
                                                 with registry.cursor() as conv_cr:
                                                     conv_env = api.Environment(conv_cr, SUPERUSER_ID, {})
                                                     try:
-                                                        location_token_result = conv_env['ghl.contact.conversation']._get_location_token(
-                                                            access_token, conversation.contact_id.location_id.location_id, company_id
+                                                        location_token_result = conv_env[
+                                                            'ghl.contact.conversation']._get_location_token(
+                                                            access_token,
+                                                            conversation.contact_id.location_id.location_id, company_id
                                                         )
-                                                        
+
                                                         if location_token_result['success']:
-                                                            conv_env['ghl.contact.message'].fetch_messages_for_conversation(
+                                                            conv_env[
+                                                                'ghl.contact.message'].fetch_messages_for_conversation(
                                                                 conversation_id=conversation.ghl_id,
                                                                 access_token=location_token_result['access_token'],
                                                                 location_id=conversation.contact_id.location_id.id,
@@ -2991,16 +3005,21 @@ class InstalledLocationController(http.Controller):
                                                                 limit=100
                                                             )
                                                             conv_cr.commit()
-                                                            _logger.info(f"Background: Successfully fetched messages for conversation {conversation.ghl_id}")
+                                                            _logger.info(
+                                                                f"Background: Successfully fetched messages for conversation {conversation.ghl_id}")
                                                         else:
-                                                            _logger.error(f"Background: Failed to get location token for conversation {conversation.ghl_id}")
+                                                            _logger.error(
+                                                                f"Background: Failed to get location token for conversation {conversation.ghl_id}")
                                                     except Exception as msg_error:
-                                                        _logger.error(f"Background: Error fetching messages for conversation {conversation.ghl_id}: {str(msg_error)}")
+                                                        _logger.error(
+                                                            f"Background: Error fetching messages for conversation {conversation.ghl_id}: {str(msg_error)}")
                                                         conv_cr.rollback()
                                             except Exception as conv_transaction_error:
-                                                _logger.error(f"Background: Error in conversation transaction for {conversation.ghl_id}: {str(conv_transaction_error)}")
+                                                _logger.error(
+                                                    f"Background: Error in conversation transaction for {conversation.ghl_id}: {str(conv_transaction_error)}")
                             except Exception as e:
-                                _logger.error(f"Background: Error in message sync transaction for contact {contact_id}: {str(e)}")
+                                _logger.error(
+                                    f"Background: Error in message sync transaction for contact {contact_id}: {str(e)}")
 
                             # Update touch information for this contact (separate transaction)
                             try:
@@ -3012,10 +3031,12 @@ class InstalledLocationController(http.Controller):
                                             contact.update_touch_information()
                                             cr.commit()
                                         except Exception as touch_error:
-                                            _logger.error(f"Background: Error updating touch information for contact {contact.external_id}: {str(touch_error)}")
+                                            _logger.error(
+                                                f"Background: Error updating touch information for contact {contact.external_id}: {str(touch_error)}")
                                             cr.rollback()
                             except Exception as e:
-                                _logger.error(f"Background: Error in touch update transaction for contact {contact_id}: {str(e)}")
+                                _logger.error(
+                                    f"Background: Error in touch update transaction for contact {contact_id}: {str(e)}")
 
                             _logger.info(f"Background: Completed detailed sync for contact {contact_id}")
 
@@ -3347,19 +3368,20 @@ class InstalledLocationController(http.Controller):
                 headers=get_cors_headers(request)
             )
 
-    @http.route('/api/contact-call-messages/<int:contact_id>', type='http', auth='none', methods=['GET', 'OPTIONS'], csrf=False)
+    @http.route('/api/contact-call-messages/<int:contact_id>', type='http', auth='none', methods=['GET', 'OPTIONS'],
+                csrf=False)
     def get_contact_call_messages(self, contact_id, **kwargs):
         """
         Fetch call messages for a specific contact by their database ID.
         Returns messages where message_type is 'TYPE_CALL'.
         """
         _logger.info(f"get_contact_call_messages called for contact_id: {contact_id}")
-        
+
         if request.httprequest.method == 'OPTIONS':
             return Response(status=200, headers=get_cors_headers(request))
-        
+
         import json
-        
+
         try:
             # Find the contact by ID
             contact = request.env['ghl.location.contact'].sudo().browse(contact_id)
@@ -3370,29 +3392,31 @@ class InstalledLocationController(http.Controller):
                     status=404,
                     headers=get_cors_headers(request)
                 )
-            
+
             # Fetch call messages for this contact
             call_messages = request.env['ghl.contact.message'].sudo().search([
                 ('contact_id', '=', contact_id),
                 ('message_type', '=', 'TYPE_CALL')
             ], order='date_added desc')
-            
+
             # Format the messages for frontend
             messages_data = []
             for message in call_messages:
                 # Debug logging for the first message
                 if len(messages_data) == 0:
-                    _logger.info(f"Debug - First message data: id={message.id}, meta_id={message.meta_id}, meta_id.call_duration={message.meta_id.call_duration if message.meta_id else 'None'}")
-                
+                    _logger.info(
+                        f"Debug - First message data: id={message.id}, meta_id={message.meta_id}, meta_id.call_duration={message.meta_id.call_duration if message.meta_id else 'None'}")
+
                 if not message.recording_data:
                     try:
-                            message.fetch_recording_url()
+                        message.fetch_recording_url()
                     except Exception as e:
                         _logger.error(f"Error fetching recording URL for message {message.id}: {str(e)}")
                         continue
                 if message.recording_data and not message.transcript_ids:
                     try:
-                        request.env['ghl.contact.message.transcript'].sudo().fetch_transcript_for_message(message.id)
+                        request.env['ghl.contact.message.transcript'].sudo().fetch_transcript_for_message(
+                            message_id=message.id, app_id='684c5cc0736d09f78555981f')
                     except Exception as e:
                         _logger.error(f"Error fetching transcript URL for message {message.id}: {str(e)}")
                         continue
@@ -3410,12 +3434,13 @@ class InstalledLocationController(http.Controller):
                         calculated_duration = sum(t.duration for t in transcript_records if t.duration)
                         # Debug logging for transcript-based duration calculation
                         if len(messages_data) == 0:
-                            _logger.info(f"Debug - Transcript-based duration: {calculated_duration} seconds from {len(transcript_records)} transcript records")
+                            _logger.info(
+                                f"Debug - Transcript-based duration: {calculated_duration} seconds from {len(transcript_records)} transcript records")
                     else:
                         # Debug logging when no transcript records found
                         if len(messages_data) == 0:
                             _logger.info(f"Debug - No transcript records found for message {message.id}")
-                
+
                 message_data = {
                     'id': message.id,
                     'ghl_id': message.ghl_id,
@@ -3450,9 +3475,9 @@ class InstalledLocationController(http.Controller):
                     'recording_content_type': message.recording_content_type or None,
                 }
                 messages_data.append(message_data)
-            
+
             _logger.info(f"Found {len(messages_data)} call messages for contact {contact_id}")
-            
+
             return Response(
                 json.dumps({
                     'success': True,
@@ -3472,7 +3497,7 @@ class InstalledLocationController(http.Controller):
                 status=200,
                 headers=get_cors_headers(request)
             )
-            
+
         except Exception as e:
             import traceback
             tb = traceback.format_exc()
@@ -3491,12 +3516,12 @@ class InstalledLocationController(http.Controller):
         for a specific message ID.
         """
         _logger.info(f"get_call_details called for message_id: {message_id}")
-        
+
         if request.httprequest.method == 'OPTIONS':
             return Response(status=200, headers=get_cors_headers(request))
-        
+
         import json
-        
+
         try:
             # Find the message by ID
             message = request.env['ghl.contact.message'].sudo().browse(message_id)
@@ -3507,7 +3532,7 @@ class InstalledLocationController(http.Controller):
                     status=404,
                     headers=get_cors_headers(request)
                 )
-            
+
             # Check if it's a call message
             if message.message_type != 'TYPE_CALL':
                 return Response(
@@ -3516,7 +3541,7 @@ class InstalledLocationController(http.Controller):
                     status=400,
                     headers=get_cors_headers(request)
                 )
-            
+
             # Get contact information
             contact = message.contact_id
             if not contact.exists():
@@ -3526,29 +3551,29 @@ class InstalledLocationController(http.Controller):
                     status=404,
                     headers=get_cors_headers(request)
                 )
-            
+
             # Get transcript data
             transcript_records = request.env['ghl.contact.message.transcript'].sudo().search([
                 ('message_id', '=', message_id)
             ], order='sentence_index asc')
-            
+
             transcript_data = []
             total_duration = 0
             total_sentences = 0
             average_confidence = 0
-            
+
             if transcript_records:
                 total_duration = sum(t.duration for t in transcript_records if t.duration)
                 total_sentences = len(transcript_records)
                 confidence_sum = sum(t.confidence for t in transcript_records if t.confidence)
                 average_confidence = round(confidence_sum / total_sentences, 2) if total_sentences > 0 else 0
-                
+
                 # Format transcript for frontend
                 for transcript in transcript_records:
                     # Determine speaker based on media channel
                     speaker = "agent" if transcript.media_channel == "2" else "contact"
                     speaker_name = message.user_id.name if message.user_id and speaker == "agent" else contact.name
-                    
+
                     transcript_data.append({
                         'timestamp': f"{int(transcript.start_time_seconds // 60):02d}:{int(transcript.start_time_seconds % 60):02d}",
                         'speaker': speaker,
@@ -3560,12 +3585,12 @@ class InstalledLocationController(http.Controller):
                         'duration': transcript.duration,
                         'media_channel': transcript.media_channel
                     })
-            
+
             # Format duration for display
             minutes = int(total_duration // 60)
             seconds = int(total_duration % 60)
             duration_formatted = f"{minutes}:{seconds:02d}"
-            
+
             # Get call summary
             call_summary = {
                 'outcome': message.body or 'No summary available',
@@ -3573,7 +3598,7 @@ class InstalledLocationController(http.Controller):
                 'nextSteps': [],
                 'sentiment': 'neutral'
             }
-            
+
             # Basic AI analysis based on transcript
             ai_analysis = {
                 'overallScore': 7,
@@ -3588,7 +3613,7 @@ class InstalledLocationController(http.Controller):
                 'callIntent': 'Initial outreach',
                 'satisfactionLevel': 'medium'
             }
-            
+
             # Add highlights based on transcript content
             if transcript_data:
                 # Simple analysis based on transcript length and confidence
@@ -3598,15 +3623,15 @@ class InstalledLocationController(http.Controller):
                     ai_analysis['highlights'].append('Clear communication')
                 if total_sentences > 10:
                     ai_analysis['highlights'].append('Detailed discussion')
-                
+
                 # Basic sentiment analysis
                 positive_words = ['yes', 'great', 'good', 'interested', 'perfect', 'thanks', 'thank you']
                 negative_words = ['no', 'not', 'bad', 'problem', 'issue', 'cancel']
-                
+
                 all_text = ' '.join([t['text'].lower() for t in transcript_data])
                 positive_count = sum(1 for word in positive_words if word in all_text)
                 negative_count = sum(1 for word in negative_words if word in all_text)
-                
+
                 if positive_count > negative_count:
                     ai_analysis['sentiment'] = 'positive'
                     ai_analysis['overallScore'] = 8
@@ -3616,7 +3641,7 @@ class InstalledLocationController(http.Controller):
                 else:
                     ai_analysis['sentiment'] = 'neutral'
                     ai_analysis['overallScore'] = 7
-            
+
             # Build the response data
             call_details = {
                 'id': message.id,
@@ -3651,9 +3676,9 @@ class InstalledLocationController(http.Controller):
                     'location_id': contact.location_id.location_id if contact.location_id else None,
                 }
             }
-            
+
             _logger.info(f"Successfully fetched call details for message {message_id}")
-            
+
             return Response(
                 json.dumps({
                     'success': True,
@@ -3664,7 +3689,7 @@ class InstalledLocationController(http.Controller):
                 status=200,
                 headers=get_cors_headers(request)
             )
-            
+
         except Exception as e:
             import traceback
             tb = traceback.format_exc()

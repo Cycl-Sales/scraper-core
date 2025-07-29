@@ -26,6 +26,7 @@ class CyclSalesVisionAI(models.Model):
     base_url = fields.Char('Base URL', default='https://api.openai.com/v1', help='Base URL for API calls')
     max_tokens = fields.Integer('Max Tokens', default=500, help='Maximum tokens for response')
     temperature = fields.Float('Temperature', default=0.3, help='Creativity level (0.0-1.0)')
+    cost_per_1k_tokens = fields.Float('Cost per 1K Tokens', default=0.03, digits=(10, 6), help='Cost per 1000 tokens for billing')
     
     # Status and tracking
     is_active = fields.Boolean('Active', default=True)
@@ -80,17 +81,33 @@ Return only the JSON object, no additional text.""")
             else:
                 record.status = 'active'
 
-    def generate_summary(self, message_id=None, contact_id=None, recording_url=None, transcript=None, custom_prompt=None):
+    def generate_summary(self, message_id=None, contact_id=None, recording_url=None, transcript=None, custom_prompt=None, location_id=None):
         """
         Generate AI summary for call data
         """
+        # Create usage log entry
+        usage_log = None
         try:
+            if location_id:
+                usage_log = self.env['cyclsales.vision.ai.usage.log'].sudo().create_usage_log(
+                    location_id=location_id,
+                    ai_service_id=self.id,
+                    request_type='call_summary',
+                    message_id=message_id,
+                    contact_id=contact_id,
+                    conversation_id=None,
+                    request_id=f"req_{message_id}_{fields.Datetime.now().strftime('%Y%m%d_%H%M%S')}" if message_id else None
+                )
+                usage_log.write({'status': 'processing'})
+            
             _logger.info(f"[AI Service] Generating summary for message_id: {message_id}, contact_id: {contact_id}")
             
             # Get API key from record or system parameters
             api_key = self.api_key or self.env['ir.config_parameter'].sudo().get_param('web_scraper.openai_api_key')
             if not api_key:
                 _logger.error("[AI Service] No API key configured")
+                if usage_log:
+                    usage_log.update_failure("No API key configured", "NO_API_KEY")
                 return self._get_default_summary()
             
             # Prepare the prompt
@@ -99,6 +116,10 @@ Return only the JSON object, no additional text.""")
             else:
                 # Use string replacement instead of format to avoid JSON brace conflicts
                 prompt = self.default_prompt_template.replace('{transcript}', transcript or "No transcript available")
+            
+            # Update usage log with prompt length
+            if usage_log:
+                usage_log.write({'prompt_length': len(prompt)})
             
             # Prepare the request
             headers = {
@@ -131,6 +152,8 @@ Return only the JSON object, no additional text.""")
             if response.status_code != 200:
                 _logger.error(f"[AI Service] API error: {response.status_code} | {response.text}")
                 self._record_error(f"API error: {response.status_code}")
+                if usage_log:
+                    usage_log.update_failure(f"API error: {response.status_code}", f"HTTP_{response.status_code}")
                 return self._get_default_summary()
             
             # Parse the response
@@ -138,6 +161,15 @@ Return only the JSON object, no additional text.""")
             ai_response_text = result['choices'][0]['message']['content']
             
             _logger.info(f"[AI Service] Raw AI response: {ai_response_text}")
+            
+            # Update usage log with token information
+            if usage_log and 'usage' in result:
+                usage = result['usage']
+                usage_log.write({
+                    'input_tokens': usage.get('prompt_tokens', 0),
+                    'output_tokens': usage.get('completion_tokens', 0),
+                    'response_length': len(ai_response_text)
+                })
             
             # Try to parse the JSON response
             try:
@@ -153,16 +185,24 @@ Return only the JSON object, no additional text.""")
                 # Update usage statistics
                 self._record_success()
                 
+                # Update usage log with success
+                if usage_log:
+                    usage_log.update_success(ai_summary)
+                
                 return ai_summary
                 
             except json.JSONDecodeError as e:
                 _logger.error(f"[AI Service] Failed to parse AI response as JSON: {str(e)}")
                 self._record_error(f"JSON parse error: {str(e)}")
+                if usage_log:
+                    usage_log.update_failure(f"JSON parse error: {str(e)}", "JSON_PARSE_ERROR")
                 return self._get_default_summary()
                 
         except Exception as e:
             _logger.error(f"[AI Service] Error generating summary: {str(e)}", exc_info=True)
             self._record_error(str(e))
+            if usage_log:
+                usage_log.update_failure(str(e), "EXCEPTION")
             return self._get_default_summary()
 
     def _record_success(self):

@@ -26,7 +26,7 @@ class GhlContactMessageTranscript(models.Model):
     end_time = fields.Integer('End Time (milliseconds)')
     transcript = fields.Text('Transcript Text', required=True)
     confidence = fields.Float('Confidence Score', digits=(3, 2))
-    
+
     # Computed fields for display
     start_time_seconds = fields.Float('Start Time (seconds)', compute='_compute_time_seconds', store=True)
     end_time_seconds = fields.Float('End Time (seconds)', compute='_compute_time_seconds', store=True)
@@ -115,7 +115,7 @@ class GhlContactMessageTranscript(models.Model):
             # Handle time values - convert decimal strings to integers (milliseconds)
             start_time_str = item.get('startTime', '0')
             end_time_str = item.get('endTime', '0')
-            
+
             try:
                 # Convert decimal seconds to integer milliseconds
                 start_time = int(float(start_time_str) * 1000) if start_time_str else 0
@@ -124,7 +124,7 @@ class GhlContactMessageTranscript(models.Model):
                 start_time = 0
                 end_time = 0
                 _logger.warning(f"Invalid time values: startTime={start_time_str}, endTime={end_time_str}")
-            
+
             vals = {
                 'message_id': message_id,
                 'media_channel': str(item.get('mediaChannel', '')),
@@ -134,7 +134,7 @@ class GhlContactMessageTranscript(models.Model):
                 'transcript': item.get('transcript', ''),
                 'confidence': float(item.get('confidence', 0.0)),
             }
-            
+
             try:
                 record = self.create(vals)
                 created_records.append(record)
@@ -144,101 +144,6 @@ class GhlContactMessageTranscript(models.Model):
 
         _logger.info(f"Created {len(created_records)} transcript records for message {message_id}")
         return created_records
-
-    def fetch_transcript_from_api(self):
-        """
-        Fetch transcript from GHL API for the associated message
-        Returns:
-            dict: API response result
-        """
-        self.ensure_one()
-
-        if not self.message_id or self.message_id.message_type != 'TYPE_CALL':
-            return {
-                'success': False,
-                'error': 'Message is not a call message'
-            }
-
-        try:
-            # Step 1: Get agency access token
-            app = self.env['ghl.app'].sudo().search([], limit=1)
-            if not app or not app.access_token:
-                _logger.error("No agency access token found")
-                return {
-                    'success': False,
-                    'error': 'No agency access token found'
-                }
-
-            # Step 2: Get location access token using existing method
-            location = self.message_id.location_id
-            company_id = 'Ipg8nKDPLYKsbtodR6LN'  # Hardcoded company ID
-            location_token_result = self.env['ghl.contact.conversation'].sudo()._get_location_token(
-                app_access_token=app.access_token,
-                location_id=location.location_id,
-                company_id=company_id
-            )
-
-            if not location_token_result.get('success'):
-                _logger.error(f"Failed to get location token: {location_token_result.get('message', 'Unknown error')}")
-                return {
-                    'success': False,
-                    'error': f"Failed to get location token: {location_token_result.get('message', 'Unknown error')}"
-                }
-
-            location_token = location_token_result.get('access_token')
-
-            # Build API URL
-            base_url = "https://services.leadconnectorhq.com"
-            url = f"{base_url}/conversations/locations/{location.location_id}/messages/{self.message_id.ghl_id}/transcription"
-
-            headers = {
-                'Accept': 'application/json',
-                'Authorization': f'Bearer {location_token}',
-                'Version': '2021-04-15'
-            }
-
-            _logger.info(f"Fetching transcript for message {self.message_id.ghl_id}")
-
-            response = requests.get(url, headers=headers, timeout=30)
-
-            if response.status_code == 200:
-                transcript_data = response.json()
-
-                # Clear existing transcripts for this message
-                existing_transcripts = self.search([('message_id', '=', self.message_id.id)])
-                existing_transcripts.unlink()
-
-                # Create new transcript records
-                created_records = self.create_from_api_data(self.message_id.id, transcript_data)
-                
-                # Get transcript summary for duration info
-                transcript_summary = self.search([('message_id', '=', self.message_id.id)]).get_transcript_summary()
-                
-                return {
-                    'success': True,
-                    'message': f'Successfully fetched {len(created_records)} transcript segments',
-                    'count': len(created_records),
-                    'call_duration_seconds': transcript_summary.get('call_duration_seconds', 0),
-                    'call_duration_formatted': transcript_summary.get('call_duration_formatted', '0:00'),
-                    'total_sentences': transcript_summary.get('total_sentences', 0),
-                    'average_confidence': transcript_summary.get('average_confidence', 0)
-                }
-            else:
-                _logger.error(f"API error: {response.status_code} {response.text}")
-                return {
-                    'success': False,
-                    'error': f'API error: {response.status_code} {response.text}',
-                    'status_code': response.status_code
-                }
-
-        except Exception as e:
-            _logger.error(f"Exception while fetching transcript: {str(e)}")
-            import traceback
-            _logger.error(f"Full traceback: {traceback.format_exc()}")
-            return {
-                'success': False,
-                'error': f'Exception: {str(e)}'
-            }
 
     def get_full_transcript_text(self):
         """
@@ -261,7 +166,7 @@ class GhlContactMessageTranscript(models.Model):
         transcripts = self.search([
             ('message_id', '=', self.message_id.id)
         ], order='sentence_index asc')
-        
+
         if not transcripts:
             return {
                 'total_sentences': 0,
@@ -271,16 +176,16 @@ class GhlContactMessageTranscript(models.Model):
                 'average_confidence': 0,
                 'full_text': ''
             }
-        
+
         total_duration = sum(t.duration for t in transcripts if t.duration)
         avg_confidence = sum(t.confidence for t in transcripts if t.confidence) / len(transcripts)
         full_text = ' '.join([t.transcript for t in transcripts if t.transcript])
-        
+
         # Format duration as MM:SS
         minutes = int(total_duration // 60)
         seconds = int(total_duration % 60)
         duration_formatted = f"{minutes}:{seconds:02d}"
-        
+
         return {
             'total_sentences': len(transcripts),
             'total_duration': total_duration,
@@ -291,7 +196,7 @@ class GhlContactMessageTranscript(models.Model):
         }
 
     @api.model
-    def fetch_transcript_for_message(self, message_id):
+    def fetch_transcript_for_message(self, message_id, app_id='684c5cc0736d09f78555981f'):
         """
         Fetch transcript from GHL API for a specific message
         Args:
@@ -309,7 +214,9 @@ class GhlContactMessageTranscript(models.Model):
 
         try:
             # Step 1: Get agency access token
-            app = self.env['cyclsales.application'].sudo().search([], limit=1)
+            app = self.env['cyclsales.application'].sudo().search([
+                ('app_id', '=', app_id)
+            ], limit=1)
             if not app or not app.access_token:
                 _logger.error("No agency access token found")
                 return {
@@ -317,27 +224,37 @@ class GhlContactMessageTranscript(models.Model):
                     'error': 'No agency access token found'
                 }
 
-            # Step 2: Get location access token using existing method
+            # Step 2: Get location access token using installed.location.fetch_location_token method
             location = message.location_id
-            company_id = 'Ipg8nKDPLYKsbtodR6LN'  # Hardcoded company ID
-            location_token_result = self.env['ghl.contact.conversation'].sudo()._get_location_token(
-                app_access_token=app.access_token,
-                location_id=location.location_id,
+            company_id = app.company_id
+
+            _logger.info(f"[Transcript Fetch] Message ID: {message.id}")
+            _logger.info(f"[Transcript Fetch] Message GHL ID: {message.ghl_id}")
+            _logger.info(f"[Transcript Fetch] Location record: {location}")
+            _logger.info(f"[Transcript Fetch] Location ID field: {location.location_id if location else 'None'}")
+            _logger.info(f"[Transcript Fetch] Company ID: {company_id}")
+            _logger.info(
+                f"[Transcript Fetch] App access token: {app.access_token[:20] if app.access_token else 'None'}...")
+
+            # Use the installed.location.fetch_location_token method
+            location_token = location.fetch_location_token(
+                agency_token=app.access_token,
                 company_id=company_id
             )
 
-            if not location_token_result.get('success'):
-                _logger.error(f"Failed to get location token: {location_token_result.get('message', 'Unknown error')}")
+            _logger.info(f"[Transcript Fetch] Location token: {location_token[:20] if location_token else 'None'}...")
+
+            if not location_token:
+                _logger.error(f"Failed to get location token from installed.location.fetch_location_token")
                 return {
                     'success': False,
-                    'error': f"Failed to get location token: {location_token_result.get('message', 'Unknown error')}"
+                    'error': "Failed to get location token from installed.location.fetch_location_token"
                 }
-
-            location_token = location_token_result.get('access_token')
 
             # Build API URL
             base_url = "https://services.leadconnectorhq.com"
             url = f"{base_url}/conversations/locations/{location.location_id}/messages/{message.ghl_id}/transcription"
+            _logger.info(f"[Transcript Fetch] API URL: {url}")
 
             headers = {
                 'Accept': 'application/json',
@@ -345,10 +262,12 @@ class GhlContactMessageTranscript(models.Model):
                 'Version': '2021-04-15'
             }
 
-            _logger.info(f"Fetching transcript for message {message.ghl_id}")
+            _logger.info(f"[Transcript Fetch] Fetching transcript for message {message.ghl_id}")
 
             response = requests.get(url, headers=headers, timeout=30)
-            print(response.json())
+            _logger.info(f"[Transcript Fetch] Response status: {response.status_code}")
+            _logger.info(f"[Transcript Fetch] Response text: {response.text[:200]}...")
+
             if response.status_code == 200:
                 transcript_data = response.json()
 
@@ -358,10 +277,10 @@ class GhlContactMessageTranscript(models.Model):
 
                 # Create new transcript records
                 created_records = self.create_from_api_data(message_id, transcript_data)
-                
+
                 # Get transcript summary for duration info
                 transcript_summary = self.get_transcript_summary()
-                
+
                 return {
                     'success': True,
                     'message': f'Successfully fetched {len(created_records)} transcript segments',

@@ -5,10 +5,11 @@
         <record id="default_ai_service" model="cyclsales.vision.ai">
             <field name="name">Default OpenAI GPT-4 Service</field>
             <field name="model_type">gpt-4o</field>
-            <field name="base_url">https://api.openai.com/v1</field>
-            <field name="max_tokens">500</field>
-            <field name="temperature">0.3</field>
-            <field name="is_active">True</field>
+                                <field name="base_url">https://api.openai.com/v1</field>
+                    <field name="max_tokens">500</field>
+                    <field name="temperature">0.3</field>
+                    <field name="cost_per_1k_tokens">0.03</field>
+                    <field name="is_active">True</field>
             <field name="default_prompt_template">Analyze the following call transcript and return a JSON response with exactly this structure:
 {
     "summary": "A concise summary of the call conversation",
