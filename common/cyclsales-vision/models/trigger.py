@@ -119,6 +119,40 @@ class CyclSalesVisionTrigger(models.Model):
         self.ensure_one()
         
         try:
+            # Early validation for call processing workflows
+            if self.key in ['call_processing', 'cs_ai_call_summary'] or self.event_type == 'CALL':
+                # Check call duration
+                call_duration = event_data.get('callDuration', 0) if event_data else 0
+                _logger.info(f"[Trigger Workflow] Call duration: {call_duration} seconds")
+                
+                if call_duration < 19:
+                    _logger.info(f"[Trigger Workflow] Call duration ({call_duration}s) < 19s. Skipping workflow execution.")
+                    return {
+                        'success': True,
+                        'message': f'Call duration ({call_duration} seconds) is below minimum threshold (19 seconds). Workflow skipped.',
+                        'call_duration_seconds': call_duration,
+                        'workflow_skipped': True
+                    }
+                
+                # Check for active workflows for this location
+                location_id = event_data.get('locationId') if event_data else None
+                if location_id:
+                    active_workflows = self.env['cyclsales.vision.trigger'].sudo().search([
+                        ('location_id.location_id', '=', location_id),
+                        ('status', '=', 'active')
+                    ])
+                    
+                    if not active_workflows:
+                        _logger.info(f"[Trigger Workflow] No active workflows found for location {location_id}. Skipping workflow execution.")
+                        return {
+                            'success': True,
+                            'message': f'No active workflows found for location {location_id}. Workflow skipped.',
+                            'location_id': location_id,
+                            'workflow_skipped': True
+                        }
+                    
+                    _logger.info(f"[Trigger Workflow] Found {len(active_workflows)} active workflows for location {location_id}")
+            
             # Update status to processing
             self.write({
                 'status': 'processing',
@@ -185,91 +219,134 @@ class CyclSalesVisionTrigger(models.Model):
     def _execute_call_processing(self, context):
         """Execute call processing workflow"""
         try:
+            _logger.info(f"[Call Processing] Starting call processing workflow")
+            
+            # Extract data from context
             event_data = context.get('event_data', {})
-            
-            _logger.info(f"[Call Processing] Processing webhook data: {event_data}")
-            
-            # Get call data from webhook (exact structure as provided)
             message_id = event_data.get('messageId')
             contact_id = event_data.get('contactId')
             call_duration = event_data.get('callDuration', 0)
-            direction = event_data.get('direction')
-            message_type = event_data.get('messageType')
-            attachments = event_data.get('attachments', [])
-            location_id = event_data.get('locationId')
-            webhook_type = event_data.get('type')
-            version_id = event_data.get('versionId')
-            app_id = event_data.get('appId')
-            conversation_id = event_data.get('conversationId')
-            date_added = event_data.get('dateAdded')
-            user_id = event_data.get('userId')
-            status = event_data.get('status')
-            source = event_data.get('source')
-            call_status = event_data.get('callStatus')
-            timestamp = event_data.get('timestamp')
-            webhook_id = event_data.get('webhookId')
             
-            _logger.info(f"[Call Processing] Webhook Structure - type: {webhook_type}, locationId: {location_id}")
-            _logger.info(f"[Call Processing] Call Details - messageId: {message_id}, contactId: {contact_id}, duration: {call_duration}s, direction: {direction}")
-            _logger.info(f"[Call Processing] Message Info - messageType: {message_type}, status: {status}, callStatus: {call_status}")
-            _logger.info(f"[Call Processing] Recording - attachments: {attachments}")
-            _logger.info(f"[Call Processing] Metadata - timestamp: {timestamp}, webhookId: {webhook_id}")
+            # Extract custom prompt from event data (nested structure)
+            custom_prompt = None
+            if 'data' in event_data and isinstance(event_data['data'], dict):
+                custom_prompt = event_data['data'].get('cs_vision_call_transcript') or event_data['data'].get('cs_vision_summary_prompt')
+            else:
+                custom_prompt = event_data.get('cs_vision_call_transcript') or event_data.get('cs_vision_summary_prompt')
             
-            result = {
-                'success': True,
-                'workflow_type': 'call_processing',
-                'webhook_data': {
-                    'type': webhook_type,
-                    'locationId': location_id,
-                    'messageId': message_id,
-                    'contactId': contact_id,
-                    'callDuration': call_duration,
-                    'direction': direction,
-                    'messageType': message_type,
-                    'attachments': attachments,
-                    'callStatus': call_status,
-                    'webhookId': webhook_id
-                },
-                'actions_taken': []
-            }
+            # Use default custom prompt if none provided
+            if not custom_prompt:
+                # Calculate actual call duration in minutes and seconds
+                minutes = call_duration // 60
+                seconds = call_duration % 60
+                duration_str = f"{minutes}m {seconds}s"
+                
+                custom_prompt = f"""Summarize the following call transcript in 3–5 sentences. Focus on the main topics discussed, any decisions made, and key action items. Use clear, professional language.
+
+IMPORTANT: The actual call duration is {duration_str} ({call_duration} seconds total).
+
+Return a JSON response with the following structure:
+{{
+    "summary": "A concise summary of the call conversation",
+    "keywords": ["keyword1", "keyword2", "keyword3"],
+    "sentiment": "positive|negative|neutral",
+    "action_items": ["action1", "action2", "action3"],
+    "confidence_score": 0.85,
+    "duration_analyzed": "{duration_str}",
+    "speakers_detected": 2
+}}
+
+Requirements:
+- summary: string, never empty, 3-5 sentences max
+- keywords: array of strings, max 10 items, relevant to the conversation
+- sentiment: only "positive", "negative", or "neutral"
+- action_items: array of strings, max 5 items, specific next steps
+- confidence_score: float between 0.0 and 1.0
+- duration_analyzed: MUST be "{duration_str}" (the actual call duration)
+- speakers_detected: integer >= 0, count unique speakers from transcript"""
+                _logger.info(f"[Call Processing] Using default custom prompt with duration: {duration_str}")
             
-            # Action 1: Generate AI summary if call duration > 10 seconds (lowered for testing)
-            if call_duration > 10 and message_id:
-                summary_result = self._generate_call_summary(message_id, contact_id)
-                if summary_result:
-                    result['actions_taken'].append('ai_summary_generated')
-                    result['summary'] = summary_result
-            # For testing: also generate summary for short calls if explicitly requested
-            elif message_id and context.get('context_data', {}).get('force_ai_summary'):
-                summary_result = self._generate_call_summary(message_id, contact_id)
-                if summary_result:
-                    result['actions_taken'].append('ai_summary_generated_forced')
-                    result['summary'] = summary_result
+            _logger.info(f"[Call Processing] Event data keys: {list(event_data.keys())}")
+            _logger.info(f"[Call Processing] Custom prompt found: {bool(custom_prompt)}")
+            if custom_prompt:
+                _logger.info(f"[Call Processing] Custom prompt: {custom_prompt[:100]}...")
             
-            # Action 2: Create follow-up task for long calls
-            if call_duration > 300:  # 5 minutes
-                task_result = self._create_follow_up_task(event_data)
-                if task_result:
-                    result['actions_taken'].append('follow_up_task_created')
-                    result['task_id'] = task_result
+            # Check for minimum duration requirement
+            minimum_duration = context.get('cs_vision_call_minimum_duration', 20)
             
-            # Action 3: Update contact with call information
-            if contact_id:
-                contact_update = self._update_contact_call_info(contact_id, event_data)
-                if contact_update:
-                    result['actions_taken'].append('contact_updated')
+            if call_duration < minimum_duration:
+                _logger.info(f"[Call Processing] Call duration ({call_duration}s) < minimum ({minimum_duration}s). Skipping AI processing.")
+                
+                # Get transcript records for human-readable format
+                message_record = self.env['ghl.contact.message'].sudo().search([
+                    ('ghl_id', '=', message_id)
+                ], limit=1)
+                
+                transcript_text = ""
+                if message_record:
+                    transcript_records = self.env['ghl.contact.message.transcript'].sudo().search([
+                        ('message_id', '=', message_record.id)
+                    ], order='sentence_index asc')
+                    
+                    if transcript_records:
+                        for record in transcript_records:
+                            speaker = "Agent" if record.media_channel == "agent" else "Customer"
+                            time_range = f"[{record.start_time_seconds:.1f}s - {record.end_time_seconds:.1f}s]"
+                            transcript_text += f"{speaker} {time_range}: {record.transcript}\n"
+                
+                return {
+                    "success": True,
+                    "message": f"Call duration ({call_duration} seconds) is below minimum threshold ({minimum_duration} seconds). AI processing skipped.",
+                    "call_duration_seconds": call_duration,
+                    "minimum_duration_required": minimum_duration,
+                    "summary": "Call too short for analysis",
+                    "keywords": [],
+                    "sentiment": "neutral",
+                    "action_items": [],
+                    "confidence_score": 0.0,
+                    "duration_analyzed": f"{call_duration} seconds",
+                    "speakers_detected": 0,
+                    "raw_transcript_array": transcript_text.strip()
+                }
             
-            # Action 4: Send notification for inbound calls
-            if direction == 'inbound':
-                notification_result = self._send_call_notification(event_data)
-                if notification_result:
-                    result['actions_taken'].append('notification_sent')
+            # Continue with normal AI processing
+            _logger.info(f"[Call Processing] Proceeding with AI processing for message: {message_id}")
             
-            return result
+            # Generate AI summary with custom prompt
+            summary = self._generate_call_summary(message_id, contact_id, custom_prompt=custom_prompt)
             
+            if summary:
+                _logger.info(f"[Call Processing] AI summary generated successfully")
+                return summary
+            else:
+                _logger.warning(f"[Call Processing] Failed to generate AI summary")
+                return {
+                    "success": False,
+                    "message": "Failed to generate AI summary",
+                    "summary": "Error generating summary",
+                    "keywords": [],
+                    "sentiment": "neutral",
+                    "action_items": [],
+                    "confidence_score": 0.0,
+                    "duration_analyzed": "Unknown",
+                    "speakers_detected": 0,
+                    "raw_transcript_array": ""
+                }
+                
         except Exception as e:
-            _logger.error(f"[Call Processing] Error: {str(e)}", exc_info=True)
-            return {'success': False, 'error': str(e)}
+            _logger.error(f"[Call Processing] Error in call processing workflow: {str(e)}", exc_info=True)
+            return {
+                "success": False,
+                "message": f"Error in call processing: {str(e)}",
+                "summary": "Error processing call",
+                "keywords": [],
+                "sentiment": "neutral",
+                "action_items": [],
+                "confidence_score": 0.0,
+                "duration_analyzed": "Unknown",
+                "speakers_detected": 0,
+                "raw_transcript_array": ""
+            }
 
     def _execute_ai_summary_workflow(self, context):
         """Execute AI summary workflow"""
@@ -447,7 +524,7 @@ class CyclSalesVisionTrigger(models.Model):
             return {'success': False, 'error': str(e)}
 
     # Helper methods for workflow execution
-    def _generate_call_summary(self, message_id, contact_id, recording_url=None):
+    def _generate_call_summary(self, message_id, contact_id, recording_url=None, custom_prompt=None):
         """Generate AI summary for call"""
         try:
             # Get the AI service
@@ -460,26 +537,20 @@ class CyclSalesVisionTrigger(models.Model):
                 
                 transcript = None
                 location_id = None
+                transcript_records = None
                 
                 if message_record:
                     # Get location from the message record
                     if hasattr(message_record, 'location_id') and message_record.location_id:
                         location_id = message_record.location_id.id
-                        _logger.info(f"[AI Call Summary] Using location_id from message: {location_id}")
                     elif hasattr(message_record, 'conversation_id') and message_record.conversation_id:
                         # Try to get location from conversation
                         if hasattr(message_record, 'conversation_id', 'location_id') and message_record.conversation_id.location_id:
                             location_id = message_record.conversation_id.location_id.id
-                            _logger.info(f"[AI Call Summary] Using location_id from conversation: {location_id}")
                     
                     # Always try to fetch transcript from GHL API
-                    _logger.info(f"[AI Call Summary] Fetching transcript from GHL API for message {message_id}")
-                    _logger.info(f"[AI Call Summary] Message location_id: {message_record.location_id.location_id if message_record.location_id else 'None'}")
-                    _logger.info(f"[AI Call Summary] Message ghl_id: {message_record.ghl_id}")
-                    
                     try:
                         transcript_result = self.env['ghl.contact.message.transcript'].sudo().fetch_transcript_for_message(message_record.id)
-                        _logger.info(f"[AI Call Summary] Transcript fetch result: {transcript_result}")
                         
                         if transcript_result.get('success'):
                             # Get the newly fetched transcript records
@@ -487,22 +558,9 @@ class CyclSalesVisionTrigger(models.Model):
                                 ('message_id', '=', message_record.id)
                             ], order='sentence_index asc')
                             
-                            _logger.info(f"[AI Call Summary] Found {len(transcript_records)} transcript records after API fetch")
-                            
-                            # Log each transcript record
-                            for i, record in enumerate(transcript_records):
-                                _logger.info(f"[AI Call Summary] Transcript Record {i+1}:")
-                                _logger.info(f"  - Sentence Index: {record.sentence_index}")
-                                _logger.info(f"  - Media Channel: {record.media_channel}")
-                                _logger.info(f"  - Start Time: {record.start_time_seconds}")
-                                _logger.info(f"  - End Time: {record.end_time_seconds}")
-                                _logger.info(f"  - Confidence: {record.confidence}")
-                                _logger.info(f"  - Transcript Text: '{record.transcript}'")
-                            
                             if transcript_records:
                                 transcript = transcript_records.get_full_transcript_text()
-                                _logger.info(f"[AI Call Summary] Successfully fetched transcript from GHL API: {len(transcript)} characters")
-                                _logger.info(f"[AI Call Summary] Full transcript text: '{transcript}'")
+                                _logger.info(f"[AI Call Summary] Successfully fetched transcript: {len(transcript)} characters")
                             else:
                                 _logger.warning(f"[AI Call Summary] No transcript records found after API fetch")
                         else:
@@ -518,20 +576,28 @@ class CyclSalesVisionTrigger(models.Model):
                 # Fallback to trigger's location if not found
                 if not location_id and self.location_id:
                     location_id = self.location_id.id
-                    _logger.info(f"[AI Call Summary] Using trigger's location_id as fallback: {location_id}")
-                
-                _logger.info(f"[AI Call Summary] Final location_id for AI service: {location_id}")
                 
                 if transcript:
-                    _logger.info(f"[AI Call Summary] Generating AI summary for message {message_id} with transcript length: {len(transcript)}")
-                    _logger.info(f"[AI Call Summary] Transcript preview: {transcript[:500]}...")
+                    _logger.info(f"[AI Call Summary] Generating AI summary for message {message_id}")
                     summary = ai_service.generate_summary(
                         message_id=message_id,
                         contact_id=contact_id,
                         recording_url=recording_url,
                         transcript=transcript,
-                        location_id=location_id
+                        location_id=location_id,
+                        custom_prompt=custom_prompt
                     )
+                    
+                    # Add raw transcript array to the response
+                    if summary and transcript_records:
+                        transcript_text = ""
+                        for record in transcript_records:
+                            speaker = "Agent" if record.media_channel == "agent" else "Customer"
+                            time_range = f"[{record.start_time_seconds:.1f}s - {record.end_time_seconds:.1f}s]"
+                            transcript_text += f"{speaker} {time_range}: {record.transcript}\n"
+                        
+                        summary['raw_transcript_array'] = transcript_text.strip()
+                    
                     return summary
                 else:
                     _logger.warning(f"[AI Call Summary] No transcript available for message {message_id}")
@@ -542,7 +608,8 @@ class CyclSalesVisionTrigger(models.Model):
                         'action_items': ['Fetch transcript manually'],
                         'confidence_score': 0.0,
                         'duration_analyzed': 'Unknown',
-                        'speakers_detected': 0
+                        'speakers_detected': 0,
+                        'raw_transcript_array': ''
                     }
             else:
                 # Fallback: create basic summary
@@ -553,7 +620,8 @@ class CyclSalesVisionTrigger(models.Model):
                     'action_items': [],
                     'confidence_score': 0.0,
                     'duration_analyzed': 'Unknown',
-                    'speakers_detected': 0
+                    'speakers_detected': 0,
+                    'raw_transcript_array': ''
                 }
         except Exception as e:
             _logger.error(f"Error generating call summary: {str(e)}")

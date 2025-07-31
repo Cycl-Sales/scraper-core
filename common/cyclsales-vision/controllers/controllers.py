@@ -38,6 +38,52 @@ class CyclSalesVisionController(http.Controller):
                     status=200
                 )
             
+            # Early validation: Check call duration
+            call_duration = data.get('callDuration', 0)
+            _logger.info(f"[GHL Call Summary] Call duration: {call_duration} seconds")
+            
+            if call_duration < 19:
+                _logger.info(f"[GHL Call Summary] Call duration is less than 20 seconds ({call_duration}s)... skipping...")
+                return Response(
+                    json.dumps({
+                        'status': 'ignored', 
+                        'reason': f'Call duration ({call_duration} seconds) is below minimum threshold (19 seconds)',
+                        'call_duration_seconds': call_duration
+                    }),
+                    content_type='application/json',
+                    status=200
+                )
+            
+            # Early validation: Check for active workflows
+            location_id_str = data.get('locationId')
+            if location_id_str:
+                # Get location record to get the name
+                location_record = request.env['installed.location'].sudo().search([
+                    ('location_id', '=', location_id_str)
+                ], limit=1)
+                
+                location_name = location_record.name if location_record else 'Unknown Location'
+                
+                active_workflows = request.env['cyclsales.vision.trigger'].sudo().search([
+                    ('location_id.location_id', '=', location_id_str),
+                    ('status', '=', 'active')
+                ])
+                
+                if not active_workflows:
+                    _logger.info(f"[GHL Call Summary] No active workflow found in location '{location_name}' ({location_id_str}). Skipping process...")
+                    return Response(
+                        json.dumps({
+                            'status': 'ignored', 
+                            'reason': f'No active workflows found for location {location_name} ({location_id_str})',
+                            'location_id': location_id_str,
+                            'location_name': location_name
+                        }),
+                        content_type='application/json',
+                        status=200
+                    )
+                
+                _logger.info(f"[GHL Call Summary] Found {len(active_workflows)} active workflows for location '{location_name}' ({location_id_str})")
+            
             # Add 30-second delay after validating it's a call
             import time
             _logger.info(f"[GHL Call Summary] Call validated, waiting 30 seconds before processing...")
@@ -84,8 +130,7 @@ class CyclSalesVisionController(http.Controller):
                     json.dumps({'status': 'ignored', 'reason': 'Access token not found'}),
                     content_type='application/json',
                     status=200
-                )
-            print("Token: ", access_token)
+                ) 
             # Let's now search the contact
             contact_obj = request.env['ghl.location.contact'].sudo().search([('external_id', '=', data['contactId'])],
                                                                             limit=1)
@@ -220,6 +265,9 @@ class CyclSalesVisionController(http.Controller):
         try:
             _logger.info(f"[Workflow Trigger] Starting workflow trigger for location: {location.id}")
             
+            # Extract minimum duration from call data
+            minimum_duration = call_data.get('cs_vision_call_minimum_duration', 20)
+            
             # Find relevant triggers for this location and call event
             triggers = request.env['cyclsales.vision.trigger'].sudo().search([
                 ('location_id', '=', location.id), 
@@ -227,37 +275,25 @@ class CyclSalesVisionController(http.Controller):
             ])
             
             _logger.info(f"[Workflow Trigger] Found {len(triggers)} active triggers for location {location.id}")
-            _logger.info(f"[Workflow Trigger] Searching for: status='active' (all event types)")
-            
-            # Debug: Check all triggers for this location
-            all_triggers = request.env['cyclsales.vision.trigger'].sudo().search([
-                ('location_id', '=', location.id)
-            ])
-            _logger.info(f"[Workflow Trigger] Total triggers for location {location.id}: {len(all_triggers)}")
-            
-            if all_triggers:
-                for trigger in all_triggers:
-                    _logger.info(f"[Workflow Trigger] Trigger {trigger.id}: event_type='{trigger.event_type}', status='{trigger.status}'")
-                    if trigger.status == 'active':
-                        _logger.info(f"[Workflow Trigger] ✓ This trigger matches our criteria!")
-                    else:
-                        _logger.info(f"[Workflow Trigger] ✗ This trigger does NOT match (need status='active')")
             
             if not triggers:
                 _logger.info(f"[Workflow Trigger] No active triggers found for location {location.id}")
-                _logger.info(f"[Workflow Trigger] You need to create a trigger with status='active'")
                 return []
             
             workflow_results = []
             
-            _logger.info(f"[Workflow Trigger] Executing {len(triggers)} matching triggers...")
-            
             for trigger in triggers:
                 try:
                     # Pass the raw webhook data directly to the trigger's execute_workflow method
+                    # Include minimum duration in context data
+                    context_data = {
+                        'source': 'call_summary_webhook',
+                        'cs_vision_call_minimum_duration': minimum_duration
+                    }
+                    
                     result = trigger.execute_workflow(
                         event_data=call_data,
-                        context_data={'source': 'call_summary_webhook'}
+                        context_data=context_data
                     )
                     
                     workflow_results.append({
@@ -266,7 +302,7 @@ class CyclSalesVisionController(http.Controller):
                         'result': result
                     })
                     
-                    _logger.info(f"[Workflow Trigger] Executed workflow for trigger {trigger.external_id}: {result}")
+                    _logger.info(f"[Workflow Trigger] Executed workflow for trigger {trigger.external_id}")
                     
                     # Call GHL Workflow Trigger URL with proper headers
                     if trigger.target_url:
@@ -300,8 +336,6 @@ class CyclSalesVisionController(http.Controller):
             }
             
             _logger.info(f"[GHL Trigger] Calling GHL workflow trigger: {trigger.target_url}")
-            _logger.info(f"[GHL Trigger] Headers: {headers}")
-            _logger.info(f"[GHL Trigger] Payload: {call_data}")
             
             # Make the request to GHL
             response = requests.post(
@@ -311,16 +345,15 @@ class CyclSalesVisionController(http.Controller):
                 timeout=30
             )
             
-            _logger.info(f"[GHL Trigger] Response status: {response.status_code}")
-            _logger.info(f"[GHL Trigger] Response body: {response.text}")
-            
             if response.status_code == 200:
+                _logger.info(f"[GHL Trigger] Success - Status: {response.status_code}")
                 return {
                     'success': True,
                     'status_code': response.status_code,
                     'response': response.json() if response.text else {}
                 }
             else:
+                _logger.error(f"[GHL Trigger] Failed - Status: {response.status_code} | Response: {response.text}")
                 return {
                     'success': False,
                     'status_code': response.status_code,
@@ -339,14 +372,40 @@ class CyclSalesVisionController(http.Controller):
         Generate AI call summary using the transcript and message ID
         """
         try:
-            # Extract required fields
-            summary_prompt = data.get('cs_vision_summary_prompt')
-            message_id = data.get('cs_vision_ai_message_id')
+            # Handle nested data structure
+            # Check if data is nested under 'data' key
+            if 'data' in data and isinstance(data['data'], dict):
+                nested_data = data['data']
+                summary_prompt = nested_data.get('cs_vision_call_transcript') or nested_data.get('cs_vision_summary_prompt')
+                message_id = nested_data.get('cs_vision_ai_message_id')
+                minimum_duration = data.get('cs_vision_call_minimum_duration', 20)
+                custom_api_key = nested_data.get('cs_vision_openai_api_key')
+            else:
+                # Direct field access for backward compatibility
+                summary_prompt = data.get('cs_vision_call_transcript') or data.get('cs_vision_summary_prompt')
+                message_id = data.get('cs_vision_ai_message_id')
+                minimum_duration = data.get('cs_vision_call_minimum_duration', 20)
+                custom_api_key = data.get('cs_vision_openai_api_key')
             
-            _logger.info(f"[AI Call Summary] Received data: {data}")
-            _logger.info(f"[AI Call Summary] Message ID: {message_id}")
-            _logger.info(f"[AI Call Summary] Summary prompt: {summary_prompt}")
+            # Clean the summary prompt by removing test instructions
+            if summary_prompt:
+                # Remove common test instructions that might be in the prompt
+                test_instructions = [
+                    'Make sure to append the text "This is an example: " on the summary field.',
+                    'Make sure to append the text "This is an example: "',
+                    'append the text "This is an example: "',
+                    'This is an example: '
+                ]
+                
+                cleaned_prompt = summary_prompt
+                for instruction in test_instructions:
+                    cleaned_prompt = cleaned_prompt.replace(instruction, '').strip()
+                
+                if cleaned_prompt != summary_prompt:
+                    _logger.info(f"[AI Call Summary] Cleaned prompt by removing test instructions")
+                    summary_prompt = cleaned_prompt
             
+            # Critical validation logging only
             if not message_id:
                 _logger.warning("[AI Call Summary] No message ID provided")
                 return self._get_default_ai_summary()
@@ -354,6 +413,8 @@ class CyclSalesVisionController(http.Controller):
             if not summary_prompt:
                 _logger.warning("[AI Call Summary] No summary prompt provided")
                 return self._get_default_ai_summary()
+            
+            _logger.info(f"[AI Call Summary] Processing message ID: {message_id}")
             
             # Get the message record to fetch actual transcript
             message_record = request.env['ghl.contact.message'].sudo().search([
@@ -364,15 +425,10 @@ class CyclSalesVisionController(http.Controller):
                 _logger.warning(f"[AI Call Summary] Message record not found for GHL ID: {message_id}")
                 return self._get_default_ai_summary()
             
-            _logger.info(f"[AI Call Summary] Found message record: {message_record.id}")
-            
             # Fetch actual transcript from GHL API
-            _logger.info(f"[AI Call Summary] Fetching transcript from GHL API for message {message_id}")
-            
             actual_transcript = None
             try:
                 transcript_result = request.env['ghl.contact.message.transcript'].sudo().fetch_transcript_for_message(message_record.id)
-                _logger.info(f"[AI Call Summary] Transcript fetch result: {transcript_result}")
                 
                 if transcript_result.get('success'):
                     # Get the newly fetched transcript records
@@ -380,13 +436,10 @@ class CyclSalesVisionController(http.Controller):
                         ('message_id', '=', message_record.id)
                     ], order='sentence_index asc')
                     
-                    _logger.info(f"[AI Call Summary] Found {len(transcript_records)} transcript records after API fetch")
-                    
                     if transcript_records:
                         # Get the actual transcript text
                         actual_transcript = transcript_records.get_full_transcript_text()
-                        _logger.info(f"[AI Call Summary] Successfully fetched actual transcript: {len(actual_transcript)} characters")
-                        _logger.info(f"[AI Call Summary] Actual transcript preview: {actual_transcript[:500]}...")
+                        _logger.info(f"[AI Call Summary] Successfully fetched transcript: {len(actual_transcript)} characters")
                     else:
                         _logger.warning(f"[AI Call Summary] No transcript records found after API fetch")
                 else:
@@ -404,6 +457,43 @@ class CyclSalesVisionController(http.Controller):
                 _logger.warning(f"[AI Call Summary] No transcript available for message {message_id}")
                 return self._get_default_ai_summary()
             
+            # Check call duration against minimum duration
+            if minimum_duration > 19:
+                # Calculate call duration from transcript records
+                transcript_records = request.env['ghl.contact.message.transcript'].sudo().search([
+                    ('message_id', '=', message_record.id)
+                ], order='sentence_index asc')
+                
+                if transcript_records:
+                    # Get the last transcript record's end time to calculate total duration
+                    last_record = transcript_records[-1]
+                    call_duration_seconds = last_record.end_time_seconds
+                    
+                    if call_duration_seconds < minimum_duration:
+                        _logger.info(f"[AI Call Summary] Call duration ({call_duration_seconds}s) < minimum ({minimum_duration}s). Skipping AI processing.")
+                        
+                        # Convert transcript records to human-readable format
+                        transcript_text = ""
+                        for record in transcript_records:
+                            speaker = "Agent" if record.media_channel == "agent" else "Customer"
+                            time_range = f"[{record.start_time_seconds:.1f}s - {record.end_time_seconds:.1f}s]"
+                            transcript_text += f"{speaker} {time_range}: {record.transcript}\n"
+                        
+                        return {
+                            "success": True,
+                            "message": f"Call duration ({call_duration_seconds} seconds) is below minimum threshold ({minimum_duration} seconds). AI processing skipped.",
+                            "call_duration_seconds": call_duration_seconds,
+                            "minimum_duration_required": minimum_duration,
+                            "summary": "Call too short for analysis",
+                            "keywords": [],
+                            "sentiment": "neutral",
+                            "action_items": [],
+                            "confidence_score": 0.0,
+                            "duration_analyzed": f"{call_duration_seconds} seconds",
+                            "speakers_detected": 0,
+                            "raw_transcript_array": transcript_text.strip()
+                        }
+            
             # Concatenate prompt + actual transcript
             # Get the full transcript records with all metadata
             transcript_records = request.env['ghl.contact.message.transcript'].sudo().search([
@@ -420,6 +510,7 @@ class CyclSalesVisionController(http.Controller):
                     'end_time_seconds': record.end_time_seconds,
                     'transcript': record.transcript,
                     'confidence': record.confidence,
+
                 })
             
             combined_prompt = f"""{summary_prompt}
@@ -452,18 +543,18 @@ Full Transcript Records (with timing, confidence, and speaker data):
 {json.dumps(transcript_data, indent=2)}
 
 Return ONLY the JSON object, no additional text or explanations."""
-            _logger.info(f"[AI Call Summary] Combined prompt length: {len(combined_prompt)}")
-            _logger.info(f"[AI Call Summary] Combined prompt preview: {combined_prompt[:1000]}...")
             
-            # Log the full prompt being sent to AI
-            _logger.info(f"[AI Call Summary] ===== FULL PROMPT SENT TO AI =====")
-            _logger.info(f"[AI Call Summary] {combined_prompt}")
-            _logger.info(f"[AI Call Summary] ===== END FULL PROMPT =====")
+            # Get OpenAI API key - prioritize custom API key if provided
+            api_key = None
+            if custom_api_key:
+                api_key = custom_api_key
+                _logger.info(f"[AI Call Summary] Using custom API key")
+            else:
+                api_key = request.env['ir.config_parameter'].sudo().get_param('web_scraper.openai_api_key')
+                _logger.info(f"[AI Call Summary] Using system API key")
             
-            # Get OpenAI API key from system parameters
-            api_key = request.env['ir.config_parameter'].sudo().get_param('web_scraper.openai_api_key')
             if not api_key:
-                _logger.error("[AI Call Summary] OpenAI API key not configured")
+                _logger.error("[AI Call Summary] No OpenAI API key available")
                 return self._get_default_ai_summary()
             
             # Prepare the request to OpenAI
@@ -502,8 +593,6 @@ Return ONLY the JSON object, no additional text or explanations."""
             result = response.json()
             ai_response_text = result['choices'][0]['message']['content']
             
-            _logger.info(f"[AI Call Summary] Raw AI response: {ai_response_text}")
-            
             # Try to parse the JSON response
             try:
                 # Clean the response text to extract JSON
@@ -514,7 +603,18 @@ Return ONLY the JSON object, no additional text or explanations."""
                 else:
                     ai_summary = json.loads(ai_response_text)
                 
-                _logger.info(f"[AI Call Summary] Parsed AI summary: {ai_summary}")
+                _logger.info(f"[AI Call Summary] Successfully generated AI summary")
+                
+                # Convert transcript records to human-readable format
+                transcript_text = ""
+                for record in transcript_records:
+                    speaker = "Agent" if record.media_channel == "agent" else "Customer"
+                    time_range = f"[{record.start_time_seconds:.1f}s - {record.end_time_seconds:.1f}s]"
+                    transcript_text += f"{speaker} {time_range}: {record.transcript}\n"
+                
+                # Add raw transcript array to the response
+                ai_summary['raw_transcript_array'] = transcript_text.strip()
+                
                 return ai_summary
                 
             except json.JSONDecodeError as e:
@@ -536,7 +636,8 @@ Return ONLY the JSON object, no additional text or explanations."""
             'action_items': [],
             'confidence_score': 0.0,
             'duration_analyzed': 'Unknown',
-            'speakers_detected': 0
+            'speakers_detected': 0,
+            'raw_transcript_array': '[]'
         }
 
     @http.route('/cs-vision/action-transcribe-call', type='http', auth='none', methods=['POST', 'OPTIONS'], cors='*', csrf=False)
@@ -558,35 +659,22 @@ Return ONLY the JSON object, no additional text or explanations."""
             
             # Get data from both request body and POST parameters
             raw_data = request.httprequest.data
-            _logger.info(f"[Call Transcription] Received raw data: {raw_data}")
-            
-            # Try to get data from POST parameters first (for form data)
             post_data = dict(request.params)
-            _logger.info(f"[Call Transcription] POST parameters: {post_data}")
             
             # Try to parse JSON from request body
             data = {}
             if raw_data and raw_data != b'{}':
                 try:
                     data = json.loads(raw_data)
-                    _logger.info(f"[Call Transcription] Parsed JSON from body: {data}")
                 except Exception as e:
-                    _logger.error(f"[Call Transcription] JSON decode error: {str(e)} | Raw data: {raw_data}")
+                    _logger.error(f"[Call Transcription] JSON decode error: {str(e)}")
                     # If JSON parsing fails, try to use POST parameters
                     data = post_data
             else:
                 # If no raw data, use POST parameters
                 data = post_data
             
-            # Log all the key-value pairs from the request
-            _logger.info(f"[Call Transcription] Request headers: {dict(request.httprequest.headers)}")
-            _logger.info(f"[Call Transcription] Request method: {request.httprequest.method}")
-            _logger.info(f"[Call Transcription] Request URL: {request.httprequest.url}")
-            _logger.info(f"[Call Transcription] Content-Type: {request.httprequest.headers.get('Content-Type', 'Not specified')}")
-            
-            # Log all data fields
-            for key, value in data.items():
-                _logger.info(f"[Call Transcription] Field '{key}': {value}")
+            _logger.info(f"[Call Transcription] Processing request with {len(data)} fields")
             
             # Generate AI Call Summary using the actual AI service
             ai_summary = self._generate_ai_call_summary(data)

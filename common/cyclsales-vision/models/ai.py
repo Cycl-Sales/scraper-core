@@ -43,8 +43,8 @@ class CyclSalesVisionAI(models.Model):
     "sentiment": "positive|negative|neutral",
     "action_items": ["action1", "action2", "action3"],
     "confidence_score": 0.85,
-    "duration_analyzed": "5 minutes 23 seconds",
-    "speakers_detected": 2
+    "duration_analyzed": "calculated from transcript timing",
+    "speakers_detected": "count from transcript data"
 }
 
 Requirements:
@@ -53,8 +53,8 @@ Requirements:
 - sentiment: only "positive", "negative", or "neutral"
 - action_items: array of strings, max 5 items, specific next steps
 - confidence_score: float between 0.0 and 1.0
-- duration_analyzed: string describing duration
-- speakers_detected: integer >= 0
+- duration_analyzed: string describing actual call duration calculated from transcript timing
+- speakers_detected: integer >= 0, count unique speakers from transcript
 
 Call Transcript:
 {transcript}
@@ -121,11 +121,16 @@ Return only the JSON object, no additional text.""")
             
             # Prepare the prompt
             if custom_prompt:
-                prompt = custom_prompt
+                # If custom prompt is provided, combine it with the transcript
+                transcript_for_prompt = transcript or "No transcript available"
+                prompt = f"{custom_prompt}\n\nCall Transcript:\n{transcript_for_prompt}"
+                _logger.info(f"[AI Service] Using custom prompt with transcript")
+                _logger.info(f"[AI Service] Custom prompt: {custom_prompt[:100]}...")
             else:
                 # Use string replacement instead of format to avoid JSON brace conflicts
                 transcript_for_prompt = transcript or "No transcript available"
-                _logger.info(f"[AI Service] Using transcript for prompt: {transcript_for_prompt[:200]}...")
+                _logger.info(f"[AI Service] Using default prompt template with transcript")
+                _logger.info(f"[AI Service] No custom prompt provided")
                 prompt = self.default_prompt_template.replace('{transcript}', transcript_for_prompt)
             
             # DEBUG: Log the final prompt being sent to AI
@@ -245,7 +250,8 @@ Return only the JSON object, no additional text.""")
             'action_items': [],
             'confidence_score': 0.0,
             'duration_analyzed': 'Unknown',
-            'speakers_detected': 0
+            'speakers_detected': 0,
+            'raw_transcript_array': ''
         }
 
     def test_connection(self):

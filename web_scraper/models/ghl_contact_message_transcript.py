@@ -161,9 +161,6 @@ class GhlContactMessageTranscript(models.Model):
         for i, t in enumerate(transcripts):
             if t.transcript:
                 transcript_parts.append(t.transcript)
-                _logger.info(f"[get_full_transcript_text] Record {i+1}: '{t.transcript}'")
-            else:
-                _logger.warning(f"[get_full_transcript_text] Record {i+1} has empty transcript")
         
         full_text = ' '.join(transcript_parts)
         _logger.info(f"[get_full_transcript_text] Final combined text: '{full_text}'")
