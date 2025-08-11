@@ -87,6 +87,36 @@ class CyclSalesVisionController(http.Controller):
             # Add 30-second delay after validating it's a call
             import time
             _logger.info(f"[GHL Call Summary] Call validated, waiting 30 seconds before processing...")
+            
+            # Log AI-related fields if provided
+            try:
+                payload_for_ai = data['data'] if ('data' in data and isinstance(data['data'], dict)) else data
+                summary_prompt_val = payload_for_ai.get('cs_vision_summary_prompt')
+                minimum_duration_val = data.get('cs_vision_call_minimum_duration')
+
+                _logger.info(
+                    f"[GHL Call Summary] cs_vision_summary_prompt present: {bool(summary_prompt_val)}"
+                )
+                if summary_prompt_val:
+                    _logger.info(
+                        f"[GHL Call Summary] cs_vision_summary_prompt (first 160 chars): "
+                        f"{str(summary_prompt_val)[:160]}..."
+                    )
+
+                if minimum_duration_val is not None:
+                    _logger.info(
+                        f"[GHL Call Summary] cs_vision_call_minimum_duration: {minimum_duration_val}"
+                    )
+                else:
+                    _logger.warning(
+                        "[GHL Call Summary] cs_vision_call_minimum_duration: missing"
+                    )
+            except Exception as log_err:
+                _logger.error(
+                    f"[GHL Call Summary] Error while logging AI-related fields: {str(log_err)}",
+                    exc_info=True
+                )
+            
             time.sleep(30)
             _logger.info(f"[GHL Call Summary] 30-second delay completed, proceeding with call processing...")
             # Validate required fields
@@ -267,6 +297,7 @@ class CyclSalesVisionController(http.Controller):
             
             # Extract minimum duration from call data
             minimum_duration = call_data.get('cs_vision_call_minimum_duration', 20)
+            _logger.info(f"[Workflow Trigger] Using cs_vision_call_minimum_duration: {minimum_duration}")
             
             # Find relevant triggers for this location and call event
             triggers = request.env['cyclsales.vision.trigger'].sudo().search([
