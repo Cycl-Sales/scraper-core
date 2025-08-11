@@ -52,3 +52,4 @@ access_ghl_contact_message_attachment_user,ghl.contact.message.attachment,model_
 access_ghl_contact_message_meta_user,ghl.contact.message.meta,model_ghl_contact_message_meta,base.group_user,1,1,1,1
 access_ghl_contact_message_transcript_user,ghl.contact.message.transcript.user,model_ghl_contact_message_transcript,base.group_user,1,1,1,1
 access_ghl_contact_message_transcript_manager,ghl.contact.message.transcript.manager,model_ghl_contact_message_transcript,base.group_system,1,1,1,1
+access_select_application_wizard_user,select.application.wizard.user,model_select_application_wizard,base.group_user,1,1,1,1

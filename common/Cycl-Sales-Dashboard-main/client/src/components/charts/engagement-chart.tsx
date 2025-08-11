@@ -71,7 +71,7 @@ export default function EngagementChart({ data }: EngagementChartProps) {
               fill="#8884d8"
               dataKey="percentage"
             >
-              {engagementData.map((entry, index) => (
+              {Array.from({ length: engagementData.length }).map((_, index) => (
                 <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
               ))}
             </Pie>

@@ -230,49 +230,45 @@ class CyclSalesVisionTrigger(models.Model):
             # Extract custom prompt from event data (nested structure)
             custom_prompt = None
             if 'data' in event_data and isinstance(event_data['data'], dict):
-                custom_prompt = event_data['data'].get('cs_vision_call_transcript') or event_data['data'].get('cs_vision_summary_prompt')
+                custom_prompt = event_data['data'].get('cs_vision_summary_prompt')
             else:
-                custom_prompt = event_data.get('cs_vision_call_transcript') or event_data.get('cs_vision_summary_prompt')
+                custom_prompt = event_data.get('cs_vision_summary_prompt')
             
-            # Use default custom prompt if none provided
+            # Fail fast if no custom prompt provided
             if not custom_prompt:
-                # Calculate actual call duration in minutes and seconds
-                minutes = call_duration // 60
-                seconds = call_duration % 60
-                duration_str = f"{minutes}m {seconds}s"
-                
-                custom_prompt = f"""Summarize the following call transcript in 3–5 sentences. Focus on the main topics discussed, any decisions made, and key action items. Use clear, professional language.
-
-IMPORTANT: The actual call duration is {duration_str} ({call_duration} seconds total).
-
-Return a JSON response with the following structure:
-{{
-    "summary": "A concise summary of the call conversation",
-    "keywords": ["keyword1", "keyword2", "keyword3"],
-    "sentiment": "positive|negative|neutral",
-    "action_items": ["action1", "action2", "action3"],
-    "confidence_score": 0.85,
-    "duration_analyzed": "{duration_str}",
-    "speakers_detected": 2
-}}
-
-Requirements:
-- summary: string, never empty, 3-5 sentences max
-- keywords: array of strings, max 10 items, relevant to the conversation
-- sentiment: only "positive", "negative", or "neutral"
-- action_items: array of strings, max 5 items, specific next steps
-- confidence_score: float between 0.0 and 1.0
-- duration_analyzed: MUST be "{duration_str}" (the actual call duration)
-- speakers_detected: integer >= 0, count unique speakers from transcript"""
-                _logger.info(f"[Call Processing] Using default custom prompt with duration: {duration_str}")
+                _logger.warning("[Call Processing] Missing required field: cs_vision_summary_prompt")
+                return {
+                    "success": False,
+                    "error_code": "missing_field",
+                    "message": "Missing required field: cs_vision_summary_prompt",
+                }
             
             _logger.info(f"[Call Processing] Event data keys: {list(event_data.keys())}")
             _logger.info(f"[Call Processing] Custom prompt found: {bool(custom_prompt)}")
             if custom_prompt:
                 _logger.info(f"[Call Processing] Custom prompt: {custom_prompt[:100]}...")
             
-            # Check for minimum duration requirement
-            minimum_duration = context.get('cs_vision_call_minimum_duration', 20)
+            # Check for minimum duration requirement (must be provided by caller)
+            minimum_duration = context.get('cs_vision_call_minimum_duration')
+            if minimum_duration is None:
+                _logger.warning("[Call Processing] Missing required field: cs_vision_call_minimum_duration")
+                return {
+                    "success": False,
+                    "error_code": "missing_field",
+                    "message": "Missing required field: cs_vision_call_minimum_duration",
+                }
+
+            # Coerce minimum_duration to int if provided as string
+            try:
+                minimum_duration = int(minimum_duration)
+            except Exception:
+                _logger.warning(f"[Call Processing] Invalid cs_vision_call_minimum_duration: {minimum_duration}")
+                return {
+                    "success": False,
+                    "error_code": "invalid_field",
+                    "message": "cs_vision_call_minimum_duration must be an integer",
+                    "field": "cs_vision_call_minimum_duration",
+                }
             
             if call_duration < minimum_duration:
                 _logger.info(f"[Call Processing] Call duration ({call_duration}s) < minimum ({minimum_duration}s). Skipping AI processing.")

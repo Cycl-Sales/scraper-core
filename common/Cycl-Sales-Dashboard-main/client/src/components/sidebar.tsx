@@ -1,4 +1,4 @@
-import { ChartBar, Phone, Users, Handshake, Settings, Bell, UserCircle, Sliders, HelpCircle, LogOut, BarChart3 } from "lucide-react";
+import { ChartBar, Phone, Users, Settings, Bell, Sliders, HelpCircle, LogOut, BarChart3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link, useLocation } from "wouter";
 
@@ -34,7 +34,7 @@ const navigationSections = [
 export default function Sidebar() {
   const [location] = useLocation();
   // Assume selectedLocation is available from context or state
-  const selectedLocation = typeof window !== 'undefined' && window.localStorage ? window.localStorage.getItem('selectedLocation') || 'all' : 'all';
+  const selectedLocation = typeof window !== 'undefined' && window.localStorage ? window.localStorage.getItem('automations_selected_location') || 'all' : 'all';
 
   return (
     <aside className="w-80 bg-slate-900 border-r border-slate-800 flex flex-col">

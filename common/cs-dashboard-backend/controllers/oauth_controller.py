@@ -21,47 +21,231 @@ class GHLOAuthController(http.Controller):
         This endpoint receives the authorization code from GHL after user installs the app
         """
         try:
-            _logger.info(f"GHL OAuth callback received with kwargs: {kwargs}")
+            # ===== COMPREHENSIVE LOGGING START =====
+            _logger.info("=" * 80)
+            _logger.info("GHL OAUTH CALLBACK - COMPREHENSIVE LOGGING")
+            _logger.info("=" * 80)
+            
+            # Log all request information
+            _logger.info(f"Request Method: {request.httprequest.method}")
+            _logger.info(f"Request URL: {request.httprequest.url}")
+            _logger.info(f"Request Headers: {dict(request.httprequest.headers)}")
+            _logger.info(f"Request Query String: {request.httprequest.query_string}")
+            _logger.info(f"Request Path: {request.httprequest.path}")
+            _logger.info(f"Request Base URL: {request.httprequest.base_url}")
+            _logger.info(f"Request Full Path: {request.httprequest.full_path}")
+            
+            # Log kwargs and params
+            _logger.info(f"Kwargs received: {kwargs}")
             _logger.info(f"Request params: {request.params}")
-            _logger.info(f"Request data: {request.httprequest.data}")
-
-            # Get the authorization code from the callback
+            
+            # Log request data
+            _logger.info(f"Request data (raw): {request.httprequest.data}")
+            _logger.info(f"Request data (decoded): {request.httprequest.data.decode() if request.httprequest.data else 'None'}")
+            
+            # Log form data
+            _logger.info(f"Request form data: {request.httprequest.form}")
+            _logger.info(f"Request files: {request.httprequest.files}")
+            
+            # Log cookies and session
+            _logger.info(f"Request cookies: {request.httprequest.cookies}")
+            _logger.info(f"Session data: {dict(request.session) if hasattr(request, 'session') else 'No session'}")
+            
+            # Log environment variables
+            _logger.info(f"Request environ: {dict(request.httprequest.environ)}")
+            
+            # Parse and log URL parameters
+            parsed_url = urlparse(request.httprequest.url)
+            _logger.info(f"Parsed URL - Scheme: {parsed_url.scheme}")
+            _logger.info(f"Parsed URL - Netloc: {parsed_url.netloc}")
+            _logger.info(f"Parsed URL - Path: {parsed_url.path}")
+            _logger.info(f"Parsed URL - Query: {parsed_url.query}")
+            _logger.info(f"Parsed URL - Fragment: {parsed_url.fragment}")
+            
+            # Parse query parameters
+            query_params = parse_qs(parsed_url.query) if parsed_url.query else {}
+            if parsed_url.query:
+                _logger.info(f"Parsed query parameters: {query_params}")
+            
+            # Try to parse JSON from request data
+            json_data = None
+            if request.httprequest.data:
+                try:
+                    json_data = json.loads(request.httprequest.data.decode())
+                    _logger.info(f"Parsed JSON from request data: {json_data}")
+                except Exception as e:
+                    _logger.info(f"Failed to parse JSON from request data: {e}")
+            
+            # ===== EXTRACT KEY PARAMETERS =====
             code = kwargs.get('code')
             state = kwargs.get('state')
             location_id = kwargs.get('locationId')
             company_id = kwargs.get('companyId')
-            app_id = kwargs.get('appId')  # Get app_id from callback parameters
+            app_id = kwargs.get('appId')
+            
+            # Also try to get from request.params
+            code_from_params = request.params.get('code')
+            state_from_params = request.params.get('state')
+            location_id_from_params = request.params.get('locationId')
+            company_id_from_params = request.params.get('companyId')
+            app_id_from_params = request.params.get('appId')
+            
+            # Also try to get from query string
+            code_from_query = query_params.get('code', [None])[0] if query_params else None
+            state_from_query = query_params.get('state', [None])[0] if query_params else None
+            location_id_from_query = query_params.get('locationId', [None])[0] if query_params else None
+            company_id_from_query = query_params.get('companyId', [None])[0] if query_params else None
+            app_id_from_query = query_params.get('appId', [None])[0] if query_params else None
+            
+            # Log all parameter sources
+            _logger.info("=" * 50)
+            _logger.info("PARAMETER EXTRACTION RESULTS")
+            _logger.info("=" * 50)
+            _logger.info(f"Code - kwargs: {code}, params: {code_from_params}, query: {code_from_query}")
+            _logger.info(f"State - kwargs: {state}, params: {state_from_params}, query: {state_from_query}")
+            _logger.info(f"LocationId - kwargs: {location_id}, params: {location_id_from_params}, query: {location_id_from_query}")
+            _logger.info(f"CompanyId - kwargs: {company_id}, params: {company_id_from_params}, query: {company_id_from_query}")
+            _logger.info(f"AppId - kwargs: {app_id}, params: {app_id_from_params}, query: {app_id_from_query}")
+            
+            # Use the first available value for each parameter
+            final_code = code or code_from_params or code_from_query
+            final_state = state or state_from_params or state_from_query
+            final_location_id = location_id or location_id_from_params or location_id_from_query
+            final_company_id = company_id or company_id_from_params or company_id_from_query
+            final_app_id = app_id or app_id_from_params or app_id_from_query
+            
+            _logger.info("=" * 50)
+            _logger.info("FINAL PARAMETER VALUES")
+            _logger.info("=" * 50)
+            _logger.info(f"Final Code: {final_code}")
+            _logger.info(f"Final State: {final_state}")
+            _logger.info(f"Final LocationId: {final_location_id}")
+            _logger.info(f"Final CompanyId: {final_company_id}")
+            _logger.info(f"Final AppId: {final_app_id}")
+            
+            # Also print to console for immediate visibility
+            print("=" * 80)
+            print("GHL OAUTH CALLBACK - COMPREHENSIVE LOGGING")
+            print("=" * 80)
+            print(f"Request Method: {request.httprequest.method}")
+            print(f"Request URL: {request.httprequest.url}")
             print(f"Kwargs: {kwargs}")
+            print(f"Request params: {request.params}")
+            print(f"Request data: {request.httprequest.data}")
+            print(f"Final Code: {final_code}")
+            print(f"Final State: {final_state}")
+            print(f"Final LocationId: {final_location_id}")
+            print(f"Final CompanyId: {final_company_id}")
+            print(f"Final AppId: {final_app_id}")
+            print("=" * 80)
+            
+            # ===== COMPREHENSIVE LOGGING END =====
+            
+            # Use the final parameter values we extracted
+            code = final_code
+            state = final_state
+            location_id = final_location_id
+            company_id = final_company_id
+            app_id = final_app_id
+            
+            _logger.info("=" * 50)
+            _logger.info("USING FINAL PARAMETER VALUES")
+            _logger.info("=" * 50)
+            _logger.info(f"Using Code: {code}")
+            _logger.info(f"Using State: {state}")
+            _logger.info(f"Using LocationId: {location_id}")
+            _logger.info(f"Using CompanyId: {company_id}")
+            _logger.info(f"Using AppId: {app_id}")
+            
+            # Try to decode state parameter if it exists
+            state_data = None
+            if state:
+                try:
+                    import base64
+                    import json as json_module
+                    state_decoded = base64.urlsafe_b64decode(state.encode()).decode()
+                    state_data = json_module.loads(state_decoded)
+                    _logger.info(f"Decoded state data: {state_data}")
+                    
+                    # Extract values from decoded state
+                    if not location_id and state_data.get('locationId'):
+                        location_id = state_data.get('locationId')
+                        _logger.info(f"Using locationId from decoded state: {location_id}")
+                    
+                    if not company_id and state_data.get('companyId'):
+                        company_id = state_data.get('companyId')
+                        _logger.info(f"Using companyId from decoded state: {company_id}")
+                    
+                    if not app_id and state_data.get('appId'):
+                        app_id = state_data.get('appId')
+                        _logger.info(f"Using appId from decoded state: {app_id}")
+                        
+                except Exception as e:
+                    _logger.info(f"Failed to decode state parameter: {e}")
+                    # Fallback: use state as location_id if decoding fails
+                    if not location_id:
+                        location_id = state
+                        _logger.info(f"Using state as location_id (fallback): {location_id}")
             
             # If location_id is not provided, try to extract it from state
             if not location_id and state:
                 location_id = state
+                _logger.info(f"Using state as location_id: {location_id}")
             
             # If still not found, try companyId (for company-level installs)
             if not location_id and company_id:
                 location_id = company_id
+                _logger.info(f"Using company_id as location_id: {location_id}")
             
             # As a last resort, try to parse from request.params or request.httprequest.data
             if not location_id:
+                _logger.info("Location ID still not found, trying additional sources...")
                 # Try to parse from request.params
                 location_id = request.params.get('locationId') or request.params.get('companyId') or request.params.get('state')
+                _logger.info(f"Location ID from request.params: {location_id}")
                 # Try to parse from POST body if available
                 if not location_id and request.httprequest.data:
                     try:
                         data = json.loads(request.httprequest.data.decode())
                         location_id = data.get('locationId') or data.get('companyId') or data.get('state')
-                    except Exception:
-                        pass
+                        _logger.info(f"Location ID from request data: {location_id}")
+                    except Exception as e:
+                        _logger.info(f"Failed to parse location ID from request data: {e}")
+
+            _logger.info("=" * 50)
+            _logger.info("FINAL LOCATION ID RESOLUTION")
+            _logger.info("=" * 50)
+            _logger.info(f"Final resolved location_id: {location_id}")
+            _logger.info(f"Final resolved company_id: {company_id}")
+            _logger.info(f"Final resolved app_id: {app_id}")
 
             # Exchange authorization code for access token
+            _logger.info("=" * 50)
+            _logger.info("STARTING TOKEN EXCHANGE")
+            _logger.info("=" * 50)
+            _logger.info(f"Exchanging code: {code[:10] if code else 'None'}... for token")
+            _logger.info(f"Using app_id: {app_id}")
+            
             token_result = self._exchange_code_for_token(code, app_id)
 
+            _logger.info("=" * 50)
+            _logger.info("TOKEN EXCHANGE RESULT")
+            _logger.info("=" * 50)
+            _logger.info(f"Token result: {token_result}")
+            
             if not token_result:
                 _logger.error("Failed to exchange authorization code for access token")
+                _logger.error("Token exchange returned None or empty result")
                 return Response(
                     json.dumps({
                         'error': 'Token exchange failed',
-                        'message': 'Unable to exchange authorization code for access token'
+                        'message': 'Unable to exchange authorization code for access token',
+                        'debug_info': {
+                            'code_received': bool(code),
+                            'app_id_used': app_id,
+                            'location_id': location_id,
+                            'company_id': company_id
+                        }
                     }),
                     content_type='application/json',
                     status=400,
@@ -69,9 +253,20 @@ class GHLOAuthController(http.Controller):
                 )
 
             access_token, refresh_token = token_result
+            _logger.info(f"Successfully obtained access token: {access_token[:10] if access_token else 'None'}...")
+            _logger.info(f"Successfully obtained refresh token: {refresh_token[:10] if refresh_token else 'None'}...")
 
             # If only companyId is present (no locationId), treat as company-level install
+            _logger.info("=" * 50)
+            _logger.info("CHECKING INSTALLATION TYPE")
+            _logger.info("=" * 50)
+            _logger.info(f"Company ID present: {bool(company_id)}")
+            _logger.info(f"Location ID present: {bool(location_id)}")
+            _logger.info(f"State present: {bool(state)}")
+            _logger.info(f"Original kwargs locationId: {kwargs.get('locationId')}")
+            
             if company_id and (not kwargs.get('locationId') and not state):
+                _logger.info("Treating as company-level install")
                 # Store the agency token
                 self._store_ghl_credentials(company_id, access_token, refresh_token, state, app_id)
                 # Fetch and sync all locations for this company
@@ -92,26 +287,65 @@ class GHLOAuthController(http.Controller):
 
             # Otherwise, treat as location-level install
             if not location_id:
-                _logger.error("No company/location ID received in OAuth callback")
+                _logger.info("=" * 50)
+                _logger.info("GHL APP INSTALLATION FLOW DETECTED")
+                _logger.info("=" * 50)
+                _logger.info("No company/location ID in OAuth callback - this is expected for GHL app installations")
+                _logger.info("The company/location information will be provided via webhook events")
+                _logger.info("Storing tokens temporarily and waiting for webhook events...")
+                
+                # For GHL app installations, we need to store the tokens temporarily
+                # and wait for the webhook events to provide the company/location context
+                temp_token_key = f"temp_ghl_tokens_{code}"
+                
+                # Store tokens temporarily (they will be associated with company/location via webhook)
+                temp_tokens = {
+                    'access_token': access_token,
+                    'refresh_token': refresh_token,
+                    'app_id': app_id,
+                    'timestamp': datetime.now().isoformat(),
+                    'code': code
+                }
+                
+                # Store in a temporary location (could be Redis, database, or file)
+                # For now, we'll use a simple in-memory storage (not production-ready)
+                if not hasattr(self, '_temp_tokens'):
+                    self._temp_tokens = {}
+                
+                self._temp_tokens[temp_token_key] = temp_tokens
+                _logger.info(f"Stored temporary tokens with key: {temp_token_key}")
+                
+                # Return success response indicating we're waiting for webhook events
+                success_data = {
+                    'success': True,
+                    'message': 'GHL app installation initiated successfully. Waiting for webhook events to complete setup.',
+                    'status': 'pending_webhook',
+                    'code': code
+                }
+                
+                _logger.info("GHL OAuth callback completed - waiting for webhook events")
                 return Response(
-                    json.dumps({
-                        'error': 'No company/location ID received',
-                        'message': 'The OAuth callback is missing the required company/location ID'
-                    }),
+                    json.dumps(success_data),
                     content_type='application/json',
-                    status=400,
                     headers=get_cors_headers(request)
                 )
 
-            _logger.info(f"OAuth callback - Code: {code[:10]}..., State: {state}, Location: {location_id}, App: {app_id}")
+            _logger.info("=" * 50)
+            _logger.info("PROCESSING LOCATION-LEVEL INSTALL")
+            _logger.info("=" * 50)
+            _logger.info(f"OAuth callback - Code: {code[:10] if code else 'None'}..., State: {state}, Location: {location_id}, App: {app_id}")
 
             # Store the access token and location information
+            _logger.info("Storing GHL credentials...")
             self._store_ghl_credentials(location_id, access_token, refresh_token, state, app_id)
 
             # Get location details from GHL API
+            _logger.info("Getting location info from GHL API...")
             location_info = self._get_location_info(access_token, location_id, app_id)
+            _logger.info(f"Location info received: {location_info}")
 
             # Create or update GHL location record
+            _logger.info("Creating/updating GHL location record...")
             self._create_or_update_location(location_id, location_info, access_token)
 
             # Return success response
@@ -123,7 +357,11 @@ class GHLOAuthController(http.Controller):
                 'redirectUrl': self._get_redirect_url(location_id)
             }
 
+            _logger.info("=" * 50)
+            _logger.info("OAUTH CALLBACK SUCCESSFULLY COMPLETED")
+            _logger.info("=" * 50)
             _logger.info(f"GHL OAuth completed successfully for location: {location_id}")
+            _logger.info(f"Success data: {success_data}")
 
             return Response(
                 json.dumps(success_data),
@@ -132,11 +370,21 @@ class GHLOAuthController(http.Controller):
             )
 
         except Exception as e:
+            _logger.error("=" * 50)
+            _logger.error("OAUTH CALLBACK EXCEPTION")
+            _logger.error("=" * 50)
             _logger.error(f"Error in GHL OAuth callback: {str(e)}")
+            _logger.error(f"Exception type: {type(e).__name__}")
+            import traceback
+            _logger.error(f"Full traceback: {traceback.format_exc()}")
             return Response(
                 json.dumps({
                     'error': 'OAuth callback failed',
-                    'message': str(e)
+                    'message': str(e),
+                    'debug_info': {
+                        'exception_type': type(e).__name__,
+                        'traceback': traceback.format_exc()
+                    }
                 }),
                 content_type='application/json',
                 status=500,
@@ -353,12 +601,15 @@ class GHLOAuthController(http.Controller):
         """
         try:
             location_id = kwargs.get('locationId')
+            company_id = kwargs.get('companyId')  # Get company_id from parameters
             state = kwargs.get('state')
             app_id = kwargs.get('appId')  # Get app_id from parameters
 
-            if not location_id:
+            _logger.info(f"OAuth authorize called with - locationId: {location_id}, companyId: {company_id}, appId: {app_id}")
+
+            if not location_id and not company_id:
                 return Response(
-                    json.dumps({'error': 'Location ID is required'}),
+                    json.dumps({'error': 'Either Location ID or Company ID is required'}),
                     content_type='application/json',
                     status=400,
                     headers=get_cors_headers(request)
@@ -383,17 +634,38 @@ class GHLOAuthController(http.Controller):
                     headers=get_cors_headers(request)
                 )
 
+            # Create a comprehensive state parameter that includes both company and location info
+            import base64
+            import json as json_module
+            
+            state_data = {
+                'locationId': location_id,
+                'companyId': company_id,
+                'appId': cyclsales_app.app_id,
+                'timestamp': fields.Datetime.now().isoformat()
+            }
+            
+            # Encode state data to avoid URL encoding issues
+            state_encoded = base64.urlsafe_b64encode(json_module.dumps(state_data).encode()).decode()
+            
+            _logger.info(f"Generated state data: {state_data}")
+            _logger.info(f"Encoded state: {state_encoded}")
+
             # Generate authorization URL using CyclSales app credentials
             redirect_uri = f"{request.env['ir.config_parameter'].sudo().get_param('web.base.url')}/api/dashboard/oauth/callback"
-            auth_url = f"https://marketplace.gohighlevel.com/oauth/chooselocation?response_type=code&client_id={cyclsales_app.client_id}&redirect_uri={redirect_uri}&scope=locations.readonly&state={location_id}"
+            auth_url = f"https://marketplace.gohighlevel.com/oauth/chooselocation?response_type=code&client_id={cyclsales_app.client_id}&redirect_uri={redirect_uri}&scope=locations.readonly&state={state_encoded}"
+
+            _logger.info(f"Generated authorization URL: {auth_url}")
 
             return Response(
                 json.dumps({
                     'authorizationUrl': auth_url,
                     'locationId': location_id,
-                    'state': state,
+                    'companyId': company_id,
+                    'state': state_encoded,
                     'appId': cyclsales_app.app_id,
-                    'appName': cyclsales_app.name
+                    'appName': cyclsales_app.name,
+                    'stateData': state_data
                 }),
                 content_type='application/json',
                 headers=get_cors_headers(request)
@@ -520,22 +792,182 @@ class GHLOAuthController(http.Controller):
                 })
             except Exception as e:
                 _logger.warning(f"Could not log event to web.scraper.event.log: {e}")
-            # Update GHL Location is_installed
-            GHLLocation = request.env['ghl.location'].sudo()
-            if event_type == 'INSTALL' and location_id:
-                loc = GHLLocation.search([('location_id', '=', location_id)], limit=1)
-                if loc:
-                    loc.write({'is_installed': True})
+            # Check for stored temporary tokens and complete installation
+            if event_type == 'INSTALL':
+                _logger.info("=" * 50)
+                _logger.info("PROCESSING INSTALL EVENT")
+                _logger.info("=" * 50)
+                _logger.info(f"Event type: {event_type}")
+                _logger.info(f"Install type: {json_data.get('installType')}")
+                _logger.info(f"Company ID: {company_id}")
+                _logger.info(f"Location ID: {location_id}")
+                _logger.info(f"App ID: {json_data.get('appId')}")
+                
+                # Check if we have stored temporary tokens
+                if hasattr(self, '_temp_tokens') and self._temp_tokens:
+                    _logger.info(f"Found {len(self._temp_tokens)} stored temporary tokens")
+                    
+                    # Look for tokens that match this installation
+                    matching_tokens = None
+                    for temp_key, temp_data in self._temp_tokens.items():
+                        _logger.info(f"Checking temp token key: {temp_key}")
+                        _logger.info(f"Temp token app_id: {temp_data.get('app_id')}")
+                        _logger.info(f"Event app_id: {json_data.get('appId')}")
+                        
+                        # Match by app_id
+                        if temp_data.get('app_id') == json_data.get('appId'):
+                            matching_tokens = temp_data
+                            _logger.info(f"Found matching tokens for app_id: {json_data.get('appId')}")
+                            break
+                    
+                    if matching_tokens:
+                        _logger.info("=" * 50)
+                        _logger.info("COMPLETING GHL INSTALLATION")
+                        _logger.info("=" * 50)
+                        
+                        access_token = matching_tokens['access_token']
+                        refresh_token = matching_tokens['refresh_token']
+                        app_id = matching_tokens['app_id']
+                        
+                        _logger.info(f"Using stored tokens for app_id: {app_id}")
+                        _logger.info(f"Company ID: {company_id}")
+                        _logger.info(f"Location ID: {location_id}")
+                        
+                        # Store the credentials based on installation type
+                        if json_data.get('installType') == 'Company':
+                            # Company-level installation
+                            if company_id:
+                                self._store_ghl_credentials(company_id, access_token, refresh_token, None, app_id)
+                                _logger.info(f"Stored company-level credentials for company: {company_id}")
+                                
+                                # Sync all locations for this company
+                                synced_locations = self._sync_all_company_locations(company_id, access_token, app_id)
+                                _logger.info(f"Synced {len(synced_locations)} locations for company: {company_id}")
+                        
+                        elif json_data.get('installType') == 'Location':
+                            # Location-level installation
+                            if location_id:
+                                self._store_ghl_credentials(location_id, access_token, refresh_token, None, app_id)
+                                _logger.info(f"Stored location-level credentials for location: {location_id}")
+                        
+                        # Remove the temporary tokens
+                        for temp_key, temp_data in list(self._temp_tokens.items()):
+                            if temp_data.get('app_id') == app_id:
+                                del self._temp_tokens[temp_key]
+                                _logger.info(f"Removed temporary tokens for app_id: {app_id}")
+                                break
+                        
+                        _logger.info("GHL installation completed successfully!")
+                    else:
+                        _logger.warning("No matching temporary tokens found for this installation")
                 else:
-                    GHLLocation.create({
-                        'location_id': location_id,
-                        'name': f'GHL Location {location_id}',
-                        'is_installed': True,
-                    })
-            elif event_type == 'UNINSTALL' and location_id:
-                loc = GHLLocation.search([('location_id', '=', location_id)], limit=1)
-                if loc:
-                    loc.write({'is_installed': False})
+                    _logger.info("No temporary tokens found - this may be a direct webhook without OAuth flow")
+            
+            # Handle INSTALL and UNINSTALL events for the new models
+            if event_type in ['INSTALL', 'UNINSTALL'] and location_id:
+                _logger.info(f"Processing {event_type} event for location: {location_id}")
+                
+                # Get the app_id from the event
+                app_id = json_data.get('appId')
+                if not app_id:
+                    _logger.error(f"No app_id found in {event_type} event")
+                    return {'success': False, 'error': 'No app_id in event'}
+                
+                # Find the cyclsales.application record
+                CyclSalesApp = request.env['cyclsales.application'].sudo()
+                app = CyclSalesApp.search([
+                    ('app_id', '=', app_id),
+                    ('is_active', '=', True)
+                ], limit=1)
+                
+                if not app:
+                    _logger.error(f"No active cyclsales.application found for app_id: {app_id}")
+                    return {'success': False, 'error': f'No active application found for app_id: {app_id}'}
+                
+                # Find the installed.location record
+                InstalledLocation = request.env['installed.location'].sudo()
+                installed_location = InstalledLocation.search([
+                    ('location_id', '=', location_id)
+                ], limit=1)
+                
+                if event_type == 'INSTALL':
+                    _logger.info(f"Processing INSTALL event for location: {location_id}")
+                    
+                    if installed_location:
+                        # Update existing location
+                        installed_location.write({
+                            'is_installed': True,
+                            'app_id': app_id,
+                        })
+                        _logger.info(f"Updated existing installed.location for INSTALL: {location_id}")
+                    else:
+                        # Create new location
+                        installed_location = InstalledLocation.create({
+                            'location_id': location_id,
+                            'name': f'GHL Location {location_id}',
+                            'is_installed': True,
+                            'app_id': app_id,
+                        })
+                        _logger.info(f"Created new installed.location for INSTALL: {location_id}")
+                    
+                    # Add the application to the location's application_ids
+                    if app not in installed_location.application_ids:
+                        installed_location.application_ids = [(4, app.id)]
+                        _logger.info(f"Added application {app.name} to location {location_id}")
+                    
+                    # Add the location to the application's location_ids
+                    if installed_location not in app.location_ids:
+                        app.location_ids = [(4, installed_location.id)]
+                        _logger.info(f"Added location {location_id} to application {app.name}")
+                
+                elif event_type == 'UNINSTALL':
+                    _logger.info(f"Processing UNINSTALL event for location: {location_id}")
+                    
+                    if installed_location:
+                        # Remove the application from the location's application_ids
+                        if app in installed_location.application_ids:
+                            installed_location.application_ids = [(3, app.id)]
+                            _logger.info(f"Removed application {app.name} from location {location_id}")
+                        
+                        # Remove the location from the application's location_ids
+                        if installed_location in app.location_ids:
+                            app.location_ids = [(3, installed_location.id)]
+                            _logger.info(f"Removed location {location_id} from application {app.name}")
+                        
+                        # Check if location has any remaining applications
+                        if not installed_location.application_ids:
+                            # No more applications installed, mark as uninstalled
+                            installed_location.write({
+                                'is_installed': False,
+                                'app_id': False,
+                            })
+                            _logger.info(f"Marked location {location_id} as uninstalled (no more apps)")
+                        else:
+                            # Other applications still installed, update app_id to first remaining app
+                            remaining_app = installed_location.application_ids[0]
+                            installed_location.write({
+                                'app_id': remaining_app.app_id,
+                            })
+                            _logger.info(f"Updated location {location_id} app_id to {remaining_app.app_id}")
+                    else:
+                        _logger.warning(f"No installed.location found for UNINSTALL event: {location_id}")
+                
+                # Also update the old ghl.location model for backward compatibility
+                GHLLocation = request.env['ghl.location'].sudo()
+                if event_type == 'INSTALL':
+                    loc = GHLLocation.search([('location_id', '=', location_id)], limit=1)
+                    if loc:
+                        loc.write({'is_installed': True})
+                    else:
+                        GHLLocation.create({
+                            'location_id': location_id,
+                            'name': f'GHL Location {location_id}',
+                            'is_installed': True,
+                        })
+                elif event_type == 'UNINSTALL':
+                    loc = GHLLocation.search([('location_id', '=', location_id)], limit=1)
+                    if loc:
+                        loc.write({'is_installed': False})
             return {
                 'success': True,
                 'message': 'Event received and processed',

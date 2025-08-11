@@ -13,7 +13,7 @@ import { useState } from "react";
 import { Link } from "wouter";
 
 export default function AITraining() {
-  const [trainingProgress, setTrainingProgress] = useState(67);
+  const [trainingProgress] = useState(67);
   const [datasets] = useState([
     {
       id: 1,

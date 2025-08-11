@@ -10,6 +10,13 @@ _logger = logging.getLogger(__name__)
 
 
 class InstalledLocationController(http.Controller):
+    
+    def _get_app_id_from_request(self, kwargs):
+        """Helper method to get app_id from request parameters with fallback"""
+        app_id = kwargs.get('appId') or '6867d1537079188afca5013c'  # Default fallback
+        _logger.info(f"Using app_id: {app_id}")
+        return app_id
+    
     @http.route('/api/installed-locations', type='http', auth='none', methods=['GET', 'OPTIONS'], csrf=False)
     def get_installed_locations(self, **kwargs):
         """
@@ -172,7 +179,7 @@ class InstalledLocationController(http.Controller):
         try:
             locations = request.env['installed.location'].sudo().search([
                 ('app_id', '=', app_id)
-            ])
+            ]).with_context(prefetch_fields=['automation_template_id'])
             data = []
             mock_defaults = {
                 'automationGroup': 'Template: Generic Default',
@@ -198,7 +205,7 @@ class InstalledLocationController(http.Controller):
                 data.append({
                     'location_id': loc.location_id or '',
                     'location': loc.name or '',
-                    'automationGroup': loc.automation_group or mock_defaults['automationGroup'],
+                    'automationGroup': loc.get_automation_group_name(),
                     'adAccounts': loc.ad_accounts if loc.ad_accounts not in [None, '', 0] else mock_defaults[
                         'adAccounts'],
                     'totalAdSpend': loc.total_ad_spend or mock_defaults['totalAdSpend'],
@@ -272,7 +279,8 @@ class InstalledLocationController(http.Controller):
         result = installed_location_model.fetch_installed_locations(
             company_id=company_id,
             app_id=app_id,
-            limit=500
+            limit=500,
+            fetch_details=True  # Fetch details for the overview page refresh
         )
         _logger.info(f"fetch_installed_locations result: {result}")
         if not result.get('success'):
@@ -287,7 +295,7 @@ class InstalledLocationController(http.Controller):
         # Get the updated locations from the database
         locations = request.env['installed.location'].sudo().search([
             ('app_id', '=', app_id)
-        ])
+        ]).with_context(prefetch_fields=['automation_template_id'])
         data = []
         mock_defaults = {
             'automationGroup': 'Template: Generic Default',
@@ -313,7 +321,7 @@ class InstalledLocationController(http.Controller):
             data.append({
                 'location_id': loc.location_id or '',
                 'location': loc.name or '',
-                'automationGroup': loc.automation_group or mock_defaults['automationGroup'],
+                'automationGroup': loc.get_automation_group_name(),
                 'adAccounts': loc.ad_accounts if loc.ad_accounts not in [None, '', 0] else mock_defaults['adAccounts'],
                 'totalAdSpend': loc.total_ad_spend or mock_defaults['totalAdSpend'],
                 'costPerConversion': loc.cost_per_conversion or mock_defaults['costPerConversion'],
@@ -395,7 +403,7 @@ class InstalledLocationController(http.Controller):
                 app_id = kwargs.get('appId', '6867d1537079188afca5013c')
                 locations = request.env['installed.location'].sudo().search([
                     ('app_id', '=', app_id)
-                ])
+                ]).with_context(prefetch_fields=['automation_template_id'])
 
                 data = []
                 mock_defaults = {
@@ -423,7 +431,7 @@ class InstalledLocationController(http.Controller):
                     data.append({
                         'location_id': loc.location_id or '',
                         'location': loc.name or '',
-                        'automationGroup': loc.automation_group or mock_defaults['automationGroup'],
+                        'automationGroup': loc.get_automation_group_name(),
                         'adAccounts': loc.ad_accounts if loc.ad_accounts not in [None, '', 0] else mock_defaults[
                             'adAccounts'],
                         'totalAdSpend': loc.total_ad_spend or mock_defaults['totalAdSpend'],
@@ -478,7 +486,7 @@ class InstalledLocationController(http.Controller):
         if not location_id:
             return Response(json.dumps({'success': False, 'error': 'location_id is required'}),
                             content_type='application/json', status=400, headers=get_cors_headers(request))
-        app_id = '6867d1537079188afca5013c'
+        app_id = self._get_app_id_from_request(kwargs)
         company_id = 'Ipg8nKDPLYKsbtodR6LN'
         # Get agency access token (same as fetch_location_details logic)
         app = request.env['cyclsales.application'].sudo().search([
@@ -494,6 +502,36 @@ class InstalledLocationController(http.Controller):
         if not loc:
             return Response(json.dumps({'success': False, 'error': 'Location not found'}),
                             content_type='application/json', status=404, headers=get_cors_headers(request))
+        
+        # Check if the app is still installed on this location
+        if app not in loc.application_ids:
+            _logger.warning(f"App {app.name} is not installed on location {location_id}")
+            return Response(
+                json.dumps({
+                    'success': False, 
+                    'error': f'App {app.name} is not installed on this location',
+                    'location_id': location_id,
+                    'app_id': app_id
+                }),
+                content_type='application/json',
+                status=403,
+                headers=get_cors_headers(request)
+            )
+        
+        # Check if location is marked as installed
+        if not loc.is_installed:
+            _logger.warning(f"Location {location_id} is not marked as installed")
+            return Response(
+                json.dumps({
+                    'success': False, 
+                    'error': 'Location is not installed',
+                    'location_id': location_id
+                }),
+                content_type='application/json',
+                status=403,
+                headers=get_cors_headers(request)
+            )
+        
         # Call the fetch_location_users method
         result = loc.fetch_location_users(company_id, location_id, access_token)
         if result and result.get('success'):
@@ -1123,7 +1161,7 @@ class InstalledLocationController(http.Controller):
 
         # ALWAYS SYNC FRESH DATA FROM GHL API BEFORE RETURNING
         _logger.info(f"Syncing fresh data from GHL API for location: {location_id}")
-        app_id = '6867d1537079188afca5013c'
+        app_id = self._get_app_id_from_request(kwargs)
         company_id = 'Ipg8nKDPLYKsbtodR6LN'
         app = request.env['cyclsales.application'].sudo().search([
             ('app_id', '=', app_id),
@@ -1143,6 +1181,34 @@ class InstalledLocationController(http.Controller):
             access_token = app.access_token
             loc = request.env['installed.location'].sudo().search([('location_id', '=', location_id)], limit=1)
             if loc:
+                # Check if the app is still installed on this location
+                if app not in loc.application_ids:
+                    _logger.warning(f"App {app.name} is not installed on location {location_id}")
+                    return Response(
+                        json.dumps({
+                            'success': False, 
+                            'error': f'App {app.name} is not installed on this location',
+                            'location_id': location_id,
+                            'app_id': app_id
+                        }),
+                        content_type='application/json',
+                        status=403,
+                        headers=get_cors_headers(request)
+                    )
+                
+                # Check if location is marked as installed
+                if not loc.is_installed:
+                    _logger.warning(f"Location {location_id} is not marked as installed")
+                    return Response(
+                        json.dumps({
+                            'success': False, 
+                            'error': 'Location is not installed',
+                            'location_id': location_id
+                        }),
+                        content_type='application/json',
+                        status=403,
+                        headers=get_cors_headers(request)
+                    )
                 # SYNC CONTACTS (fetches from GHL and updates Odoo DB)
                 _logger.info(f"Syncing contacts for location: {location_id}")
                 contact_sync_result = loc.fetch_location_contacts(company_id, location_id, access_token)
@@ -1440,7 +1506,7 @@ class InstalledLocationController(http.Controller):
                 headers=get_cors_headers(request)
             )
         try:
-            app_id = '6867d1537079188afca5013c'
+            app_id = self._get_app_id_from_request(kwargs)
             app = request.env['cyclsales.application'].sudo().search([
                 ('app_id', '=', app_id),
                 ('is_active', '=', True)
@@ -1464,6 +1530,36 @@ class InstalledLocationController(http.Controller):
                     status=404,
                     headers=get_cors_headers(request)
                 )
+            
+            # Check if the app is still installed on this location
+            if app not in loc.application_ids:
+                _logger.warning(f"App {app.name} is not installed on location {location_id}")
+                return Response(
+                    json.dumps({
+                        'success': False, 
+                        'error': f'App {app.name} is not installed on this location',
+                        'location_id': location_id,
+                        'app_id': app_id
+                    }),
+                    content_type='application/json',
+                    status=403,
+                    headers=get_cors_headers(request)
+                )
+            
+            # Check if location is marked as installed
+            if not loc.is_installed:
+                _logger.warning(f"Location {location_id} is not marked as installed")
+                return Response(
+                    json.dumps({
+                        'success': False, 
+                        'error': 'Location is not installed',
+                        'location_id': location_id
+                    }),
+                    content_type='application/json',
+                    status=403,
+                    headers=get_cors_headers(request)
+                )
+            
             result = loc.fetch_contacts_count(app.access_token, 'Ipg8nKDPLYKsbtodR6LN')
             _logger.info(f"fetch_contacts_count result: {result}")
             if result.get('success'):
@@ -1522,7 +1618,7 @@ class InstalledLocationController(http.Controller):
                 headers=get_cors_headers(request)
             )
         try:
-            app_id = '6867d1537079188afca5013c'
+            app_id = self._get_app_id_from_request(kwargs)
             company_id = 'Ipg8nKDPLYKsbtodR6LN'
             app = request.env['cyclsales.application'].sudo().search([
                 ('app_id', '=', app_id),
@@ -1545,6 +1641,35 @@ class InstalledLocationController(http.Controller):
                     json.dumps({'success': False, 'error': 'Location not found'}),
                     content_type='application/json',
                     status=404,
+                    headers=get_cors_headers(request)
+                )
+            
+            # Check if the app is still installed on this location
+            if app not in loc.application_ids:
+                _logger.warning(f"App {app.name} is not installed on location {location_id}")
+                return Response(
+                    json.dumps({
+                        'success': False, 
+                        'error': f'App {app.name} is not installed on this location',
+                        'location_id': location_id,
+                        'app_id': app_id
+                    }),
+                    content_type='application/json',
+                    status=403,
+                    headers=get_cors_headers(request)
+                )
+            
+            # Check if location is marked as installed
+            if not loc.is_installed:
+                _logger.warning(f"Location {location_id} is not marked as installed")
+                return Response(
+                    json.dumps({
+                        'success': False, 
+                        'error': 'Location is not installed',
+                        'location_id': location_id
+                    }),
+                    content_type='application/json',
+                    status=403,
                     headers=get_cors_headers(request)
                 )
 
@@ -1763,337 +1888,26 @@ class InstalledLocationController(http.Controller):
 
     @http.route('/api/contact-details', type='http', auth='none', methods=['GET', 'OPTIONS'], csrf=False)
     def get_contact_details(self, **kwargs):
-        import json
         """
         Get detailed contact information including tasks, conversations, and opportunities
-        MODIFIED: Always fetches fresh data from GHL API for the requested contacts
+        DISABLED: Temporarily disabled to prevent automatic background sync
         """
-        _logger.info(f"get_contact_details called with kwargs: {kwargs}")
+        _logger.info(f"get_contact_details called with kwargs: {kwargs} - DISABLED")
         if request.httprequest.method == 'OPTIONS':
             return Response(status=200, headers=get_cors_headers(request))
 
-        try:
-            contact_ids = kwargs.get('contact_ids', '')
-            if not contact_ids:
-                return Response(
-                    json.dumps({'success': False, 'error': 'contact_ids parameter is required'}),
-                    content_type='application/json',
-                    status=400,
-                    headers=get_cors_headers(request)
-                )
+        # Return a simple response indicating the endpoint is disabled
+        return Response(
+            json.dumps({
+                'success': False, 
+                'error': 'Contact details endpoint temporarily disabled to prevent background sync',
+                'message': 'This endpoint is disabled to prevent automatic background sync. Please use manual sync when needed.'
+            }),
+            content_type='application/json',
+            status=503,  # Service Unavailable
+            headers=get_cors_headers(request)
+        )
 
-            # Parse contact IDs
-            contact_id_list = [int(cid.strip()) for cid in contact_ids.split(',') if cid.strip().isdigit()]
-            if not contact_id_list:
-                return Response(
-                    json.dumps({'success': False, 'error': 'No valid contact IDs provided'}),
-                    content_type='application/json',
-                    status=400,
-                    headers=get_cors_headers(request)
-                )
-
-            # Get app configuration for fresh API calls
-            app_id = '6867d1537079188afca5013c'
-            company_id = 'Ipg8nKDPLYKsbtodR6LN'
-            app = request.env['cyclsales.application'].sudo().search([
-                ('app_id', '=', app_id),
-                ('is_active', '=', True)
-            ], limit=1)
-
-            if not app or not app.access_token:
-                return Response(
-                    json.dumps({'success': False, 'error': 'No valid access token found'}),
-                    content_type='application/json',
-                    status=400,
-                    headers=get_cors_headers(request)
-                )
-
-            contacts_data = []
-            sync_summary = {
-                'tasks_synced': 0,
-                'conversations_synced': 0,
-                'opportunities_synced': 0,
-                'messages_fetched': 0,
-                'touch_info_updated': 0
-            }
-
-            for contact_id in contact_id_list:
-                try:
-                    contact = request.env['ghl.location.contact'].sudo().browse(contact_id)
-                    if not contact.exists():
-                        _logger.warning(f"Contact {contact_id} not found")
-                        continue
-
-                    # FRESH SYNC: Sync tasks for this specific contact
-                    _logger.info(f"Syncing tasks for contact {contact.external_id}")
-                    task_sync_result = request.env['ghl.contact.task'].sudo().sync_contact_tasks_from_ghl(
-                        contact.id, app.access_token, contact.location_id.location_id, company_id
-                    )
-                    if task_sync_result.get('success'):
-                        sync_summary['tasks_synced'] += 1
-
-                    # FRESH SYNC: Sync conversations for this specific contact
-                    _logger.info(f"Syncing conversations for contact {contact.external_id}")
-                    conv_sync_result = request.env['ghl.contact.conversation'].sudo().sync_conversations_for_contact(
-                        app.access_token, contact.location_id.location_id, contact.external_id
-                    )
-                    if conv_sync_result.get('success'):
-                        sync_summary['conversations_synced'] += 1
-
-                    # FRESH SYNC: Sync opportunities for this specific contact
-                    _logger.info(f"Syncing opportunities for contact {contact.external_id}")
-                    opp_sync_result = request.env['ghl.contact.opportunity'].sudo().sync_opportunities_for_contact(
-                        app.access_token, contact.location_id.location_id, contact.external_id, company_id
-                    )
-                    if opp_sync_result.get('success'):
-                        sync_summary['opportunities_synced'] += 1
-
-                    # FRESH SYNC: Fetch messages for all conversations to get fresh touch data
-                    conversations = request.env['ghl.contact.conversation'].sudo().search([
-                        ('contact_id', '=', contact_id)
-                    ])
-
-                    for conversation in conversations:
-                        try:
-                            # Get location token for this conversation
-                            location_token_result = request.env['ghl.contact.conversation'].sudo()._get_location_token(
-                                app.access_token, conversation.contact_id.location_id.location_id, company_id
-                            )
-
-                            if location_token_result['success']:
-                                message_result = request.env[
-                                    'ghl.contact.message'].sudo().fetch_messages_for_conversation(
-                                    conversation_id=conversation.ghl_id,
-                                    access_token=location_token_result['access_token'],
-                                    location_id=conversation.contact_id.location_id.id,
-                                    contact_id=conversation.contact_id.id,
-                                    limit=100
-                                )
-                                if message_result.get('success'):
-                                    sync_summary['messages_fetched'] += message_result.get('total_messages', 0)
-                        except Exception as e:
-                            _logger.error(f"Error fetching messages for conversation {conversation.ghl_id}: {str(e)}")
-
-                    # UPDATE TOUCH INFORMATION FOR THIS CONTACT
-                    contact.update_touch_information()
-                    sync_summary['touch_info_updated'] += 1
-
-                    # COMPUTE FRESH TOUCH INFORMATION
-                    messages = request.env['ghl.contact.message'].sudo().search([
-                        ('contact_id', '=', contact_id)
-                    ])
-
-                    # Count messages by type
-                    message_counts = {}
-                    for message in messages:
-                        message_type = message.message_type or 'UNKNOWN'
-                        message_counts[message_type] = message_counts.get(message_type, 0) + 1
-
-                    # Create touch summary string
-                    touch_parts = []
-                    for msg_type, count in message_counts.items():
-                        # Map message types to readable names
-                        type_name = contact._get_message_type_display_name(msg_type)
-                        touch_parts.append(f"{count} {type_name}")
-
-                    touch_summary = ', '.join(touch_parts) if touch_parts else 'no_touches'
-
-                    # Get last message
-                    last_message = messages.sorted('date_added', reverse=True)[0] if messages else None
-                    last_touch_date = last_message.date_added if last_message else False
-
-                    # Get last message content
-                    last_message_data = None
-                    if last_message and last_message.body:
-                        import json
-                        last_message_data = {
-                            'body': last_message.body,
-                            'type': last_message.message_type,
-                            'direction': last_message.direction,
-                            'date_added': last_message.date_added.isoformat() if last_message.date_added else '',
-                            'id': last_message.ghl_id
-                        }
-
-                    # Get fresh tasks for this contact
-                    tasks = request.env['ghl.contact.task'].sudo().search([
-                        ('contact_id', '=', contact_id)
-                    ])
-
-                    tasks_data = []
-                    for task in tasks:
-                        tasks_data.append({
-                            'id': task.id,
-                            'external_id': task.external_id,
-                            'title': task.title,
-                            'body': task.body,
-                            'due_date': task.due_date.isoformat() if task.due_date else '',
-                            'completed': task.completed,
-                            'assigned_to': task.assigned_to,
-                            'create_date': task.create_date.isoformat() if task.create_date else '',
-                            'write_date': task.write_date.isoformat() if task.write_date else '',
-                        })
-
-                    # Get fresh conversations for this contact
-                    conversations = request.env['ghl.contact.conversation'].sudo().search([
-                        ('contact_id', '=', contact_id)
-                    ])
-
-                    conversations_data = []
-                    for conversation in conversations:
-                        # Get fresh messages for this conversation
-                        conv_messages = request.env['ghl.contact.message'].sudo().search([
-                            ('conversation_id', '=', conversation.id)
-                        ], order='date_added desc')
-
-                        # Calculate fresh touch summary for this conversation
-                        conv_message_counts = {}
-                        for message in conv_messages:
-                            message_type = message.message_type or 'UNKNOWN'
-                            conv_message_counts[message_type] = conv_message_counts.get(message_type, 0) + 1
-
-                        # Create touch summary string
-                        conv_touch_parts = []
-                        for msg_type, count in conv_message_counts.items():
-                            # Map message types to readable names
-                            type_name = contact._get_message_type_display_name(msg_type)
-                            conv_touch_parts.append(f"{count} {type_name}")
-
-                        conv_touch_summary = ', '.join(conv_touch_parts) if conv_touch_parts else 'no_touches'
-
-                        # Get last message
-                        conv_last_message = conv_messages[0] if conv_messages else None
-                        conv_last_message_data = None
-                        if conv_last_message:
-                            import json
-                            conv_last_message_data = {
-                                'body': conv_last_message.body,
-                                'type': conv_last_message.message_type,
-                                'direction': conv_last_message.direction,
-                                'date_added': conv_last_message.date_added.isoformat() if conv_last_message.date_added else '',
-                                'id': conv_last_message.ghl_id
-                            }
-
-                        conversations_data.append({
-                            'id': conversation.id,
-                            'ghl_id': conversation.ghl_id,
-                            'last_message_body': conversation.last_message_body or '',
-                            'last_message_type': conversation.last_message_type or '',
-                            'type': conversation.type or '',
-                            'unread_count': conversation.unread_count or 0,
-                            'full_name': conversation.full_name or '',
-                            'contact_name': conversation.contact_name or '',
-                            'email': conversation.email or '',
-                            'phone': conversation.phone or '',
-                            'display_name': conversation.display_name or '',
-                            'create_date': conversation.create_date.isoformat() if conversation.create_date else '',
-                            'write_date': conversation.write_date.isoformat() if conversation.write_date else '',
-                            'touch_summary': conv_touch_summary,
-                            'last_touch_date': conv_last_message.date_added.isoformat() if conv_last_message and conv_last_message.date_added else '',
-                            'last_message': conv_last_message_data,
-                            'messages_count': len(conv_messages)
-                        })
-
-                    # Get fresh opportunities for this contact
-                    opportunities = request.env['ghl.contact.opportunity'].sudo().search([
-                        ('contact_id', '=', contact_id)
-                    ])
-
-                    opportunities_data = []
-                    for opportunity in opportunities:
-                        opportunities_data.append({
-                            'id': opportunity.id,
-                            'external_id': opportunity.external_id,
-                            'name': opportunity.name,
-                            'title': opportunity.title,
-                            'description': opportunity.description,
-                            'stage': opportunity.stage,
-                            'expected_close_date': opportunity.expected_close_date.isoformat() if opportunity.expected_close_date else '',
-                            'date_created': opportunity.date_created.isoformat() if opportunity.date_created else '',
-                            'date_modified': opportunity.date_modified.isoformat() if opportunity.date_modified else '',
-                            'monetary_value': opportunity.monetary_value,
-                            'pipeline_id': opportunity.pipeline_id,
-                            'pipeline_stage_id': opportunity.pipeline_stage_id,
-                            'assigned_to': opportunity.assigned_to_external,
-                            'status': opportunity.status,
-                            'source': opportunity.source,
-                            'contact_external_id': opportunity.contact_external_id,
-                            'location_external_id': opportunity.location_external_id,
-                            'index_version': opportunity.index_version,
-                            'notes': opportunity.notes,
-                            'tasks': opportunity.tasks,
-                            'calendar_events': opportunity.calendar_events,
-                            'followers': opportunity.followers,
-                        })
-
-                    # Prepare contact data with fresh computed touch information
-                    contact_data = {
-                        'contact_id': contact.id,
-                        'external_id': contact.external_id,
-                        'name': contact.name,
-                        'email': contact.email,
-                        'timezone': contact.timezone,
-                        'country': contact.country,
-                        'source': contact.source,
-                        'date_added': contact.date_added.isoformat() if contact.date_added else '',
-                        'business_id': contact.business_id,
-                        'followers': contact.followers,
-                        'tag_list': contact.tag_list,
-                        'custom_fields_count': len(contact.custom_field_ids),
-                        'attributions_count': len(contact.attribution_ids),
-                        'ai_status': contact.ai_status,
-                        'ai_summary': contact.ai_summary,
-                        'ai_quality_grade': contact.ai_quality_grade,
-                        'ai_sales_grade': contact.ai_sales_grade,
-                        'crm_tasks': contact.crm_tasks,
-                        'category': contact.category,
-                        'channel': contact.channel,
-                        'created_by': contact.created_by,
-                        'attribution': contact.attribution,
-                        'assigned_to': contact.assigned_user_name,
-                        'speed_to_lead': contact.speed_to_lead,
-                        # FRESH COMPUTED TOUCH INFORMATION
-                        'touch_summary': touch_summary,
-                        'last_touch_date': last_touch_date.isoformat() if last_touch_date else '',
-                        'last_message': last_message_data,
-                        'total_pipeline_value': contact.total_pipeline_value,
-                        'opportunities': contact.opportunities,
-                        'details_fetched': True,  # Always true since we sync everything fresh
-                        'has_tasks': len(tasks_data) > 0,
-                        'has_conversations': len(conversations_data) > 0,
-                        'tasks_count': len(tasks_data),
-                        'conversations_count': len(conversations_data),
-                        'tasks': tasks_data,
-                        'conversations': conversations_data,
-                        'opportunities': opportunities_data,
-                    }
-
-                    contacts_data.append(contact_data)
-
-                except Exception as e:
-                    _logger.error(f"Error processing contact {contact_id}: {str(e)}")
-                    continue
-
-            return Response(
-                json.dumps({
-                    'success': True,
-                    'contacts': contacts_data,
-                    'sync_summary': sync_summary
-                }),
-                content_type='application/json',
-                status=200,
-                headers=get_cors_headers(request)
-            )
-
-        except Exception as e:
-            import traceback
-            tb = traceback.format_exc()
-            _logger.error(f"Exception in get_contact_details: {str(e)}\n{tb}")
-            return Response(
-                json.dumps({'success': False, 'error': str(e), 'traceback': tb}),
-                content_type='application/json',
-                status=500,
-                headers=get_cors_headers(request)
-            )
 
     @http.route('/api/sync-contact-conversations', type='http', auth='none', methods=['POST', 'OPTIONS'], csrf=False)
     def sync_contact_conversations(self, **kwargs):
@@ -2704,7 +2518,7 @@ class InstalledLocationController(http.Controller):
             )
 
         try:
-            app_id = '6867d1537079188afca5013c'
+            app_id = self._get_app_id_from_request(kwargs)
             company_id = 'Ipg8nKDPLYKsbtodR6LN'
             app = request.env['cyclsales.application'].sudo().search([
                 ('app_id', '=', app_id),
@@ -2729,6 +2543,35 @@ class InstalledLocationController(http.Controller):
                     status=404,
                     headers=get_cors_headers(request)
                 )
+            
+            # Check if the app is still installed on this location
+            if app not in loc.application_ids:
+                _logger.warning(f"App {app.name} is not installed on location {location_id}")
+                return Response(
+                    json.dumps({
+                        'success': False, 
+                        'error': f'App {app.name} is not installed on this location',
+                        'location_id': location_id,
+                        'app_id': app_id
+                    }),
+                    content_type='application/json',
+                    status=403,
+                    headers=get_cors_headers(request)
+                )
+            
+            # Check if location is marked as installed
+            if not loc.is_installed:
+                _logger.warning(f"Location {location_id} is not marked as installed")
+                return Response(
+                    json.dumps({
+                        'success': False, 
+                        'error': 'Location is not installed',
+                        'location_id': location_id
+                    }),
+                    content_type='application/json',
+                    status=403,
+                    headers=get_cors_headers(request)
+                )
 
             # STEP 1: Fetch basic contact data from GHL API (fast)
             _logger.info(f"Fetching basic contact data from GHL API for location: {location_id}")
@@ -2751,6 +2594,10 @@ class InstalledLocationController(http.Controller):
             contacts = request.env['ghl.location.contact'].sudo().search([
                 ('location_id.location_id', '=', location_id)
             ], order='date_added desc', limit=limit, offset=(page - 1) * limit)
+            
+            _logger.info(f"Retrieved {len(contacts)} contacts from database for location {location_id}, page {page}")
+            for contact in contacts:
+                _logger.info(f"Contact {contact.id} (external_id: {contact.external_id}) - AI fields in DB: status='{contact.ai_status}', summary='{contact.ai_summary}', quality='{contact.ai_quality_grade}', sales='{contact.ai_sales_grade}'")
 
             # STEP 3: Return basic data immediately
             contact_data = []
@@ -2818,7 +2665,7 @@ class InstalledLocationController(http.Controller):
                     'custom_fields_count': len(contact.custom_field_ids),
                     'attributions_count': len(contact.attribution_ids),
                     'ai_status': contact.ai_status or 'not_contacted',
-                    'ai_summary': contact.ai_summary or 'Read',
+                    'ai_summary': contact.ai_summary or 'AI analysis pending',
                     'ai_quality_grade': contact.ai_quality_grade or 'no_grade',
                     'ai_sales_grade': contact.ai_sales_grade or 'no_grade',
                     'crm_tasks': contact.crm_tasks or 'no_tasks',
@@ -2844,10 +2691,23 @@ class InstalledLocationController(http.Controller):
                     'loading_details': True,  # Frontend will show loading state
                 }
 
+                # Debug: Log AI fields for this contact
+                _logger.info(f"Contact {contact.id} (external_id: {contact.external_id}) - AI fields in DB: status='{contact.ai_status}', summary='{contact.ai_summary}', quality='{contact.ai_quality_grade}', sales='{contact.ai_sales_grade}'")
+                _logger.info(f"Contact {contact.id} AI fields being sent to frontend: status={contact_info['ai_status']}, summary={contact_info['ai_summary'][:50]}..., quality={contact_info['ai_quality_grade']}, sales={contact_info['ai_sales_grade']}")
+                
+                # Additional debug: Check if AI fields are actually saved
+                if contact.ai_status and contact.ai_status != 'not_contacted':
+                    _logger.info(f"Contact {contact.id} has AI data: status='{contact.ai_status}', summary='{contact.ai_summary[:100] if contact.ai_summary else 'None'}...'")
+                else:
+                    _logger.info(f"Contact {contact.id} has NO AI data or default values")
+
                 contact_data.append(contact_info)
 
             # STEP 4: Start background sync for detailed data (only for current page contacts)
-            if contact_ids_for_background:
+            # DISABLED: Only start background sync if explicitly requested
+            background_sync_enabled = kwargs.get('background_sync', 'false').lower() == 'true'
+            
+            if contact_ids_for_background and background_sync_enabled:
                 # Capture database name before starting background thread
                 dbname = request.env.cr.dbname
 
@@ -3064,9 +2924,9 @@ class InstalledLocationController(http.Controller):
                     'has_more': result.get('has_more', False),
                     'created_count': result.get('created_count', 0),
                     'updated_count': result.get('updated_count', 0),
-                    'message': 'Basic data returned. Detailed data syncing in background.',
-                    'background_sync_started': len(contact_ids_for_background) > 0,
-                    'contacts_syncing': len(contact_ids_for_background)
+                    'message': 'Basic data returned. Background sync disabled by default.',
+                    'background_sync_started': False,  # Always false now
+                    'contacts_syncing': 0  # Always 0 now
                 }),
                 content_type='application/json',
                 status=200,
@@ -3517,6 +3377,7 @@ class InstalledLocationController(http.Controller):
         """
         _logger.info(f"get_call_details called for message_id: {message_id}")
 
+        # Handle preflight OPTIONS request
         if request.httprequest.method == 'OPTIONS':
             return Response(status=200, headers=get_cors_headers(request))
 
@@ -3696,6 +3557,337 @@ class InstalledLocationController(http.Controller):
             _logger.error(f"Exception in get_call_details: {str(e)}\n{tb}")
             return Response(
                 json.dumps({'success': False, 'error': str(e), 'traceback': tb}),
+                content_type='application/json',
+                status=500,
+                headers=get_cors_headers(request)
+            )
+
+    @http.route('/api/run-ai-analysis/<int:contact_id>', type='http', auth='none', methods=['POST', 'OPTIONS'], csrf=False)
+    def run_ai_analysis(self, contact_id, **kwargs):
+        """Run AI analysis for a specific contact"""
+        _logger.info(f"run_ai_analysis called for contact_id: {contact_id}")
+        
+        if request.httprequest.method == 'OPTIONS':
+            return Response(status=200, headers=get_cors_headers(request))
+
+        try:
+            # Find the contact
+            contact = request.env['ghl.location.contact'].sudo().browse(contact_id)
+            if not contact.exists():
+                _logger.error(f"Contact {contact_id} not found")
+                return Response(
+                    json.dumps({'success': False, 'error': 'Contact not found'}),
+                    content_type='application/json',
+                    status=404,
+                    headers=get_cors_headers(request)
+                )
+
+            _logger.info(f"Running AI analysis for contact {contact_id} (name: {contact.name})")
+            
+            # Run AI analysis
+            result = contact.run_ai_analysis()
+            
+            _logger.info(f"AI analysis result for contact {contact_id}: {result}")
+            
+            # Log the updated contact fields
+            _logger.info(f"Contact {contact_id} AI fields after analysis: status='{contact.ai_status}', summary='{contact.ai_summary}', quality='{contact.ai_quality_grade}', sales='{contact.ai_sales_grade}'")
+            
+            # Force a database commit to ensure the data is saved
+            request.env.cr.commit()
+            _logger.info(f"Contact {contact_id} AI data committed to database")
+            
+            # Verify the data was actually saved by re-reading from database
+            _logger.info(f"Contact {contact_id} AI fields after commit verification: status='{contact.ai_status}', summary='{contact.ai_summary}', quality='{contact.ai_quality_grade}', sales='{contact.ai_sales_grade}'")
+            
+            # Additional verification: Query the database directly
+            contact_from_db = request.env['ghl.location.contact'].sudo().browse(contact_id)
+            _logger.info(f"Contact {contact_id} AI fields from direct DB query: status='{contact_from_db.ai_status}', summary='{contact_from_db.ai_summary}', quality='{contact_from_db.ai_quality_grade}', sales='{contact_from_db.ai_sales_grade}'")
+            
+            if result.get('success'):
+                return Response(
+                    json.dumps({
+                        'success': True,
+                        'message': result.get('message', 'AI analysis completed successfully'),
+                        'ai_status': contact.ai_status,
+                        'ai_summary': contact.ai_summary,
+                        'ai_quality_grade': contact.ai_quality_grade,
+                        'ai_sales_grade': contact.ai_sales_grade
+                    }),
+                    content_type='application/json',
+                    status=200,
+                    headers=get_cors_headers(request)
+                )
+            else:
+                return Response(
+                    json.dumps({
+                        'success': False,
+                        'error': result.get('error', 'AI analysis failed')
+                    }),
+                    content_type='application/json',
+                    status=500,
+                    headers=get_cors_headers(request)
+                )
+
+        except Exception as e:
+            _logger.error(f"Error in run_ai_analysis for contact {contact_id}: {str(e)}")
+            return Response(
+                json.dumps({'success': False, 'error': str(e)}),
+                content_type='application/json',
+                status=500,
+                headers=get_cors_headers(request)
+            )
+
+    @http.route('/api/debug-contact-ai/<int:contact_id>', type='http', auth='none', methods=['GET', 'OPTIONS'], csrf=False)
+    def debug_contact_ai(self, contact_id, **kwargs):
+        """
+        Debug endpoint to check AI analysis status for a contact
+        """
+        _logger.info(f"Debug contact AI called for contact_id: {contact_id}")
+
+        # Handle preflight OPTIONS request
+        if request.httprequest.method == 'OPTIONS':
+            return Response(
+                status=200,
+                headers=get_cors_headers(request)
+            )
+
+        try:
+            contact = request.env['ghl.location.contact'].sudo().search([('id', '=', contact_id)], limit=1)
+            if not contact:
+                return Response(
+                    json.dumps({'error': 'Contact not found'}),
+                    content_type='application/json',
+                    status=404,
+                    headers=get_cors_headers(request)
+                )
+
+            # Get AI-related fields
+            ai_data = {
+                'contact_id': contact.id,
+                'external_id': contact.external_id,
+                'contact_name': contact.contact_name,
+                'ai_status': contact.ai_status,
+                'ai_summary': contact.ai_summary,
+                'ai_quality_grade': contact.ai_quality_grade,
+                'ai_sales_grade': contact.ai_sales_grade,
+                'last_touch_date': contact.last_touch_date.isoformat() if contact.last_touch_date else None,
+                'touch_summary': contact.touch_summary,
+                'engagement_summary': contact.engagement_summary,
+                'total_pipeline_value': contact.total_pipeline_value,
+                'opportunities': contact.opportunities,
+            }
+
+            return Response(
+                json.dumps(ai_data),
+                content_type='application/json',
+                headers=get_cors_headers(request)
+            )
+
+        except Exception as e:
+            _logger.error(f"Error in debug_contact_ai: {str(e)}")
+            return Response(
+                json.dumps({'error': str(e)}),
+                content_type='application/json',
+                status=500,
+                headers=get_cors_headers(request)
+            )
+
+    @http.route('/api/location-openai-key/<string:location_id>', type='http', auth='none', methods=['GET', 'PUT', 'OPTIONS'], csrf=False)
+    def manage_location_openai_key(self, location_id, **kwargs):
+        """
+        Get or update OpenAI API key for a specific location
+        """
+        _logger.info(f"Manage OpenAI API key called for location_id: {location_id}")
+
+        # Handle preflight OPTIONS request
+        if request.httprequest.method == 'OPTIONS':
+            return Response(
+                status=200,
+                headers=get_cors_headers(request)
+            )
+
+        try:
+            # Find the installed location
+            installed_location = request.env['installed.location'].sudo().search([
+                ('location_id', '=', location_id)
+            ], limit=1)
+
+            if not installed_location:
+                return Response(
+                    json.dumps({'error': 'Location not found'}),
+                    content_type='application/json',
+                    status=404,
+                    headers=get_cors_headers(request)
+                )
+
+            if request.httprequest.method == 'GET':
+                # Return the API key (masked for security)
+                api_key = installed_location.openai_api_key
+                masked_key = None
+                if api_key:
+                    # Show only first 7 characters and last 4 characters
+                    if len(api_key) > 11:
+                        masked_key = f"{api_key[:7]}...{api_key[-4:]}"
+                    else:
+                        masked_key = "***"  # For very short keys
+                
+                return Response(
+                    json.dumps({
+                        'location_id': location_id,
+                        'location_name': installed_location.name,
+                        'has_api_key': bool(api_key),
+                        'masked_api_key': masked_key
+                    }),
+                    content_type='application/json',
+                    headers=get_cors_headers(request)
+                )
+
+            elif request.httprequest.method == 'PUT':
+                # Update the API key
+                data = request.httprequest.get_json()
+                if not data:
+                    return Response(
+                        json.dumps({'error': 'No data provided'}),
+                        content_type='application/json',
+                        status=400,
+                        headers=get_cors_headers(request)
+                    )
+
+                new_api_key = data.get('openai_api_key')
+                if new_api_key is None:
+                    return Response(
+                        json.dumps({'error': 'openai_api_key field is required'}),
+                        content_type='application/json',
+                        status=400,
+                        headers=get_cors_headers(request)
+                    )
+
+                # Update the API key
+                installed_location.write({'openai_api_key': new_api_key})
+                
+                _logger.info(f"Updated OpenAI API key for location {location_id}")
+                
+                return Response(
+                    json.dumps({
+                        'success': True,
+                        'message': 'OpenAI API key updated successfully',
+                        'location_id': location_id,
+                        'location_name': installed_location.name
+                    }),
+                    content_type='application/json',
+                    headers=get_cors_headers(request)
+                )
+
+        except Exception as e:
+            _logger.error(f"Error in manage_location_openai_key: {str(e)}")
+            return Response(
+                json.dumps({'error': str(e)}),
+                content_type='application/json',
+                status=500,
+                headers=get_cors_headers(request)
+            )
+
+    @http.route('/api/location-openai-key/<string:location_id>/validate', type='http', auth='none', methods=['POST', 'OPTIONS'], csrf=False)
+    def validate_location_openai_key(self, location_id, **kwargs):
+        """
+        Validate OpenAI API key for a specific location
+        """
+        _logger.info(f"Validate OpenAI API key called for location_id: {location_id}")
+
+        # Handle preflight OPTIONS request
+        if request.httprequest.method == 'OPTIONS':
+            return Response(
+                status=200,
+                headers=get_cors_headers(request)
+            )
+
+        try:
+            # Find the installed location
+            installed_location = request.env['installed.location'].sudo().search([
+                ('location_id', '=', location_id)
+            ], limit=1)
+
+            if not installed_location:
+                return Response(
+                    json.dumps({'error': 'Location not found'}),
+                    content_type='application/json',
+                    status=404,
+                    headers=get_cors_headers(request)
+                )
+
+            data = request.httprequest.get_json()
+            if not data:
+                return Response(
+                    json.dumps({'error': 'No data provided'}),
+                    content_type='application/json',
+                    status=400,
+                    headers=get_cors_headers(request)
+                )
+
+            api_key = data.get('openai_api_key')
+            if not api_key:
+                return Response(
+                    json.dumps({'error': 'openai_api_key field is required'}),
+                    content_type='application/json',
+                    status=400,
+                    headers=get_cors_headers(request)
+                )
+
+            # Validate the API key by making a simple test request to OpenAI
+            try:
+                import requests
+                
+                # Test the API key with a simple request
+                headers = {
+                    'Authorization': f'Bearer {api_key}',
+                    'Content-Type': 'application/json'
+                }
+                
+                # Use a simple model list request to validate the key
+                response = requests.get(
+                    'https://api.openai.com/v1/models',
+                    headers=headers,
+                    timeout=10
+                )
+                
+                if response.status_code == 200:
+                    return Response(
+                        json.dumps({
+                            'success': True,
+                            'message': 'OpenAI API key is valid',
+                            'location_id': location_id
+                        }),
+                        content_type='application/json',
+                        headers=get_cors_headers(request)
+                    )
+                else:
+                    return Response(
+                        json.dumps({
+                            'success': False,
+                            'error': f'Invalid API key. Status: {response.status_code}',
+                            'location_id': location_id
+                        }),
+                        content_type='application/json',
+                        status=400,
+                        headers=get_cors_headers(request)
+                    )
+                    
+            except requests.exceptions.RequestException as e:
+                return Response(
+                    json.dumps({
+                        'success': False,
+                        'error': f'Network error: {str(e)}',
+                        'location_id': location_id
+                    }),
+                    content_type='application/json',
+                    status=500,
+                    headers=get_cors_headers(request)
+                )
+
+        except Exception as e:
+            _logger.error(f"Error in validate_location_openai_key: {str(e)}")
+            return Response(
+                json.dumps({'error': str(e)}),
                 content_type='application/json',
                 status=500,
                 headers=get_cors_headers(request)

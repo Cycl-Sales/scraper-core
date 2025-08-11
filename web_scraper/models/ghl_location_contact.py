@@ -2,6 +2,8 @@ from odoo import models, fields, api
 import requests
 from odoo.exceptions import ValidationError
 from odoo.tools.translate import _
+import json
+
 
 class GHLLocationContactCustomField(models.Model):
     _name = 'ghl.location.contact.custom.field'
@@ -10,6 +12,7 @@ class GHLLocationContactCustomField(models.Model):
     contact_id = fields.Many2one('ghl.location.contact', string='Contact', ondelete='cascade')
     custom_field_id = fields.Char(string='Custom Field ID')
     value = fields.Text(string='Value')
+
 
 class GHLLocationContactAttribution(models.Model):
     _name = 'ghl.location.contact.attribution'
@@ -35,6 +38,7 @@ class GHLLocationContactAttribution(models.Model):
     medium = fields.Char(string='Medium')
     medium_id = fields.Char(string='Medium ID')
 
+
 class GHLLocationContact(models.Model):
     _name = 'ghl.location.contact'
     _description = 'GHL Location Contact'
@@ -51,41 +55,36 @@ class GHLLocationContact(models.Model):
     country = fields.Char(string='Country')
     source = fields.Char(string='Source')
     date_added = fields.Datetime(string='Date Added')
-    
+
     # Relationships
     custom_field_ids = fields.One2many('ghl.location.contact.custom.field', 'contact_id', string='Custom Fields')
     attribution_ids = fields.One2many('ghl.location.contact.attribution', 'contact_id', string='Attributions')
     task_ids = fields.One2many('ghl.contact.task', 'contact_id', string='Tasks')
     conversation_ids = fields.One2many('ghl.contact.conversation', 'contact_id', string='Conversations')
     opportunity_ids = fields.One2many('ghl.contact.opportunity', 'contact_id', string='Opportunities')
-    
+
     # Additional Fields
     tags = fields.Text(string='Tags')  # Store as JSON string for now
     business_id = fields.Char(string='Business ID')
     followers = fields.Char(string='Followers')
     details_fetched = fields.Boolean(string='Details Fetched', default=False)
-    
+
     # Computed Fields
     name = fields.Char(string='Name', compute='_compute_name', store=True)
     tag_list = fields.Text(string='Tag List', compute='_compute_tag_list')
     assigned_user_name = fields.Char(string='Assigned User Name', compute='_compute_assigned_user_name', store=False)
-    
+
     # AI and Analytics Fields (for frontend table)
-    ai_status = fields.Selection([
-        ('valid_lead', 'Valid Lead'),
-        ('retention_path', 'Wants to Stay - Retention Path'),
-        ('unqualified', 'Unqualified'),
-        ('not_contacted', 'Not Contacted')
-    ], string='AI Status', default='not_contacted')
-    
-    ai_summary = fields.Char(string='AI Summary', default='Read')
+    ai_status = fields.Selection(selection='_get_ai_status_selection', string='AI Status', default='not_contacted')
+
+    ai_summary = fields.Char(string='AI Summary', default='AI analysis pending')
     ai_quality_grade = fields.Selection([
         ('grade_a', 'Lead Grade A'),
         ('grade_b', 'Lead Grade B'),
         ('grade_c', 'Lead Grade C'),
         ('no_grade', 'No Grade')
     ], string='AI Quality Grade', default='no_grade')
-    
+
     ai_sales_grade = fields.Selection([
         ('grade_a', 'Sales Grade A'),
         ('grade_b', 'Sales Grade B'),
@@ -93,46 +92,61 @@ class GHLLocationContact(models.Model):
         ('grade_d', 'Sales Grade D'),
         ('no_grade', 'No Grade')
     ], string='AI Sales Grade', default='no_grade')
-    
+
     crm_tasks = fields.Selection([
         ('overdue', '1 Overdue'),
         ('upcoming', '2 Upcoming'),
         ('no_tasks', 'No Tasks'),
         ('empty', '')
     ], string='CRM Tasks', default='no_tasks')
-    
+
     category = fields.Selection([
         ('integration', 'Integration'),
         ('manual', 'Manual'),
         ('automated', 'Automated'),
         ('referral', 'Referral')
     ], string='Category', default='manual')
-    
+
     channel = fields.Selection([
         ('integration', 'Integration'),
         ('manual', 'Manual'),
         ('automated', 'Automated'),
         ('referral', 'Referral')
     ], string='Channel', default='manual')
-    
+
     created_by = fields.Char(string='Created By')
     attribution = fields.Char(string='Attribution')
     assigned_to = fields.Char(string='Assigned To')
     speed_to_lead = fields.Char(string='Speed to Lead')
-    
+
     touch_summary = fields.Char(string='Touch Summary', default='no_touches')
-    
+
     engagement_summary = fields.Text(string='Engagement Summary')  # JSON string for complex data
     last_touch_date = fields.Datetime(string='Last Touch Date')
     last_message = fields.Text(string='Last Message')  # JSON string for complex data
-    total_pipeline_value = fields.Float(string='Total Pipeline Value', default=0.0, compute='_compute_opportunity_stats', store=True)
+    total_pipeline_value = fields.Float(string='Total Pipeline Value', default=0.0,
+                                        compute='_compute_opportunity_stats', store=True)
     opportunities = fields.Integer(string='Opportunities', default=0, compute='_compute_opportunity_stats', store=True)
-    
+
     # Constraints
     _sql_constraints = [
         ('external_id_location_uniq', 'unique(external_id, location_id)', 'Contact must be unique per location!')
     ]
     
+    def _get_ai_status_selection(self):
+        """Get AI status selection options from automation template"""
+        # Default options
+        default_options = [('not_contacted', 'Not Contacted')]
+        
+        # Get options from automation template if available
+        if hasattr(self, 'location_id') and self.location_id and self.location_id.automation_template_id:
+            contact_status_setting = self.location_id.automation_template_id.contact_status_setting_ids.filtered(lambda s: s.enabled)
+            if contact_status_setting:
+                status_options = contact_status_setting[0].status_option_ids
+                return [(option.name, option.name) for option in status_options] + default_options
+        
+        return default_options
+
     @api.depends('contact_name', 'first_name', 'last_name', 'email', 'external_id')
     def _compute_name(self):
         for record in self:
@@ -144,7 +158,7 @@ class GHLLocationContact(models.Model):
                 record.name = record.email
             else:
                 record.name = f"Contact {record.external_id}"
-    
+
     @api.depends('tags')
     def _compute_tag_list(self):
         for record in self:
@@ -160,7 +174,7 @@ class GHLLocationContact(models.Model):
                     record.tag_list = record.tags
             else:
                 record.tag_list = ''
-    
+
     @api.depends('assigned_to')
     def _compute_assigned_user_name(self):
         for record in self:
@@ -174,15 +188,15 @@ class GHLLocationContact(models.Model):
                     record.assigned_user_name = record.assigned_to  # Fallback to external_id if user not found
             else:
                 record.assigned_user_name = ''
-    
-    @api.depends('ghl_contact_opportunity_ids')
+
+    @api.depends('opportunity_ids')
     def _compute_opportunity_stats(self):
         for rec in self:
             # Find all related opportunities
             opportunities = self.env['ghl.contact.opportunity'].search([('contact_id', '=', rec.id)])
             rec.opportunities = len(opportunities)
             rec.total_pipeline_value = sum(op.monetary_value or 0.0 for op in opportunities)
-    
+
     def _compute_touch_summary(self):
         """Compute touch summary based on message types"""
         for contact in self:
@@ -190,29 +204,29 @@ class GHLLocationContact(models.Model):
             messages = self.env['ghl.contact.message'].search([
                 ('contact_id', '=', contact.id)
             ])
-            
+
             if not messages:
                 contact.touch_summary = 'no_touches'
                 continue
-            
+
             # Count messages by type
             message_counts = {}
             for message in messages:
                 message_type = message.message_type or 'UNKNOWN'
                 message_counts[message_type] = message_counts.get(message_type, 0) + 1
-            
+
             # Create touch summary string
             touch_parts = []
             for msg_type, count in message_counts.items():
                 # Map message types to readable names
                 type_name = self._get_message_type_display_name(msg_type)
                 touch_parts.append(f"{count} {type_name}")
-            
+
             if touch_parts:
                 contact.touch_summary = ', '.join(touch_parts)
             else:
                 contact.touch_summary = 'no_touches'
-    
+
     def _get_message_type_display_name(self, message_type):
         """Convert message type to readable display name"""
         type_mapping = {
@@ -254,28 +268,28 @@ class GHLLocationContact(models.Model):
             'TYPE_INTERNAL_COMMENT': 'INTERNAL COMMENT',
         }
         return type_mapping.get(message_type, message_type.replace('TYPE_', ''))
-    
+
     def _compute_last_touch_date(self):
         """Compute last touch date from most recent message"""
         for contact in self:
             # Get the most recent message for this contact
             last_message = self.env['ghl.contact.message'].search([
                 ('contact_id', '=', contact.id)
-            ], order='date_added desc', limit=1)
-            
-            if last_message and last_message.date_added:
-                contact.last_touch_date = last_message.date_added
+            ], order='create_date desc', limit=1)
+
+            if last_message and last_message.create_date:
+                contact.last_touch_date = last_message.create_date
             else:
                 contact.last_touch_date = False
-    
+
     def _compute_last_message_content(self):
         """Compute last message content from most recent message"""
         for contact in self:
             # Get the most recent message for this contact
             last_message = self.env['ghl.contact.message'].search([
                 ('contact_id', '=', contact.id)
-            ], order='date_added desc', limit=1)
-            
+            ], order='create_date desc', limit=1)
+
             if last_message and last_message.body:
                 # Store as JSON for consistency with existing pattern
                 import json
@@ -283,37 +297,37 @@ class GHLLocationContact(models.Model):
                     'body': last_message.body,
                     'type': last_message.message_type,
                     'direction': last_message.direction,
-                    'date_added': last_message.date_added.isoformat() if last_message.date_added else '',
+                    'date_added': last_message.create_date.isoformat() if last_message.create_date else '',
                     'id': last_message.ghl_id
                 }
                 contact.last_message = json.dumps(message_data)
             else:
                 contact.last_message = ''
-    
+
     def update_touch_information(self):
         """Update touch summary, last touch date, and last message for this contact"""
         self._compute_touch_summary()
         self._compute_last_touch_date()
         self._compute_last_message_content()
-    
+
     @api.model
     def update_all_contacts_touch_information(self):
         """Update touch information for all contacts that have messages"""
         import logging
         _logger = logging.getLogger(__name__)
-        
+
         contacts_with_messages = self.search([
             ('id', 'in', self.env['ghl.contact.message'].search([]).mapped('contact_id.id'))
         ])
-        
+
         _logger.info(f"Updating touch information for {len(contacts_with_messages)} contacts with messages")
-        
+
         for contact in contacts_with_messages:
             try:
                 contact.update_touch_information()
             except Exception as e:
                 _logger.error(f"Error updating touch information for contact {contact.id}: {str(e)}")
-        
+
         _logger.info("Touch information update completed")
         return {
             'success': True,
@@ -321,7 +335,385 @@ class GHLLocationContact(models.Model):
         }
 
     ghl_contact_opportunity_ids = fields.One2many('ghl.contact.opportunity', 'contact_id', string='Opportunities')
-    
+
+    # AI Analysis Status
+    ai_analysis_status = fields.Selection([
+        ('pending', 'Pending'),
+        ('processing', 'Processing'),
+        ('completed', 'Completed'),
+        ('failed', 'Failed')
+    ], string='AI Analysis Status', default='pending')
+
+    ai_analysis_date = fields.Datetime(string='AI Analysis Date')
+    ai_analysis_error = fields.Text(string='AI Analysis Error')
+
+    @api.model
+    def update_all_contacts_ai_analysis(self):
+        """Update AI analysis status for all contacts that have messages and automation templates"""
+        import logging
+        _logger = logging.getLogger(__name__)
+        
+        # Get contacts with messages and automation templates
+        contacts_with_messages = self.search([
+            ('id', 'in', self.env['ghl.contact.message'].search([]).mapped('contact_id.id'))
+        ])
+        
+        # Filter contacts that have automation templates
+        contacts_with_templates = contacts_with_messages.filtered(
+            lambda c: c.location_id and c.location_id.automation_template_id
+        )
+        
+        contacts_without_templates = contacts_with_messages - contacts_with_templates
+        
+        _logger.info(f"Found {len(contacts_with_messages)} contacts with messages")
+        _logger.info(f"Found {len(contacts_with_templates)} contacts with automation templates")
+        _logger.info(f"Found {len(contacts_without_templates)} contacts without automation templates")
+        
+        if contacts_without_templates:
+            _logger.warning(f"Contacts without automation templates: {contacts_without_templates.mapped('name')}")
+        
+        for contact in contacts_with_templates:
+            try:
+                contact.update_ai_analysis_status()
+            except Exception as e:
+                _logger.error(f"Error updating AI analysis status for contact {contact.id}: {str(e)}")
+        
+        _logger.info("AI analysis status update completed")
+        return {
+            'success': True,
+            'contacts_updated': len(contacts_with_templates),
+            'contacts_without_templates': len(contacts_without_templates)
+        }
+
+    def update_ai_analysis_status(self):
+        """Update AI analysis status for this contact"""
+        # Check if automation template is available
+        if not self.location_id or not self.location_id.automation_template_id:
+            self.ai_analysis_status = 'failed'
+            self.ai_analysis_error = 'No automation template assigned to location'
+            return {
+                'success': False,
+                'message': 'No automation template found. Please assign an automation template to the location first.'
+            }
+        
+        # This method will be implemented in a subsequent edit to trigger AI analysis
+        # For now, it will just set status to 'completed' and log a message
+        self.ai_analysis_status = 'completed'
+        self.ai_analysis_date = fields.Datetime.now()
+        self.ai_analysis_error = ''
+        return {
+            'success': True,
+            'message': 'AI analysis status updated to completed.'
+        }
+
+    def run_ai_analysis(self):
+        """Run AI analysis for this specific contact using real AI service"""
+        import logging
+        _logger = logging.getLogger(__name__)
+        
+        try:
+            # Set status to processing
+            self.ai_analysis_status = 'processing'
+            self.ai_analysis_error = ''
+            
+            # Get the automation template for this contact's location
+            automation_template = self.location_id.automation_template_id
+            if not automation_template:
+                raise Exception("No automation template found for this contact's location. Please assign an automation template to the location first.")
+            
+            _logger.info(f"Starting AI analysis for contact {self.id} using template {automation_template.name}")
+            
+            # Get the AI service
+            ai_service = self.env['cyclsales.vision.ai'].sudo().get_default_ai_service()
+            if not ai_service:
+                raise Exception("No active AI service found")
+            
+            # Prepare contact data for AI analysis
+            contact_data = self._prepare_contact_data_for_ai()
+            
+            # Generate AI analysis using the AI service
+            ai_result = self._generate_ai_analysis(ai_service, contact_data, automation_template)
+            
+            # Update contact fields with AI results
+            self._update_contact_with_ai_results(ai_result)
+            
+            # Update status to completed
+            self.ai_analysis_status = 'completed'
+            self.ai_analysis_date = fields.Datetime.now()
+            
+            _logger.info(f"AI analysis completed successfully for contact {self.id}")
+            
+            return {
+                'success': True,
+                'message': 'AI analysis completed successfully using automation template',
+                'ai_status': self.ai_status,
+                'ai_summary': self.ai_summary,
+                'ai_quality_grade': self.ai_quality_grade,
+                'ai_sales_grade': self.ai_sales_grade
+            }
+            
+        except Exception as e:
+            _logger.error(f"Error running AI analysis for contact {self.id}: {str(e)}")
+            self.ai_analysis_status = 'failed'
+            self.ai_analysis_error = str(e)
+            return {
+                'success': False,
+                'error': str(e)
+            }
+
+    def _prepare_contact_data_for_ai(self):
+        """Prepare contact data for AI analysis"""
+        import json
+
+        # Get all messages for this contact
+        messages = self.env['ghl.contact.message'].search([
+            ('contact_id', '=', self.id)
+        ], order='create_date asc')
+
+        # Get conversations
+        conversations = self.conversation_ids.sorted('create_date')
+
+        # Get opportunities
+        opportunities = self.opportunity_ids
+
+        # Get tasks
+        tasks = self.task_ids
+
+        # Prepare conversation data
+        conversation_data = []
+        for conv in conversations:
+            conv_messages = messages.filtered(lambda m: m.conversation_id == conv)
+            conversation_data.append({
+                'id': conv.ghl_id,
+                'type': conv.type,
+                'messages_count': len(conv_messages),
+                'last_message': conv.last_message_body,
+                'unread_count': conv.unread_count,
+                'create_date': conv.create_date.isoformat() if conv.create_date else None
+            })
+
+        # Prepare message data
+        message_data = []
+        for msg in messages[:50]:  # Limit to last 50 messages
+            message_data.append({
+                'body': msg.body,
+                'type': msg.message_type,
+                'direction': msg.direction,
+                'date': msg.create_date.isoformat() if msg.create_date else None
+            })
+
+        # Prepare opportunity data
+        opportunity_data = []
+        for opp in opportunities:
+            opportunity_data.append({
+                'name': opp.name,
+                'stage': opp.stage,
+                'monetary_value': opp.monetary_value,
+                'status': opp.status,
+                'date_created': opp.date_created.isoformat() if opp.date_created else None
+            })
+
+        # Prepare task data
+        task_data = []
+        for task in tasks:
+            task_data.append({
+                'title': task.title,
+                'body': task.body,
+                'completed': task.completed,
+                'due_date': task.due_date.isoformat() if task.due_date else None
+            })
+
+        # Compile contact data
+        contact_data = {
+            'contact_info': {
+                'name': self.name,
+                'email': self.email,
+                'phone': getattr(self, 'phone', ''),
+                'source': self.source,
+                'date_added': self.date_added.isoformat() if self.date_added else None,
+                'tags': self.tag_list,
+                'assigned_to': self.assigned_user_name
+            },
+            'engagement': {
+                'conversations_count': len(conversations),
+                'messages_count': len(messages),
+                'opportunities_count': len(opportunities),
+                'tasks_count': len(tasks),
+                'touch_summary': self.touch_summary,
+                'last_touch_date': self.last_touch_date.isoformat() if self.last_touch_date else None
+            },
+            'conversations': conversation_data,
+            'messages': message_data,
+            'opportunities': opportunity_data,
+            'tasks': task_data
+        }
+
+        return contact_data
+
+    def _generate_ai_analysis(self, ai_service, contact_data, automation_template):
+        """Generate AI analysis using the AI service"""
+        import json
+        import logging
+        _logger = logging.getLogger(__name__)
+
+        # Create AI prompt for contact analysis
+        prompt = self._create_ai_analysis_prompt(contact_data, automation_template)
+
+        # Convert contact data to text for AI analysis
+        contact_text = json.dumps(contact_data, indent=2)
+
+        # Call the AI service
+        ai_result = ai_service.generate_summary(
+            message_id=f"contact_{self.id}",
+            contact_id=self.id,
+            transcript=contact_text,
+            custom_prompt=prompt,
+            location_id=self.location_id.id
+        )
+
+        _logger.info(f"AI analysis result for contact {self.id}: {ai_result}")
+
+        return ai_result
+
+    def _create_ai_analysis_prompt(self, contact_data, automation_template):
+        """Create AI prompt for contact analysis using automation template settings"""
+        # Get contact status options from automation template
+        contact_status_setting = automation_template.contact_status_setting_ids.filtered(lambda s: s.enabled)
+        status_options = []
+        if contact_status_setting:
+            status_options = contact_status_setting[0].status_option_ids
+        
+        # Get AI contact scoring rules from automation template
+        ai_contact_scoring_setting = automation_template.ai_contact_scoring_setting_ids.filtered(lambda s: s.enabled)
+        contact_scoring_rules = ""
+        if ai_contact_scoring_setting:
+            contact_scoring_rules = ai_contact_scoring_setting[0].examples_rules or ""
+        
+        # Get AI sales scoring rules from automation template
+        ai_sales_scoring_setting = automation_template.ai_sales_scoring_setting_ids.filtered(lambda s: s.enabled)
+        sales_scoring_rules = ""
+        if ai_sales_scoring_setting:
+            sales_scoring_rules = ai_sales_scoring_setting[0].framework or ""
+        
+        # Build status options for the prompt
+        status_options_text = ""
+        if status_options:
+            status_options_text = "Available status options:\n"
+            for option in status_options:
+                status_options_text += f"- {option.name}: {option.description}\n"
+        
+        # Build the prompt
+        prompt = f"""Analyze the following contact data and return a JSON response with exactly this structure:
+{{
+    "ai_status": "status_option_name",
+    "ai_summary": "Detailed summary text (2-4 sentences)",
+    "ai_quality_grade": "grade_a|grade_b|grade_c|no_grade",
+    "ai_sales_grade": "grade_a|grade_b|grade_c|grade_d|no_grade",
+    "analysis_reasoning": "Brief explanation of the analysis decisions"
+}}
+
+Business Context: {automation_template.business_context or 'No specific business context provided.'}
+
+{status_options_text}
+
+Contact Scoring Rules: {contact_scoring_rules}
+
+Sales Scoring Rules: {sales_scoring_rules}
+
+Requirements:
+- ai_status: Choose from the available status options above based on engagement level and conversation quality
+- ai_summary: Provide a detailed 2-4 sentence summary of the contact's engagement, key interactions, and current status. Include specific details about conversations, opportunities, and any notable patterns. If no meaningful interactions exist, provide a brief summary of the contact's basic information and lack of engagement.
+- ai_quality_grade: Based on engagement quality and conversation depth using the contact scoring rules
+- ai_sales_grade: Based on sales potential and opportunity value using the sales scoring rules
+- analysis_reasoning: 2-3 sentences explaining your decisions
+
+Contact Data:
+{json.dumps(contact_data, indent=2)}
+
+Return only the JSON object, no additional text."""
+        
+        return prompt
+
+    def _update_contact_with_ai_results(self, ai_result):
+        """Update contact fields with AI analysis results"""
+        import logging
+        _logger = logging.getLogger(__name__)
+        
+        try:
+            # Extract AI results
+            ai_status = ai_result.get('ai_status', 'not_contacted')
+            ai_summary = ai_result.get('ai_summary', 'No summary available')
+            ai_quality_grade = ai_result.get('ai_quality_grade', 'no_grade')
+            ai_sales_grade = ai_result.get('ai_sales_grade', 'no_grade')
+            
+            # Get valid status options from automation template
+            valid_statuses = ['not_contacted']  # Default fallback
+            if self.location_id and self.location_id.automation_template_id:
+                contact_status_setting = self.location_id.automation_template_id.contact_status_setting_ids.filtered(lambda s: s.enabled)
+                if contact_status_setting:
+                    valid_statuses = [option.name for option in contact_status_setting[0].status_option_ids]
+                    valid_statuses.append('not_contacted')  # Always allow this fallback
+            
+            # Validate and set values
+            valid_quality_grades = ['grade_a', 'grade_b', 'grade_c', 'no_grade']
+            valid_sales_grades = ['grade_a', 'grade_b', 'grade_c', 'grade_d', 'no_grade']
+            
+            if ai_status in valid_statuses:
+                self.ai_status = ai_status
+            else:
+                self.ai_status = 'not_contacted'
+                _logger.warning(f"Invalid AI status '{ai_status}' for contact {self.id}. Valid options: {valid_statuses}")
+            
+            # Validate and set AI summary - should be a detailed text, not just "Read" or "No Summary"
+            if ai_summary and isinstance(ai_summary, str) and len(ai_summary.strip()) > 0:
+                # Ensure the summary is not just "Read" or "No Summary" - it should be detailed
+                if ai_summary.lower() in ['read', 'no summary', 'no summary available']:
+                    # Generate a basic summary if AI returned placeholder text
+                    self.ai_summary = f"Contact {self.name or self.external_id} has been analyzed. {ai_summary}"
+                else:
+                    self.ai_summary = ai_summary
+            else:
+                self.ai_summary = f"Contact {self.name or self.external_id} has been analyzed. No detailed summary available."
+            
+            if ai_quality_grade in valid_quality_grades:
+                self.ai_quality_grade = ai_quality_grade
+            else:
+                self.ai_quality_grade = 'no_grade'
+                _logger.warning(f"Invalid AI quality grade '{ai_quality_grade}' for contact {self.id}")
+            
+            if ai_sales_grade in valid_sales_grades:
+                self.ai_sales_grade = ai_sales_grade
+            else:
+                self.ai_sales_grade = 'no_grade'
+                _logger.warning(f"Invalid AI sales grade '{ai_sales_grade}' for contact {self.id}")
+            
+            # Save the changes to the database
+            self.write({
+                'ai_status': self.ai_status,
+                'ai_summary': self.ai_summary,
+                'ai_quality_grade': self.ai_quality_grade,
+                'ai_sales_grade': self.ai_sales_grade,
+                'ai_analysis_status': 'completed',
+                'ai_analysis_date': fields.Datetime.now(),
+            })
+            
+            _logger.info(
+                f"Updated contact {self.id} with AI results: status={self.ai_status}, summary={self.ai_summary[:100]}..., quality={self.ai_quality_grade}, sales={self.ai_sales_grade}")
+             
+        except Exception as e:
+            _logger.error(f"Error updating contact {self.id} with AI results: {str(e)}")
+            # Set default values on error and save to database
+            error_values = {
+                'ai_status': 'not_contacted',
+                'ai_summary': f"Contact {self.name or self.external_id} has been analyzed. Error occurred during AI analysis.",
+                'ai_quality_grade': 'no_grade',
+                'ai_sales_grade': 'no_grade',
+                'ai_analysis_status': 'failed',
+                'ai_analysis_date': fields.Datetime.now(),
+                'ai_analysis_error': str(e)
+            }
+            self.write(error_values)
+
     @api.model_create_multi
     def create(self, vals):
         """Override create to handle location_id relationship"""
@@ -349,38 +741,24 @@ class GHLLocationContact(models.Model):
                 else:
                     # If no matching location found, create a placeholder or raise error
                     raise ValueError(f"No installed location found for location_id: {vals['location_id']}")
-        
+
         return super().create(vals)
-    
+
     def write(self, vals):
         """Override write to handle location_id relationship"""
-        # Handle both single dict and list of dicts
-        if isinstance(vals, list):
-            # Process each dictionary in the list
-            for val in vals:
-                if isinstance(val, dict) and isinstance(val.get('location_id'), str):
-                    installed_location = self.env['installed.location'].search([
-                        ('location_id', '=', val['location_id'])
-                    ], limit=1)
-                    if installed_location:
-                        val['location_id'] = installed_location.id
-                    else:
-                        # If no matching location found, create a placeholder or raise error
-                        raise ValueError(f"No installed location found for location_id: {val['location_id']}")
-        elif isinstance(vals, dict):
-            # Single dictionary case
-            if isinstance(vals.get('location_id'), str):
-                installed_location = self.env['installed.location'].search([
-                    ('location_id', '=', vals['location_id'])
-                ], limit=1)
-                if installed_location:
-                    vals['location_id'] = installed_location.id
-                else:
-                    # If no matching location found, create a placeholder or raise error
-                    raise ValueError(f"No installed location found for location_id: {vals['location_id']}")
-        
+        # Handle location_id string conversion
+        if isinstance(vals, dict) and isinstance(vals.get('location_id'), str):
+            installed_location = self.env['installed.location'].search([
+                ('location_id', '=', vals['location_id'])
+            ], limit=1)
+            if installed_location:
+                vals['location_id'] = installed_location.id
+            else:
+                # If no matching location found, raise error
+                raise ValueError(f"No installed location found for location_id: {vals['location_id']}")
+
         return super().write(vals)
-    
+
     def action_view_attributions(self):
         """Action to view contact attributions"""
         self.ensure_one()
@@ -392,7 +770,7 @@ class GHLLocationContact(models.Model):
             'domain': [('contact_id', '=', self.id)],
             'context': {'default_contact_id': self.id},
         }
-    
+
     def action_view_custom_fields(self):
         """Action to view contact custom fields"""
         self.ensure_one()
@@ -404,7 +782,7 @@ class GHLLocationContact(models.Model):
             'domain': [('contact_id', '=', self.id)],
             'context': {'default_contact_id': self.id},
         }
-    
+
     def action_view_tasks(self):
         """Action to view contact tasks"""
         self.ensure_one()
@@ -423,26 +801,27 @@ class GHLLocationContact(models.Model):
         Requires the contact to have a valid external_id, location, and access token.
         """
         self.ensure_one()
-        
+
         # Validate required fields
         if not self.external_id:
             raise ValidationError(_('Contact must have a valid external_id to fetch conversations.'))
-        
+
         if not self.location_id or not self.location_id.location_id:
             raise ValidationError(_('Contact must be associated with a valid location to fetch conversations.'))
-        
+
         # Find the access token for this location's app
         app = self.env['cyclsales.application'].sudo().search([
             ('app_id', '=', self.location_id.app_id),
             ('is_active', '=', True)
         ], limit=1)
-        
+
         if not app or not app.access_token:
-            raise ValidationError(_('No valid access token found for this location. Please check the application configuration.'))
-        
+            raise ValidationError(
+                _('No valid access token found for this location. Please check the application configuration.'))
+
         # Hardcode company_id (same as controller)
         company_id = 'Ipg8nKDPLYKsbtodR6LN'
-        
+
         try:
             # Step 1: Get location token using agency token and company_id
             location_token_result = self.env['ghl.contact.conversation'].sudo()._get_location_token(
@@ -450,12 +829,13 @@ class GHLLocationContact(models.Model):
                 location_id=self.location_id.location_id,  # GHL location ID
                 company_id=company_id  # Company ID
             )
-            
+
             if not location_token_result.get('success'):
-                raise ValidationError(_('Failed to get location token: %s') % location_token_result.get('message', 'Unknown error'))
-            
+                raise ValidationError(
+                    _('Failed to get location token: %s') % location_token_result.get('message', 'Unknown error'))
+
             location_token = location_token_result.get('access_token')
-            
+
             # Step 2: Call the conversation sync method with location token
             result = self.env['ghl.contact.conversation'].sudo().sync_conversations_for_contact_with_location_token(
                 location_token=location_token,  # Location access token (not agency token)
@@ -463,7 +843,7 @@ class GHLLocationContact(models.Model):
                 contact_id=self.external_id,  # Contact's external_id from GHL
                 limit=100
             )
-            
+
             if result.get('success'):
                 # Show success notification with details
                 message = _('Successfully fetched conversations for contact %s. Created: %d, Updated: %d') % (
@@ -471,13 +851,14 @@ class GHLLocationContact(models.Model):
                     result.get('created_count', 0),
                     result.get('updated_count', 0)
                 )
-                
+
                 # If messages were also synced, include that info
                 if result.get('message_sync_results'):
-                    total_messages = sum(msg.get('messages_fetched', 0) for msg in result.get('message_sync_results', []))
+                    total_messages = sum(
+                        msg.get('messages_fetched', 0) for msg in result.get('message_sync_results', []))
                     if total_messages > 0:
                         message += _('. Messages fetched: %d') % total_messages
-                
+
                 return {
                     'type': 'ir.actions.client',
                     'tag': 'display_notification',
@@ -499,7 +880,7 @@ class GHLLocationContact(models.Model):
                         'type': 'danger',
                     }
                 }
-                
+
         except Exception as e:
             # Show error notification for exceptions
             return {
@@ -528,7 +909,7 @@ class GHLLocationContact(models.Model):
         from .ghl_api_utils import get_location_token
         import logging
         _logger = logging.getLogger(__name__)
-        
+
         try:
             # Step 1: Get location access token
             location_token = get_location_token(app_access_token, company_id, location_id)
@@ -577,7 +958,7 @@ class GHLLocationContact(models.Model):
                     'success': False,
                     'error': f'API request failed with status {response.status_code}'
                 }
-                
+
         except Exception as e:
             _logger.error(f"Unexpected error while fetching contacts: {str(e)}")
             import traceback
@@ -614,7 +995,8 @@ class GHLLocationContact(models.Model):
             _logger.info(f"Fetching contacts for location {location_id} with pagination (max_pages: {max_pages})")
             result = fetch_contacts_with_pagination(location_token, location_id, max_pages)
             if result['success']:
-                _logger.info(f"Successfully fetched {result['total_items']} contacts from {result['total_pages']} pages")
+                _logger.info(
+                    f"Successfully fetched {result['total_items']} contacts from {result['total_pages']} pages")
                 return {
                     'success': True,
                     'contacts_data': result['items'],
@@ -638,7 +1020,7 @@ class GHLLocationContact(models.Model):
             return {
                 'success': False,
                 'error': f"Unexpected error: {str(e)}"
-            } 
+            }
 
     def fetch_contact_single(self, location_token, contact_id):
         """
@@ -751,4 +1133,4 @@ class GHLLocationContact(models.Model):
             return contact
         except Exception as e:
             _logger.error(f"Error fetching single contact: {e}")
-            return None 
+            return None

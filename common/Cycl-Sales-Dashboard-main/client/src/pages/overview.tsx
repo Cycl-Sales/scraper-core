@@ -108,7 +108,7 @@ export default function Overview() {
   const [fetchedLocations, setFetchedLocations] = useState<any[]>([]);
   const [syncStatus, setSyncStatus] = useState<string>("");
   const [refreshing, setRefreshing] = useState(false);
-  const [location, setLocation] = useLocation();
+  const [, setLocation] = useLocation();
   const pollRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
@@ -142,7 +142,7 @@ export default function Overview() {
           setSyncStatus("");
         }
       })
-      .catch((err) => {
+      .catch(() => {
         setSyncStatus("");
       })
       .finally(() => setLoading(false));

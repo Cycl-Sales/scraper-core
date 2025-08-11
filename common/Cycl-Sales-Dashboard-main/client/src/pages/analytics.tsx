@@ -1,7 +1,5 @@
 import { useState, useEffect } from "react";
-import { useLocation } from "wouter";
 import TopNavigation from "@/components/top-navigation";
-import KPICards from "@/components/kpi-cards";
 import AnalyticsContactsTable from "@/components/analytics-contacts-table";
 import { Button } from "@/components/ui/button";
 import { Calendar as CalendarIcon, Filter, Share2, User, Users, ChevronDown, RefreshCw } from "lucide-react";
@@ -9,12 +7,9 @@ import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { format } from "date-fns";
 import type { DateRange } from "react-day-picker";
+import { CYCLSALES_APP_ID } from "@/lib/constants";
 
-function useQuery() {
-  const [location] = useLocation();
-  console.log("Current location from useLocation:", location);
-  return new URLSearchParams(location.split('?')[1] || '');
-}
+// Removed unused useQuery helper
 
 // DateRangePicker (reuse from overview)
 function DateRangePicker({ from, to, setRange }: { from: Date | undefined, to: Date | undefined, setRange: (range: DateRange | undefined) => void }) {
@@ -69,8 +64,7 @@ export default function Analytics() {
   const [users, setUsers] = useState<any[]>([]);
   const [selectedUser, setSelectedUser] = useState<string>("");
   const [loading, setLoading] = useState(false);
-  const [contacts, setContacts] = useState<any[]>([]);
-  const [contactsLoading, setContactsLoading] = useState(false);
+  const [contactsLoading] = useState(false);
   const [syncStatus, setSyncStatus] = useState<string>("");
   const [refreshing, setRefreshing] = useState(false);
 
@@ -78,7 +72,7 @@ export default function Analytics() {
     console.log("locationId from query:", locationId);
     if (locationId) {
       setLocationNameLoading(true);
-      fetch(`/api/location-name?location_id=${encodeURIComponent(locationId)}`)
+              fetch(`/api/location-name?location_id=${encodeURIComponent(locationId)}&appId=${CYCLSALES_APP_ID}`)
         .then(res => res.json())
         .then(data => {
           if (data.success && data.name) {
@@ -92,12 +86,12 @@ export default function Analytics() {
 
       // First, trigger the fetch from GHL API for users
       setLoading(true);
-      fetch(`/api/get-location-users?location_id=${encodeURIComponent(locationId)}`)
+              fetch(`/api/get-location-users?location_id=${encodeURIComponent(locationId)}&appId=${CYCLSALES_APP_ID}`)
         .then(res => res.json())
         .then(data => {
           console.log("Triggered GHL user fetch:", data);
           // Then fetch users from our database
-          return fetch(`/api/location-users?location_id=${encodeURIComponent(locationId)}`);
+          return fetch(`/api/location-users?location_id=${encodeURIComponent(locationId)}&appId=${CYCLSALES_APP_ID}`);
         })
         .then(res => res.json())
         .then(data => {
@@ -113,32 +107,7 @@ export default function Analytics() {
           setLoading(false);
         });
 
-      // Fetch contacts data using the optimized fast endpoint
-      setContactsLoading(true);
-              fetch(`/api/location-contacts-optimized?location_id=${encodeURIComponent(locationId)}&page=1&limit=10`)
-        .then(res => res.json())
-        .then(data => {
-          console.log("Fetched contacts using fast endpoint:", data);
-          if (data.success) {
-            setContacts(data.contacts || []);
-            // Show sync status if available
-            if (data.sync_status === 'background') {
-              console.log("Background sync in progress:", data.message);
-              setSyncStatus(data.message || "Background sync in progress...");
-            } else {
-              setSyncStatus("");
-            }
-          } else {
-            console.error("Failed to fetch contacts:", data.error);
-            setSyncStatus("");
-          }
-        })
-        .catch(err => {
-          console.error("Failed to fetch contacts:", err);
-        })
-        .finally(() => {
-          setContactsLoading(false);
-        });
+      // Contacts table handles its own data fetching
     } else {
       setLocationName("");
     }
@@ -150,20 +119,12 @@ export default function Analytics() {
     
     setRefreshing(true);
     try {
-      // Use the original endpoint for fresh data
-              const response = await fetch(`/api/location-contacts-optimized?location_id=${encodeURIComponent(locationId)}&page=1&limit=10`);
+      // Trigger backend refresh; table fetches independently
+      const response = await fetch(`/api/location-contacts-optimized?location_id=${encodeURIComponent(locationId)}&page=1&limit=10&appId=${CYCLSALES_APP_ID}`);
       const data = await response.json();
-      
       if (data.success) {
-        // After fresh sync, fetch the updated data
-        const updatedResponse = await fetch(`/api/location-contacts-optimized?location_id=${encodeURIComponent(locationId)}&page=1&limit=10`);
-        const updatedData = await updatedResponse.json();
-        
-        if (updatedData.success) {
-          setContacts(updatedData.contacts || []);
-          setSyncStatus("Data refreshed successfully");
-          setTimeout(() => setSyncStatus(""), 3000);
-        }
+        setSyncStatus("Data refreshed successfully");
+        setTimeout(() => setSyncStatus(""), 3000);
       } else {
         console.error("Failed to refresh contacts:", data.error);
         setSyncStatus("Failed to refresh data");
@@ -307,7 +268,7 @@ export default function Analytics() {
               </Button>
             </div>
           </div>
-          <AnalyticsContactsTable contacts={contacts} loading={contactsLoading} locationId={locationId} />
+          <AnalyticsContactsTable loading={contactsLoading} locationId={locationId} />
         </div>
       </main>
     </div>

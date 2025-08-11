@@ -5,7 +5,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
-import { BarChart3, Grid, Moon, Settings, Sun } from "lucide-react";
+import { BarChart3, Grid, Moon, Sun } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useTheme } from "../theme-context";
@@ -23,7 +23,7 @@ export default function TopNavigation() {
   }, [location]);
 
   // Use selectedLocation from localStorage if available
-  const selectedLocation = typeof window !== 'undefined' && window.localStorage ? window.localStorage.getItem('selectedLocation') || 'all' : 'all';
+  const selectedLocation = typeof window !== 'undefined' && window.localStorage ? window.localStorage.getItem('automations_selected_location') || 'all' : 'all';
   const navButtons = [
     { label: "Actions" },
     { label: "Overview" },

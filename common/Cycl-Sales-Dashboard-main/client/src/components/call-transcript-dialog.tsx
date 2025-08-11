@@ -136,13 +136,7 @@ export default function CallTranscriptDialog({ open, onOpenChange, callData }: C
     );
   }
 
-  const getSentimentColor = (sentiment: string) => {
-    switch (sentiment) {
-      case "positive": return "text-green-400 bg-green-500/20";
-      case "negative": return "text-red-400 bg-red-500/20";
-      default: return "text-yellow-400 bg-yellow-500/20";
-    }
-  };
+  // Removed unused getSentimentColor helper
 
   const getSatisfactionColor = (level: string) => {
     switch (level) {

@@ -132,7 +132,7 @@ export default function Calls() {
     }
   };
 
-  const handleContactClick = (contactName: string) => {
+  const handleContactClick = () => {
     setSelectedCall(sampleCallData);
     setTranscriptDialogOpen(true);
   };
@@ -277,7 +277,7 @@ export default function Calls() {
                     <td className="py-3 px-4 text-slate-300">2:45 PM</td>
                     <td className="py-3 px-4">
                       <button 
-                        onClick={() => handleContactClick("Ashley Nicole Towles")}
+                        onClick={handleContactClick}
                         className="text-white hover:text-blue-400 transition-colors cursor-pointer"
                       >
                         Ashley Nicole Towles
@@ -307,7 +307,7 @@ export default function Calls() {
                     <td className="py-3 px-4 text-slate-300">2:30 PM</td>
                     <td className="py-3 px-4">
                       <button 
-                        onClick={() => handleContactClick("Ira Newson Jr")}
+                        onClick={handleContactClick}
                         className="text-white hover:text-blue-400 transition-colors cursor-pointer"
                       >
                         Ira Newson Jr
@@ -354,7 +354,7 @@ export default function Calls() {
                     <td className="py-3 px-4 text-slate-300">1:58 PM</td>
                     <td className="py-3 px-4">
                       <button 
-                        onClick={() => handleContactClick("Sarah Johnson")}
+                        onClick={handleContactClick}
                         className="text-white hover:text-blue-400 transition-colors cursor-pointer"
                       >
                         Sarah Johnson

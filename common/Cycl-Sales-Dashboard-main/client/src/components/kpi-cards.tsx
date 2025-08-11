@@ -1,4 +1,4 @@
-import { DollarSign, Users, Target, TrendingUp, ArrowUp, ArrowDown, BarChart3, PercentCircle, Timer, Award, Tag, UserCheck, Phone, Sun, Moon, UserPlus, User, TrendingDown } from "lucide-react";
+import { DollarSign, Users, Target, TrendingUp, ArrowUp, ArrowDown, BarChart3, PercentCircle, Timer, Award, Tag, UserCheck, Phone, UserPlus, User, TrendingDown } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Select,

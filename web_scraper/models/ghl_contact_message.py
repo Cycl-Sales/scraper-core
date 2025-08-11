@@ -686,7 +686,7 @@ class GhlContactMessage(models.Model):
 
     def fetch_transcript(self):
         """
-        Fetch transcript for this call message
+        Open wizard to select application for transcript fetch
         """
         self.ensure_one()
 
@@ -701,33 +701,41 @@ class GhlContactMessage(models.Model):
                 }
             }
 
-        # Use the transcript model to fetch
-        transcript_model = self.env['ghl.contact.message.transcript']
-        result = transcript_model.fetch_transcript_for_message(self.id)
-
-        if result.get('success'):
-            # Update call duration from transcript data
-            self.update_call_duration_from_transcript()
-
+        # Check if there are any active applications
+        active_applications = self.env['cyclsales.application'].search([
+            ('is_active', '=', True)
+        ])
+        
+        if not active_applications:
             return {
                 'type': 'ir.actions.client',
                 'tag': 'display_notification',
                 'params': {
-                    'title': 'Success',
-                    'message': result.get('message', 'Transcript fetched successfully'),
-                    'type': 'success',
+                    'title': 'No Applications',
+                    'message': 'No active applications found. Please configure at least one application first.',
+                    'type': 'warning',
                 }
             }
-        else:
-            return {
-                'type': 'ir.actions.client',
-                'tag': 'display_notification',
-                'params': {
-                    'title': 'Error',
-                    'message': f'Failed to fetch transcript: {result.get("error", "Unknown error")}',
-                    'type': 'danger',
-                }
-            }
+
+        # Get the first active application as default
+        default_app = active_applications[0] if active_applications else None
+        
+        # Create wizard record
+        wizard = self.env['select.application.wizard'].create({
+            'message_id': self.id,
+            'application_id': default_app.id if default_app else False,
+        })
+
+        # Return action to open wizard
+        return {
+            'type': 'ir.actions.act_window',
+            'name': 'Select Application for Transcript Fetch',
+            'res_model': 'select.application.wizard',
+            'res_id': wizard.id,
+            'view_mode': 'form',
+            'target': 'new',
+            'context': {'default_message_id': self.id, 'default_application_id': default_app.id if default_app else False},
+        }
 
     def get_transcript_summary(self):
         """

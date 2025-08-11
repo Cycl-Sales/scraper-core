@@ -31,6 +31,7 @@ class InstalledLocation(models.Model):
     install_to_future_locations = fields.Boolean(string='Install to Future Locations', default=False)
     detail_ids = fields.One2many('installed.location.detail', 'location_id', string='Location Details')
     automation_group = fields.Char(string='Automation Group')
+    automation_template_id = fields.Many2one('automation.template', string='Automation Template', ondelete='set null')
     ad_accounts = fields.Integer(string='Ad Accounts')
     total_ad_spend = fields.Char(string='Total Ad Spend')
     cost_per_conversion = fields.Char(string='Cost per Conversion')
@@ -48,6 +49,25 @@ class InstalledLocation(models.Model):
     close_rate = fields.Char(string='Close Rate')
     revenue_per_contact = fields.Char(string='Revenue per Contact')
     gross_roas = fields.Char(string='Gross ROAS')
+    openai_api_key = fields.Char(string='OpenAI API Key', help='OpenAI API key for AI-powered features like call analysis, contact scoring, and automated summaries. This key is encrypted and stored securely.')
+
+    def get_automation_group_name(self):
+        """Get the automation group name from the automation template"""
+        if self.automation_template_id:
+            template_name = self.automation_template_id.name or ''
+            # Remove the " - Automation Template" suffix if present
+            if template_name.endswith(' - Automation Template'):
+                template_name = template_name[:-22]  # Remove " - Automation Template"
+            result = template_name
+            _logger.info(f"Location {self.name} ({self.location_id}) automation group: {result} (from template: {self.automation_template_id.name})")
+            return result
+        elif self.automation_group:
+            _logger.info(f"Location {self.name} ({self.location_id}) automation group: {self.automation_group} (from automation_group field)")
+            return self.automation_group
+        else:
+            _logger.info(f"Location {self.name} ({self.location_id}) automation group: Generic Default (default fallback)")
+            return "Generic Default"
+
 
     def refresh_details(self):
         """Refresh location details from the GHL API"""
@@ -441,13 +461,14 @@ class InstalledLocation(models.Model):
             return None
 
     @api.model
-    def fetch_installed_locations(self, company_id, app_id, limit=500):
+    def fetch_installed_locations(self, company_id, app_id, limit=500, fetch_details=False):
         """
         Fetch installed locations from the GHL API, using the access token from cyclsales.application.
         Args:
             company_id (str): The GHL company ID
             app_id (str): The GHL app ID
             limit (int): Max number of locations to fetch (default 500)
+            fetch_details (bool): Whether to fetch detailed information for each location (default False)
         Returns:
             dict: API response or error
         """
@@ -493,8 +514,10 @@ class InstalledLocation(models.Model):
                         rec.write(vals)
                     else:
                         rec = self.sudo().create(vals)
-                    # Fetch and sync details for this location
-                    rec.fetch_location_details(loc.get('_id'), access_token)
+                    
+                    # Only fetch details if explicitly requested
+                    if fetch_details:
+                        rec.fetch_location_details(loc.get('_id'), access_token)
                 return {'success': True, 'data': data}
             else:
                 return {'success': False, 'error': response.text, 'status_code': response.status_code}

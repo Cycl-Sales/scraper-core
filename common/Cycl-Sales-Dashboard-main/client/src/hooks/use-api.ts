@@ -1,6 +1,5 @@
 import { useState, useCallback } from 'react';
 import { dashboardAPI, handleAPIError, APIError } from '@/lib/api';
-import type { DashboardMetrics, Contact } from '@shared/schema';
 
 // Generic hook for API calls
 export function useApiCall<T, P extends any[]>(

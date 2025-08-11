@@ -5,11 +5,10 @@ import { GHLOAuthSetup } from '../components/ghl-oauth-setup';
 import { Separator } from '../components/ui/separator';
 
 export default function SettingsPage() {
-  const [locationId, setLocationId] = useState('demo-location');
-  const [isGHLConnected, setIsGHLConnected] = useState(false);
+  const [locationId] = useState('demo-location');
 
-  const handleGHLConnectionChange = (isConnected: boolean) => {
-    setIsGHLConnected(isConnected);
+  const handleGHLConnectionChange = () => {
+    // no-op for now; integration status not displayed on this page
   };
 
   return (

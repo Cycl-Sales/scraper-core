@@ -3,7 +3,6 @@ import { MoreHorizontal } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip, LabelList } from "recharts";
-import { format } from "date-fns";
 import { Skeleton } from "@/components/ui/skeleton";
 
 interface CallVolumeChartProps {

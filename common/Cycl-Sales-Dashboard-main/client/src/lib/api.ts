@@ -1,9 +1,6 @@
 import axios, { AxiosInstance, AxiosResponse } from 'axios';
-import type { DashboardMetrics, Contact, Opportunity } from '@shared/schema';
-
-// API Configuration
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8018';
-const API_TIMEOUT = 10000; // 10 seconds
+import type { DashboardMetrics, Contact } from '@shared/schema';
+import { CYCLSALES_APP_ID, API_BASE_URL, API_TIMEOUT } from './constants';
 
 // Create axios instance
 const apiClient: AxiosInstance = axios.create({
@@ -64,7 +61,10 @@ export class DashboardAPI {
   async getDashboardMetrics(): Promise<DashboardMetrics> {
     try {
       const response = await apiClient.get('/api/dashboard/metrics', {
-        params: { locationId: this.locationId }
+        params: { 
+          locationId: this.locationId,
+          appId: CYCLSALES_APP_ID
+        }
       });
       return response.data;
     } catch (error) {
@@ -79,6 +79,7 @@ export class DashboardAPI {
       const response = await apiClient.get('/api/dashboard/contacts', {
         params: { 
           locationId: this.locationId,
+          appId: CYCLSALES_APP_ID,
           limit,
           offset
         }
@@ -94,7 +95,10 @@ export class DashboardAPI {
   async getContactsFast(locationId: string): Promise<{ contacts: Contact[], sync_status?: string, message?: string }> {
     try {
       const response = await apiClient.get('/api/get-location-contacts-fast', {
-        params: { location_id: locationId }
+        params: { 
+          location_id: locationId,
+          appId: CYCLSALES_APP_ID
+        }
       });
       return response.data;
     } catch (error) {
@@ -107,7 +111,10 @@ export class DashboardAPI {
   async getContactsFresh(locationId: string): Promise<{ success: boolean, message?: string, error?: string }> {
     try {
       const response = await apiClient.get('/api/get-location-contacts', {
-        params: { location_id: locationId }
+        params: { 
+          location_id: locationId,
+          appId: CYCLSALES_APP_ID
+        }
       });
       return response.data;
     } catch (error) {
@@ -120,7 +127,10 @@ export class DashboardAPI {
   async getContactsFromDB(locationId: string): Promise<{ contacts: Contact[], success: boolean }> {
     try {
       const response = await apiClient.get('/api/location-contacts', {
-        params: { location_id: locationId }
+        params: { 
+          location_id: locationId,
+          appId: CYCLSALES_APP_ID
+        }
       });
       return response.data;
     } catch (error) {
@@ -166,7 +176,10 @@ export class DashboardAPI {
   async getCallVolumeAnalytics(): Promise<any[]> {
     try {
       const response = await apiClient.get('/api/dashboard/analytics/call-volume', {
-        params: { locationId: this.locationId }
+        params: { 
+          locationId: this.locationId,
+          appId: CYCLSALES_APP_ID
+        }
       });
       return response.data;
     } catch (error) {
@@ -178,7 +191,10 @@ export class DashboardAPI {
   async getEngagementAnalytics(): Promise<any[]> {
     try {
       const response = await apiClient.get('/api/dashboard/analytics/engagement', {
-        params: { locationId: this.locationId }
+        params: { 
+          locationId: this.locationId,
+          appId: CYCLSALES_APP_ID
+        }
       });
       return response.data;
     } catch (error) {
@@ -190,7 +206,10 @@ export class DashboardAPI {
   async getPipelineAnalytics(): Promise<any[]> {
     try {
       const response = await apiClient.get('/api/dashboard/analytics/pipeline', {
-        params: { locationId: this.locationId }
+        params: { 
+          locationId: this.locationId,
+          appId: CYCLSALES_APP_ID
+        }
       });
       return response.data;
     } catch (error) {
@@ -205,6 +224,7 @@ export class DashboardAPI {
       const response = await apiClient.get('/api/dashboard/oauth/authorize', {
         params: { 
           locationId,
+          appId: CYCLSALES_APP_ID,
           state
         }
       });
@@ -218,7 +238,10 @@ export class DashboardAPI {
   async getOAuthStatus(locationId: string): Promise<{ isConnected: boolean; lastUpdated?: string }> {
     try {
       const response = await apiClient.get('/api/dashboard/oauth/status', {
-        params: { locationId }
+        params: { 
+          locationId,
+          appId: CYCLSALES_APP_ID
+        }
       });
       return response.data;
     } catch (error) {

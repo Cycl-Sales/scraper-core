@@ -166,6 +166,34 @@ class CyclSalesVisionController(http.Controller):
                     status=200,
                 )
             
+            # Enforce required AI fields before triggering workflows
+            # Support both nested "data" and flat payloads as sent by GHL
+            payload_for_ai = data['data'] if ('data' in data and isinstance(data['data'], dict)) else data
+            summary_prompt_present = bool(payload_for_ai.get('cs_vision_summary_prompt'))
+            minimum_duration_present = 'cs_vision_call_minimum_duration' in data
+
+            if not summary_prompt_present:
+                _logger.warning("[GHL Call Summary] Missing required field: cs_vision_summary_prompt")
+                return Response(
+                    json.dumps({
+                        'error_code': 'missing_field',
+                        'message': 'Missing required field: cs_vision_summary_prompt'
+                    }),
+                    content_type='application/json',
+                    status=400
+                )
+
+            if not minimum_duration_present:
+                _logger.warning("[GHL Call Summary] Missing required field: cs_vision_call_minimum_duration")
+                return Response(
+                    json.dumps({
+                        'error_code': 'missing_field',
+                        'message': 'Missing required field: cs_vision_call_minimum_duration'
+                    }),
+                    content_type='application/json',
+                    status=400
+                )
+
             # TRIGGER WORKFLOW - Execute workflows for this call
             workflow_results = self._trigger_workflows_for_call(data, location_id, access_token)
             
@@ -265,8 +293,13 @@ class CyclSalesVisionController(http.Controller):
         try:
             _logger.info(f"[Workflow Trigger] Starting workflow trigger for location: {location.id}")
             
-            # Extract minimum duration from call data
-            minimum_duration = call_data.get('cs_vision_call_minimum_duration', 20)
+            # Extract minimum duration from call data (required upstream)
+            minimum_duration = call_data.get('cs_vision_call_minimum_duration')
+            # Coerce to int defensively
+            try:
+                minimum_duration = int(minimum_duration) if minimum_duration is not None else None
+            except Exception:
+                minimum_duration = None
             
             # Find relevant triggers for this location and call event
             triggers = request.env['cyclsales.vision.trigger'].sudo().search([
@@ -376,13 +409,13 @@ class CyclSalesVisionController(http.Controller):
             # Check if data is nested under 'data' key
             if 'data' in data and isinstance(data['data'], dict):
                 nested_data = data['data']
-                summary_prompt = nested_data.get('cs_vision_call_transcript') or nested_data.get('cs_vision_summary_prompt')
+                summary_prompt = nested_data.get('cs_vision_summary_prompt')
                 message_id = nested_data.get('cs_vision_ai_message_id')
                 minimum_duration = data.get('cs_vision_call_minimum_duration', 20)
                 custom_api_key = nested_data.get('cs_vision_openai_api_key')
             else:
                 # Direct field access for backward compatibility
-                summary_prompt = data.get('cs_vision_call_transcript') or data.get('cs_vision_summary_prompt')
+                summary_prompt = data.get('cs_vision_summary_prompt')
                 message_id = data.get('cs_vision_ai_message_id')
                 minimum_duration = data.get('cs_vision_call_minimum_duration', 20)
                 custom_api_key = data.get('cs_vision_openai_api_key')
@@ -675,6 +708,74 @@ Return ONLY the JSON object, no additional text or explanations."""
                 data = post_data
             
             _logger.info(f"[Call Transcription] Processing request with {len(data)} fields")
+            # Validate required AI inputs: custom prompt, minimum duration, and message id
+            try:
+                # Support both nested structure under 'data' and flat payloads
+                if 'data' in data and isinstance(data['data'], dict):
+                    payload = data['data']
+                    minimum_duration = data.get('cs_vision_call_minimum_duration', None)
+                else:
+                    payload = data
+                    minimum_duration = data.get('cs_vision_call_minimum_duration', None)
+
+                summary_prompt = (
+                    payload.get('cs_vision_summary_prompt') 
+                )
+                message_id = payload.get('cs_vision_ai_message_id')
+
+                missing_fields = []
+                if not summary_prompt:
+                    missing_fields.append('cs_vision_summary_prompt')
+                if minimum_duration is None:
+                    missing_fields.append('cs_vision_call_minimum_duration')
+                if not message_id:
+                    missing_fields.append('cs_vision_ai_message_id')
+
+                if missing_fields:
+                    _logger.warning(
+                        f"[Call Transcription] Missing required AI fields: {missing_fields}"
+                    )
+                    return Response(
+                        json.dumps({
+                            'error_code': 'missing_fields',
+                            'message': 'Missing required fields for AI call summarization',
+                            'missing': missing_fields
+                        }),
+                        content_type='application/json',
+                        status=400
+                    )
+
+                # Optional: enforce type for minimum_duration
+                try:
+                    # Accept strings that can be cast to int
+                    int(minimum_duration)
+                except Exception:
+                    _logger.warning(
+                        f"[Call Transcription] Invalid cs_vision_call_minimum_duration: {minimum_duration}"
+                    )
+                    return Response(
+                        json.dumps({
+                            'error_code': 'invalid_field',
+                            'message': 'cs_vision_call_minimum_duration must be an integer',
+                            'field': 'cs_vision_call_minimum_duration'
+                        }),
+                        content_type='application/json',
+                        status=400
+                    )
+            except Exception as v_err:
+                _logger.error(
+                    f"[Call Transcription] Validation error: {str(v_err)}",
+                    exc_info=True
+                )
+                return Response(
+                    json.dumps({
+                        'error_code': 'validation_error',
+                        'message': 'Failed to validate request payload',
+                        'details': str(v_err)
+                    }),
+                    content_type='application/json',
+                    status=400
+                )
             
             # Generate AI Call Summary using the actual AI service
             ai_summary = self._generate_ai_call_summary(data)

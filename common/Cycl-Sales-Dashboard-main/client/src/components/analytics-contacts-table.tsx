@@ -11,10 +11,13 @@ import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { format } from "date-fns";
-import { ArrowDownLeft, ArrowUpRight, Ban, Calendar, CheckSquare, ClipboardList, Code2, Filter, Info, Mail, MessageCircle, MessageSquare, Phone, Play, Plug, Search, User, Voicemail, Target, Star, Activity } from "lucide-react";
+import { ArrowUpRight, Calendar, CheckSquare, ClipboardList, Filter, Info, Mail, MessageCircle, MessageSquare, Phone, Plug, Search, User, Target, Star, Activity, Zap, Eye } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
+import { CYCLSALES_APP_ID } from "@/lib/constants";
+import { useToast } from "@/hooks/use-toast";
 
 // Add mapping for lastMessageType human-readable labels
 const lastMessageTypeLabels: Record<string, string> = {
@@ -75,7 +78,6 @@ function parseTouchSummary(touchSummary: string) {
     // Extract count and type (e.g., "8 SMS" -> count: 8, type: "SMS")
     const match = part.match(/^(\d+)\s+(.+)$/);
     if (match) {
-      const count = parseInt(match[1]);
       const type = match[2].toUpperCase();
       
       // Determine colors and icons based on message type
@@ -176,7 +178,6 @@ interface Filters {
   opportunities: { min: string; max: string };
 }
 
-function randomPick(arr: any[]) { return arr[Math.floor(Math.random() * arr.length)]; }
 const aiStatusOptions = [
   { label: "Valid Lead", color: "bg-blue-900 text-blue-300", icon: "👤" },
   { label: "Wants to Stay - Retention Path", color: "bg-green-900 text-green-300", icon: "🟢" },
@@ -213,94 +214,7 @@ const engagementTypes = [
   { type: "Email", icon: <Mail className="w-4 h-4" />, color: "border-blue-400 text-blue-300" },
   { type: "Chat", icon: <MessageSquare className="w-4 h-4" />, color: "border-purple-400 text-purple-300" },
 ];
-function randomEngagementSummary() {
-  // 20% chance of no engagement
-  if (Math.random() < 0.2) return [{ type: "No Engagement", count: 0, icon: <Ban className="w-4 h-4" />, color: "border-slate-500 text-slate-400" }];
-  // Otherwise, pick 1-3 random types, each with a random count 1-3
-  const count = Math.floor(Math.random() * 3) + 1;
-  const picked: any[] = [];
-  const used = new Set();
-  while (picked.length < count) {
-    const idx = Math.floor(Math.random() * engagementTypes.length);
-    if (!used.has(idx)) {
-      used.add(idx);
-      picked.push({
-        type: engagementTypes[idx].type,
-        count: Math.floor(Math.random() * 3) + 1,
-        icon: engagementTypes[idx].icon,
-        color: engagementTypes[idx].color,
-      });
-    }
-  }
-  return picked;
-}
-const totalPipelineValueOptions = ["$0.00", "$100.00", "$250.50", "$500.00", ""];
-const contactTagOptions = [
-  'preforeclosure', 'ga', 'nj', 'ca', 'mn', 'tx', 'ct', 'in', 'mo', 'mi', 'co', 'buybox', 'senior', 'possible divorce', 'added to sms', 'list a', 'list b', 'sms checked', 're add swire', 're assign sms', 'valid lead', 'contact created', 'imessage yes', 'ai off', 'textable-no', 'first manual sms sent', 'contact verified', 'signalwire phone empty', 'preforeclosure sms campaign', 'preforeclosure email campaign', 'preforeclosure sms long term'
-];
-function randomTags(): string[] {
-  const count = Math.floor(Math.random() * 6) + 3;
-  const tags: string[] = [];
-  while (tags.length < count) {
-    const tag = randomPick(contactTagOptions);
-    if (!tags.includes(tag)) tags.push(tag);
-  }
-  return tags;
-}
-function randomDate() {
-  const now = new Date();
-  const past = new Date(now.getTime() - Math.floor(Math.random() * 1000000000));
-  return past.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ', ' + past.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
-const names = [
-  "Katherine Marie Middleton", "Rickey J Wolf", "Johnnie S Selvey Lee", "Sandra L Carrasco", "Joal Noel Lorick", "Mark W Miller", "Marita A Belotti", "Charlange Denise Weimer", "Douglas William Trudeau", "Branden Jacob Conrad", "Anthony Joseph Bontemps", "Linda Y Webb", "Jorge E Caceres", "Teresa Odette Woodworth", "Randall A Felts", "Anastasia Jeannette Kwak", "Janine Marie Mccullom", "Gertrude L Cabarrus", "Melissa C Comrie", "Mark William Hughes", "Gaston Gregory Galvan", "Barry T Peck", "Lauren A Mancini Averitt"
-];
-const mockRows = Array.from({ length: 22 }, (_, i) => {
-  const aiStatus = randomPick(aiStatusOptions);
-  const aiSummary = randomPick(aiSummaryOptions);
-  const aiQuality = randomPick(aiQualityOptions);
-  const aiSales = randomPick(aiSalesOptions);
-  const crmTasks = randomPick(crmTasksOptions);
-  const category = randomPick(categoryOptions);
-  const channel = randomPick(channelOptions);
-  const assignedTo = randomPick(assignedToOptions);
-  const touchSummary = randomPick(touchSummaryOptions);
-  const engagementSummary = randomEngagementSummary();
-  const totalPipelineValue = randomPick(totalPipelineValueOptions);
-  const lastMessageTypes = [
-    { type: "Outbound", color: "text-blue-400", icon: <ArrowUpRight className="w-4 h-4" /> },
-    { type: "Inbound", color: "text-orange-400", icon: <ArrowDownLeft className="w-4 h-4" /> },
-    { type: "SMS", color: "text-teal-300", icon: <MessageCircle className="w-4 h-4" /> },
-    { type: "API", color: "text-yellow-300", icon: <Code2 className="w-4 h-4" /> },
-    { type: "VM Drop", color: "text-green-400", icon: <Voicemail className="w-4 h-4" /> },
-    { type: "Automated", color: "text-pink-400", icon: <Play className="w-4 h-4" /> },
-    { type: "Failed", color: "text-red-400", icon: <Play className="w-4 h-4" /> }
-  ];
-  const lastMessage = Array.from({ length: Math.floor(Math.random() * 3) + 1 }, () => randomPick(lastMessageTypes));
-  return {
-    name: names[i % names.length],
-    aiStatus,
-    aiSummary,
-    aiQuality,
-    aiSales,
-    crmTasks,
-    category,
-    channel,
-    createdBy: "",
-    attribution: "",
-    assignedTo,
-    speedToLead: "",
-    touchSummary,
-    engagementSummary,
-    lastTouchDate: "",
-    lastMessage,
-    totalPipelineValue,
-    opportunities: String(Math.floor(Math.random() * 6)),
-    contactTags: randomTags(),
-    viewCalls: true,
-    dateCreated: randomDate()
-  };
-});
+// Removed mock data block as it's unused
 
 const columns = [
   "Contact Name",
@@ -324,7 +238,8 @@ const columns = [
   "Opportunities",
   "Contact Tags",
   "View Calls",
-  "Date Created"
+  "Date Created",
+  "Actions"
 ];
 
 function getChipProps(type: string, value: string) {
@@ -409,37 +324,60 @@ function getChipProps(type: string, value: string) {
 }
 
 interface AnalyticsContactsTableProps {
-  contacts?: any[];
   loading?: boolean;
   locationId: string;
 }
 
-export default function AnalyticsContactsTable({ contacts = [], loading = false, locationId }: AnalyticsContactsTableProps) {
+export default function AnalyticsContactsTable({ loading = false, locationId }: AnalyticsContactsTableProps) {
+  const { toast } = useToast();
+  
   // --- New state for lazy loading ---
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [page, setPage] = useState(1);
   const [totalContacts, setTotalContacts] = useState<number>(0);
   const [contactsLoading, setContactsLoading] = useState(false);
   const [contactsData, setContactsData] = useState<any[]>([]);
-  const [countLoading, setCountLoading] = useState(false);
-  const [syncStatus, setSyncStatus] = useState("");
+  // Removed unused countLoading and syncStatus state
   const [hasMore, setHasMore] = useState(false);
   
   // --- New state for detailed data loading ---
-  const [detailedDataLoading, setDetailedDataLoading] = useState<Set<number>>(new Set());
-  const [contactDetails, setContactDetails] = useState<Map<number, any>>(new Map());
-  const [lastBackgroundSync, setLastBackgroundSync] = useState<number>(0);
+  const [detailedDataLoading] = useState<Set<number>>(new Set());
+
+  // AI Analysis state
+  const [aiAnalysisLoading, setAiAnalysisLoading] = useState<{ [key: string]: boolean }>({});
+
+  // AI Summary Dialog state
+  const [aiSummaryDialog, setAiSummaryDialog] = useState<{
+    open: boolean;
+    contactName: string;
+    aiSummary: string;
+    aiStatus: string;
+    aiQualityGrade: string;
+    aiSalesGrade: string;
+  }>({
+    open: false,
+    contactName: '',
+    aiSummary: '',
+    aiStatus: '',
+    aiQualityGrade: '',
+    aiSalesGrade: ''
+  });
+
+  // Store polling intervals for cleanup - DISABLED
+  // const [pollingIntervals, setPollingIntervals] = useState<Set<NodeJS.Timeout>>(new Set());
+
+  // Track if polling is active - DISABLED
+  // const [isPolling, setIsPolling] = useState(false);
 
   // Fetch total contacts count and first page when locationId changes
   useEffect(() => {
     if (!locationId) return;
-    setCountLoading(true);
     setContactsLoading(true);
     setContactsData([]);
     setTotalContacts(0);
     setPage(1);
     // Fetch count
-    fetch(`/api/location-contacts-count?location_id=${locationId}`)
+            fetch(`/api/location-contacts-count?location_id=${locationId}&appId=${CYCLSALES_APP_ID}`)
       .then(res => res.json())
       .then(data => {
         if (data.success) {
@@ -448,7 +386,7 @@ export default function AnalyticsContactsTable({ contacts = [], loading = false,
           setTotalContacts(0);
         }
       })
-      .finally(() => setCountLoading(false));
+      .finally(() => {});
   }, [locationId]);
 
   // Fetch contacts for current page
@@ -457,17 +395,15 @@ export default function AnalyticsContactsTable({ contacts = [], loading = false,
     setContactsLoading(true);
     
     // Use the new optimized endpoint
-    fetch(`/api/location-contacts-optimized?location_id=${locationId}&page=${page}&limit=${rowsPerPage}`)
+            fetch(`/api/location-contacts-optimized?location_id=${locationId}&page=${page}&limit=${rowsPerPage}&appId=${CYCLSALES_APP_ID}`)
       .then(res => res.json())
       .then(data => {
         if (data.success) {
           setContactsData(data.contacts || []);
           setHasMore(data.has_more || false);
           
-          // If background sync was started, start polling for updates
-          if (data.background_sync_started && data.contacts_syncing > 0) {
-            startPollingForDetails(data.contacts.map((c: any) => c.id));
-          }
+          // Background sync is now disabled by default - no automatic polling
+          // startPollingForDetails(data.contacts.map((c: any) => c.id));
         } else {
           setContactsData([]);
           setHasMore(false);
@@ -476,217 +412,40 @@ export default function AnalyticsContactsTable({ contacts = [], loading = false,
       .finally(() => setContactsLoading(false));
   }, [locationId, page, rowsPerPage]);
 
-  // --- New function to poll for contact sync status ---
-  const startPollingForDetails = (contactIds: number[]) => {
-    if (contactIds.length === 0) return;
-    
-    // Mark contacts as loading
-    setDetailedDataLoading(prev => new Set(Array.from(prev).concat(contactIds)));
-    
-    const pollInterval = setInterval(async () => {
-      try {
-        const response = await fetch(`/api/contact-sync-status?contact_ids=${contactIds.join(',')}`);
-        const data = await response.json();
-        
-        if (data.success) {
-          // Update contact details map
-          setContactDetails(prev => {
-            const newMap = new Map(prev);
-            data.contacts.forEach((contact: any) => {
-              if (contact.details_fetched) {
-                newMap.set(contact.contact_id, contact);
-              }
-            });
-            return newMap;
-          });
-          
-          // Update contacts data with detailed information
-          setContactsData(prev => {
-            let hasChanges = false;
-            const updatedContacts = prev.map(contact => {
-              const details = data.contacts.find((c: any) => c.contact_id === contact.id);
-              if (details && details.details_fetched && !contact.details_fetched) {
-                hasChanges = true;
-                return {
-                  ...contact,
-                  tasks: details.tasks || [],
-                  tasks_count: details.tasks_count || 0,
-                  conversations: details.conversations || [],
-                  conversations_count: details.conversations_count || 0,
-                  details_fetched: true,
-                  has_tasks: details.tasks_count > 0,
-                  has_conversations: details.conversations_count > 0,
-                  loading_details: false,
-                  // Update touch information if available
-                  touch_summary: details.touch_summary || contact.touch_summary,
-                  last_touch_date: details.last_touch_date || contact.last_touch_date,
-                  last_message: details.last_message || contact.last_message,
-                };
-              } else if (details && !details.details_fetched) {
-                // Still loading
-                return {
-                  ...contact,
-                  loading_details: true,
-                };
-              }
-              return contact;
-            });
-            
-            return hasChanges ? updatedContacts : prev;
-          });
-          
-          // If all contacts are ready, stop polling
-          if (data.sync_status.all_ready) {
-            clearInterval(pollInterval);
-            // Remove contacts from loading state
-            setDetailedDataLoading(prev => {
-              const newSet = new Set(Array.from(prev));
-              contactIds.forEach(id => newSet.delete(id));
-              return newSet;
-            });
-          }
-        } else {
-          console.error('Failed to fetch contact sync status:', data.error);
-        }
-      } catch (error) {
-        console.error('Error polling for contact sync status:', error);
-      }
-    }, 2000); // Poll every 2 seconds
-    
-    // Store the interval ID to clear it later if needed
-    return () => clearInterval(pollInterval);
-  };
+  // Cleanup polling intervals when component unmounts or locationId changes - DISABLED
+  // useEffect(() => {
+  //   return () => {
+  //     // Clear all polling intervals
+  //     pollingIntervals.forEach(interval => clearInterval(interval));
+  //     setPollingIntervals(new Set());
+  //   };
+  // }, [locationId]); // Re-run when locationId changes
 
-  // --- Updated function to fetch detailed contact data (fallback) ---
-  const fetchContactDetails = async (contactIds: number[]) => {
-    if (contactIds.length === 0) return;
-    
-    // Mark contacts as loading
-    setDetailedDataLoading(prev => new Set(Array.from(prev).concat(contactIds)));
-    
-    try {
-      const response = await fetch(`/api/contact-details?contact_ids=${contactIds.join(',')}`);
-      const data = await response.json();
-      
-      if (data.success) {
-        // Update contact details map
-        setContactDetails(prev => {
-          const newMap = new Map(prev);
-          data.contacts.forEach((contact: any) => {
-            newMap.set(contact.contact_id, contact);
-          });
-          return newMap;
-        });
-        
-        // Update contacts data with detailed information only if there are changes
-        setContactsData(prev => {
-          let hasChanges = false;
-          const updatedContacts = prev.map(contact => {
-            const details = data.contacts.find((c: any) => c.contact_id === contact.id);
-            if (details && !contact.details_fetched) {
-              hasChanges = true;
-              return {
-                ...contact,
-                tasks: details.tasks || [],
-                tasks_count: details.tasks_count || 0,
-                conversations: details.conversations || [],
-                conversations_count: details.conversations_count || 0,
-                details_fetched: true, // Mark as fetched to prevent re-fetching
-                has_tasks: details.tasks_count > 0,
-                has_conversations: details.conversations_count > 0,
-                loading_details: false,
-              };
-            }
-            return contact;
-          });
-          
-          // Only return new array if there were changes
-          return hasChanges ? updatedContacts : prev;
-        });
-      } else {
-        console.error('Failed to fetch contact details:', data.error);
-      }
-    } catch (error) {
-      console.error('Error fetching contact details:', error);
-    } finally {
-      // Remove contacts from loading state
-      setDetailedDataLoading(prev => {
-        const newSet = new Set(Array.from(prev));
-        contactIds.forEach(id => newSet.delete(id));
-        return newSet;
-      });
-    }
-  };
+  // --- New function to poll for contact sync status - DISABLED ---
+  // const startPollingForDetails = (contactIds: number[]) => {
+  //   // Function disabled since background sync is turned off
+  // };
 
-  // --- Function to trigger background sync ---
-  const triggerBackgroundSync = async () => {
-    // Rate limit: only allow one background sync every 30 seconds
-    const now = Date.now();
-    if (now - lastBackgroundSync < 30000) {
-      console.log('Background sync rate limited, skipping...');
-      return;
-    }
-    
-    setLastBackgroundSync(now);
-    
-    try {
-      const response = await fetch('/api/sync-contact-details-background', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ location_id: locationId })
-      });
-      
-      const data = await response.json();
-      if (data.success) {
-        console.log('Background sync triggered:', data.message);
-      } else {
-        console.error('Background sync failed:', data.error);
-      }
-    } catch (error) {
-      console.error('Error triggering background sync:', error);
-    }
-  };
+  // --- Updated function to fetch detailed contact data (fallback) - DISABLED ---
+  // const fetchContactDetails = async (contactIds: number[]) => {
+  //   // Function disabled to prevent automatic background sync
+  // };
 
-  // Load details when contacts data changes
-  useEffect(() => {
-    if (contactsData.length > 0) {
-      // Check if any contacts need details
-      const contactsNeedingDetails = contactsData.filter(contact => 
-        !contact.details_fetched && !detailedDataLoading.has(contact.id)
-      );
-      
-      if (contactsNeedingDetails.length > 0) {
-        // Small delay to ensure UI is rendered first
-        const timer = setTimeout(() => {
-          const contactIds = contactsNeedingDetails.map(contact => contact.id);
-          if (contactIds.length > 0) {
-            fetchContactDetails(contactIds);
-            
-            // If we have many contacts needing details, trigger background sync (with rate limiting)
-            if (contactIds.length > 5) {
-              // Only trigger background sync if we haven't done it recently
-              const now = Date.now();
-              if (now - lastBackgroundSync > 30000) {
-                triggerBackgroundSync();
-              }
-            }
-          }
-        }, 100);
-        return () => clearTimeout(timer);
-      }
-    }
-  }, [contactsData, detailedDataLoading, lastBackgroundSync]);
+  // --- Function to trigger background sync - DISABLED ---
+  // const triggerBackgroundSync = async () => {
+  //   // Function disabled to prevent automatic background sync
+  // };
+
+  // Removed details polling effect as background sync is disabled
 
   const [search, setSearch] = useState("");
   const allColumns = columns;
-  const requiredColumn = "Contact Name";
-  const optionalColumns = allColumns.filter((col) => col !== requiredColumn);
+  const requiredColumns = ["Contact Name", "Actions"]; // Make Actions always visible
+  const optionalColumns = allColumns.filter((col) => !requiredColumns.includes(col));
   const [visibleColumns, setVisibleColumns] = useState<string[]>(allColumns);
 
   const handleToggleColumn = (col: string) => {
-    if (col === requiredColumn) return;
+    if (requiredColumns.includes(col)) return; // Prevent hiding required columns
     setVisibleColumns((prev) =>
       prev.includes(col)
         ? prev.filter((c) => c !== col)
@@ -694,11 +453,69 @@ export default function AnalyticsContactsTable({ contacts = [], loading = false,
     );
   }; 
   const handleToggleHideAll = () => {
-    if (visibleColumns.length === 1 && visibleColumns[0] === requiredColumn) {
+    if (visibleColumns.length === requiredColumns.length && requiredColumns.every(col => visibleColumns.includes(col))) {
       setVisibleColumns([...allColumns]);
     } else {
-      setVisibleColumns([requiredColumn]);
+      setVisibleColumns([...requiredColumns]);
     }
+  };
+
+  const handleRunAiAnalysis = async (contact: any) => {
+    if (aiAnalysisLoading[contact.id]) return;
+    
+    setAiAnalysisLoading(prev => ({ ...prev, [contact.id]: true }));
+    
+    try {
+      const response = await fetch(`/api/run-ai-analysis/${contact.id}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        toast({
+          title: "AI Analysis Complete",
+          description: result.message || "AI analysis has been completed successfully.",
+        });
+        // Refresh the contacts data to show updated AI analysis
+        // Trigger a re-fetch of the current page
+        const response = await fetch(`/api/location-contacts-optimized?location_id=${locationId}&page=${page}&limit=${rowsPerPage}&appId=${CYCLSALES_APP_ID}`);
+        const refreshData = await response.json();
+        
+        if (refreshData.success) {
+          setContactsData(refreshData.contacts || []);
+        }
+      } else {
+        toast({
+          title: "AI Analysis Failed",
+          description: result.error || "Failed to run AI analysis. Please try again.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error('Error running AI analysis:', error);
+      toast({
+        title: "Error",
+        description: "An error occurred while running AI analysis. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setAiAnalysisLoading(prev => ({ ...prev, [contact.id]: false }));
+    }
+  };
+
+  const handleOpenAiSummaryDialog = (contact: any) => {
+    setAiSummaryDialog({
+      open: true,
+      contactName: contact.name || 'Unknown Contact',
+      aiSummary: contact.aiSummary || 'No AI summary available',
+      aiStatus: contact.aiStatus?.label || 'No status',
+      aiQualityGrade: contact.aiQuality?.label || 'No grade',
+      aiSalesGrade: contact.aiSales?.label || 'No grade'
+    });
   };
 
   const [filters, setFilters] = useState<Filters>({
@@ -718,6 +535,14 @@ export default function AnalyticsContactsTable({ contacts = [], loading = false,
 
   // Transform contacts data to match the expected format
   const transformedContacts = contactsData.map((contact: any) => {
+    // Debug: Log AI fields to see what's being received
+    console.log(`Contact ${contact.id} AI fields:`, {
+      ai_status: contact.ai_status,
+      ai_summary: contact.ai_summary,
+      ai_quality_grade: contact.ai_quality_grade,
+      ai_sales_grade: contact.ai_sales_grade
+    });
+    
     // Map AI status
     const aiStatusMap: { [key: string]: any } = {
       'valid_lead': { label: 'Valid Lead', color: 'bg-blue-900 text-blue-300', icon: '👤' },
@@ -1083,18 +908,20 @@ export default function AnalyticsContactsTable({ contacts = [], loading = false,
                   className="flex items-center gap-2 px-3 py-1.5 text-slate-200 text-[15px] font-normal rounded-none focus:bg-slate-800 cursor-pointer group"
                 >
                   <Checkbox
-                    checked={visibleColumns.length === 1 && visibleColumns[0] === requiredColumn}
+                    checked={visibleColumns.length === requiredColumns.length && requiredColumns.every(col => visibleColumns.includes(col))}
                     tabIndex={-1}
                     className="mr-2 border-slate-600 bg-transparent data-[state=checked]:bg-slate-900 data-[state=checked]:border-blue-500"
                   />
                   <span className="flex-1">Hide All</span>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator className="bg-slate-800 my-1" />
-                {/* Required column */}
-                <div className="flex items-center gap-2 px-3 py-1.5 text-slate-400 text-[15px] font-normal rounded-none opacity-60 cursor-not-allowed select-none">
-                  <Checkbox checked tabIndex={-1} disabled className="mr-2 border-slate-700 bg-transparent" />
-                  <span className="flex-1">{requiredColumn} <span className="ml-1 text-xs">(required)</span></span>
-                </div>
+                {/* Required columns */}
+                {requiredColumns.map((col) => (
+                  <div key={col} className="flex items-center gap-2 px-3 py-1.5 text-slate-400 text-[15px] font-normal rounded-none opacity-60 cursor-not-allowed select-none">
+                    <Checkbox checked tabIndex={-1} disabled className="mr-2 border-slate-700 bg-transparent" />
+                    <span className="flex-1">{col} <span className="ml-1 text-xs">(required)</span></span>
+                  </div>
+                ))}
                 {/* Optional columns */}
                 {optionalColumns.map((col) => (
                   <DropdownMenuItem
@@ -1115,6 +942,8 @@ export default function AnalyticsContactsTable({ contacts = [], loading = false,
           </DropdownMenu>
         </div>
       </div>
+
+      {/* Polling Status Indicator - Removed since background sync is disabled */}
 
       {/* Active Filters Display */}
       {Object.entries(filters).some(([key, value]) => {
@@ -1291,7 +1120,17 @@ export default function AnalyticsContactsTable({ contacts = [], loading = false,
         <Table className="w-full min-w-[1600px] text-xs">
           <TableHeader>
             <TableRow className="border-b border-slate-800 h-10">
-              {allColumns.filter(col => visibleColumns.includes(col)).map((col) => (
+              {allColumns
+                .filter(col => visibleColumns.includes(col))
+                .sort((a, b) => {
+                  // Ensure Contact Name is first, Actions is second, rest in original order
+                  if (a === "Contact Name") return -1;
+                  if (b === "Contact Name") return 1;
+                  if (a === "Actions") return -1;
+                  if (b === "Actions") return 1;
+                  return 0;
+                })
+                .map((col) => (
                 <TableHead key={col} className="text-slate-400 whitespace-nowrap px-3 py-2 font-medium">
                   {col}
                 </TableHead>
@@ -1307,310 +1146,349 @@ export default function AnalyticsContactsTable({ contacts = [], loading = false,
               paginatedRows.map((row, i) => (
                 <TableRow key={i} className="border-b border-slate-800 hover:bg-slate-800/50 h-10">
                   {/* Render only visible columns, mapping col name to cell */}
-                  {allColumns.filter(col => visibleColumns.includes(col)).map((col) => {
-                    switch (col) {
-                      case "Contact Name":
-                        return <TableCell key={col} className="text-white font-semibold whitespace-nowrap px-3 py-2">{row.name}</TableCell>;
-                      case "AI Status":
-                        return <TableCell key={col} className="whitespace-nowrap px-3 py-2">{(() => { const aiStatusLabel = row.aiStatus?.label ?? ''; const p = getChipProps('aiStatus', aiStatusLabel); return (<span className={`inline-flex items-center gap-2 px-2 py-0.5 rounded-md border ${p.border} ${p.text} font-medium tracking-tight h-7 text-[11px]`} style={{ borderWidth: 1 }}><span className={p.iconColor}>{p.icon}</span>{aiStatusLabel}</span>); })()}</TableCell>;
-                      case "AI Summary":
-                        return <TableCell key={col} className="whitespace-nowrap px-3 py-2">{(() => { const aiSummary = row.aiSummary ?? ''; const p = getChipProps('aiSummary', "Read"); return (<span className={`inline-flex items-center gap-2 px-2 py-0.5 rounded-md border ${p.border} ${p.text} font-medium tracking-tight h-7 text-[11px]`} style={{ borderWidth: 1 }}><span className={p.iconColor}>{p.icon}</span>{aiSummary}</span>); })()}</TableCell>;
-                      case "AI Quality Grade":
-                        return <TableCell key={col} className="whitespace-nowrap px-3 py-2">{(() => { const aiQualityLabel = row.aiQuality?.label ?? ''; const p = getChipProps('aiQuality', aiQualityLabel); return (<span className={`inline-flex items-center gap-2 px-2 py-0.5 rounded-md border ${p.border} ${p.text} font-medium tracking-tight h-7 text-[11px]`} style={{ borderWidth: 1 }}><span className={p.iconColor}>{p.icon}</span>{aiQualityLabel}</span>); })()}</TableCell>;
-                      case "AI Sales Grade":
-                        return <TableCell key={col} className="whitespace-nowrap px-3 py-2">{(() => { const aiSalesLabel = row.aiSales?.label ?? ''; const p = getChipProps('aiSales', aiSalesLabel); return (<span className={`inline-flex items-center gap-2 px-2 py-0.5 rounded-md border ${p.border} ${p.text} font-medium tracking-tight h-7 text-[11px]`} style={{ borderWidth: 1 }}><span className={p.iconColor}>{p.icon}</span>{aiSalesLabel}</span>); })()}</TableCell>;
-                      case "CRM Tasks":
-                        return <TableCell key={col} className="whitespace-nowrap px-3 py-2">
-                          {row.detailsLoading ? (
-                            <div className="flex items-center gap-2">
-                              <div className="w-4 h-4 border-2 border-slate-600 border-t-blue-500 rounded-full animate-spin"></div>
-                              <span className="text-slate-400 text-xs">Loading tasks...</span>
-                            </div>
-                          ) : Array.isArray(row.tasks) && row.tasks.length > 0 ? (
-                            <div className="flex flex-col gap-1">
-                              {row.tasks.slice(0, 3).map((task: any, idx: number) => (
-                                <div 
-                                  key={idx} 
-                                  className={`flex items-center justify-between px-2 py-1 rounded text-xs ${
-                                    task.completed 
-                                      ? 'bg-green-900/50 text-green-300 border border-green-700' 
-                                      : task.is_overdue 
-                                        ? 'bg-red-900/50 text-red-300 border border-red-700'
-                                        : 'bg-blue-900/50 text-blue-300 border border-blue-700'
-                                  }`}
-                                >
-                                  <span className="truncate max-w-[120px]">
-                                    {task.title}
-                                  </span>
-                                  <Popover>
-                                    <PopoverTrigger asChild>
-                                      <Info className="w-3 h-3 text-slate-400 hover:text-slate-200 cursor-help flex-shrink-0 ml-1" />
-                                    </PopoverTrigger>
-                                    <PopoverContent className="w-80 p-3 bg-slate-800 border-slate-700 text-slate-200">
-                                      <div className="space-y-2">
-                                        <div className="font-medium text-white">{task.title}</div>
-                                        {task.location_name && (
-                                          <div className="text-sm">
-                                            <span className="text-slate-400">Location:</span> {task.location_name}
-                                          </div>
-                                        )}
-                                        {task.due_date && (
-                                          <div className="text-sm">
-                                            <span className="text-slate-400">Due:</span> {format(new Date(task.due_date), "MMMM d, yyyy")}
-                                          </div>
-                                        )}
-                                        {task.description && (
-                                          <div className="text-sm">
-                                            <span className="text-slate-400">Description:</span> {task.description}
-                                          </div>
-                                        )}
-                                        <div className="text-sm">
-                                          <span className="text-slate-400">Status:</span> {task.completed ? 'Completed' : task.is_overdue ? 'Overdue' : 'Pending'}
-                                        </div>
-                                      </div>
-                                    </PopoverContent>
-                                  </Popover>
-                                </div>
-                              ))}
-                              {row.tasks.length > 3 && (
-                                <div className="text-xs text-slate-400">
-                                  +{row.tasks.length - 3} more
-                                </div>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="text-slate-500 text-xs">No tasks</span>
-                          )}
-                        </TableCell>;
-                      case "Conversations":
-                        return <TableCell key={col} className="whitespace-nowrap px-3 py-2">
-                          {row.detailsLoading ? (
-                            <div className="flex items-center gap-2">
-                              <div className="w-4 h-4 border-2 border-slate-600 border-t-blue-500 rounded-full animate-spin"></div>
-                              <span className="text-slate-400 text-xs">Loading conversations...</span>
-                            </div>
-                          ) : Array.isArray(row.conversations) && row.conversations.length > 0 ? (
-                            <div className="flex flex-col gap-1">
-                              {row.conversations.slice(0, 3).map((conversation: any, idx: number) => (
-                                <div 
-                                  key={idx} 
-                                  className="flex items-center justify-between px-2 py-1 rounded text-xs bg-purple-900/50 text-purple-300 border border-purple-700"
-                                >
-                                  <span className="truncate max-w-[120px]">
-                                    {conversation.subject || conversation.conversation_id || 'Conversation'}
-                                  </span>
-                                  <Popover>
-                                    <PopoverTrigger asChild>
-                                      <Info className="w-3 h-3 text-slate-400 hover:text-slate-200 cursor-help flex-shrink-0 ml-1" />
-                                    </PopoverTrigger>
-                                    <PopoverContent className="w-80 p-3 bg-slate-800 border-slate-700 text-slate-200">
-                                      <div className="space-y-2">
-                                        <div className="font-medium text-white">
-                                          {conversation.subject || 'Conversation'}
-                                        </div>
-                                        {conversation.location_name && (
-                                          <div className="text-sm">
-                                            <span className="text-slate-400">Location:</span> {conversation.location_name}
-                                          </div>
-                                        )}
-                                        {conversation.conversation_id && (
-                                          <div className="text-sm">
-                                            <span className="text-slate-400">ID:</span> {conversation.conversation_id}
-                                          </div>
-                                        )}
-                                        {conversation.date_created && (
-                                          <div className="text-sm">
-                                            <span className="text-slate-400">Created:</span> {format(new Date(conversation.date_created), "MMMM d, yyyy")}
-                                          </div>
-                                        )}
-                                        {conversation.last_message_date && (
-                                          <div className="text-sm">
-                                            <span className="text-slate-400">Last Message:</span> {format(new Date(conversation.last_message_date), "MMMM d, yyyy")}
-                                          </div>
-                                        )}
-                                        {conversation.message_count && (
-                                          <div className="text-sm">
-                                            <span className="text-slate-400">Messages:</span> {conversation.message_count}
-                                          </div>
-                                        )}
-                                        {conversation.last_message_type && (
-                                          <div className="text-sm">
-                                            <span className="text-slate-400">Last Message Type:</span>{" "}
-                                            {lastMessageTypeLabels[conversation.last_message_type] || conversation.last_message_type}
-                                          </div>
-                                        )}
-                                      </div>
-                                    </PopoverContent>
-                                  </Popover>
-                                </div>
-                              ))}
-                              {row.conversations.length > 3 && (
-                                <div className="text-xs text-slate-400">
-                                  +{row.conversations.length - 3} more
-                                </div>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="text-slate-500 text-xs">No conversations</span>
-                          )}
-                        </TableCell>;
-                      case "Category":
-                        return <TableCell key={col} className="whitespace-nowrap px-3 py-2">{(() => { const category = row.category ?? ''; const p = getChipProps('category', category); return (<span className={`inline-flex items-center gap-2 px-2 py-0.5 rounded-md border ${p.border} ${p.text} font-medium tracking-tight h-7 text-[11px]`} style={{ borderWidth: 1 }}><span className={p.iconColor}>{p.icon}</span>{category}</span>); })()}</TableCell>;
-                      case "Channel":
-                        return <TableCell key={col} className="whitespace-nowrap px-3 py-2">{(() => { const channel = row.channel ?? ''; const p = getChipProps('channel', channel); return (<span className={`inline-flex items-center gap-2 px-2 py-0.5 rounded-md border ${p.border} ${p.text} font-medium tracking-tight h-7 text-[11px]`} style={{ borderWidth: 1 }}><span className={p.iconColor}>{p.icon}</span>{channel}</span>); })()}</TableCell>;
-                      case "Created By":
-                        return <TableCell key={col} className="whitespace-nowrap px-3 py-2"></TableCell>;
-                      case "Attribution":
-                        return <TableCell key={col} className="whitespace-nowrap px-3 py-2"></TableCell>;
-                      case "Assigned To":
-                        return <TableCell key={col} className="whitespace-nowrap px-3 py-2 text-slate-200">{row.assignedTo}</TableCell>;
-                      case "Speed to Lead":
-                        return <TableCell key={col} className="whitespace-nowrap px-3 py-2"></TableCell>;
-                      case "Touch Summary":
-                        return <TableCell key={col} className="whitespace-nowrap px-3 py-2">
-                          <div className="flex flex-row flex-wrap gap-1 items-center">
-                            {parseTouchSummary(row.touchSummary ?? '').map((chip, index) => (
-                              <span 
-                                key={index} 
-                                className={`inline-flex items-center gap-2 px-2 py-0.5 rounded-md border ${chip.border} ${chip.textColor} font-medium tracking-tight h-7 text-[11px] flex-shrink-0`} 
-                                style={{ borderWidth: 1 }}
-                              >
-                                <span className={chip.iconColor}>{chip.icon}</span>
-                                {chip.text}
-                              </span>
-                            ))}
-                          </div>
-                        </TableCell>;
-                      case "Engagement Summary":
-                        return <TableCell key={col} className="whitespace-nowrap px-3 py-2">{
-                          Array.isArray(row.engagementSummary)
-                            ? row.engagementSummary.map((e, idx) => (
-                              <span key={idx} className={`inline-flex items-center gap-2 px-2 py-0.5 rounded-md border ${e.color} font-medium tracking-tight h-7 text-[11px] mr-1 mb-1`} style={{ borderWidth: 1 }}>
-                                <span>{e.icon}</span>
-                                {e.type === "No Engagement" ? "No Engagement" : `${e.count}x ${e.type}`}
-                              </span>
-                            ))
-                            : null
-                        }</TableCell>;
-                      case "Last Touch Date":
-                        return <TableCell key={col} className="whitespace-nowrap px-3 py-2">
-                          {row.lastTouchDate ? (
-                            <div className="flex items-center gap-2">
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-slate-600 text-slate-300 font-medium tracking-tight h-7 text-[11px] bg-slate-800/50">
-                                <Calendar className="w-3 h-3" />
-                                {format(new Date(row.lastTouchDate), "MMM d, yyyy")}
-                              </span>
-                              <Popover>
-                                <PopoverTrigger asChild>
-                                  <Info className="w-3 h-3 text-slate-400 hover:text-slate-200 cursor-help flex-shrink-0" />
-                                </PopoverTrigger>
-                                <PopoverContent className="w-64 p-3 bg-slate-800 border-slate-700 text-slate-200">
-                                  <div className="space-y-2">
-                                    <div className="font-medium text-white">Last Touch Date</div>
-                                    <div className="text-sm">
-                                      <span className="text-slate-400">Date:</span> {format(new Date(row.lastTouchDate), "MMMM d, yyyy")}
-                                    </div>
-                                    <div className="text-sm">
-                                      <span className="text-slate-400">Time:</span> {format(new Date(row.lastTouchDate), "h:mm a")}
-                                    </div>
-                                    <div className="text-sm">
-                                      <span className="text-slate-400">Full:</span> {format(new Date(row.lastTouchDate), "EEEE, MMMM d, yyyy 'at' h:mm a")}
-                                    </div>
-                                  </div>
-                                </PopoverContent>
-                              </Popover>
-                            </div>
-                          ) : (
-                            <span className="text-slate-500 text-xs">No touch date</span>
-                          )}
-                        </TableCell>;
-                      case "Last Message":
-                        return <TableCell key={col} className="whitespace-nowrap px-3 py-2">
-                          {row.lastMessage ? (
-                            <div className="flex items-center gap-2">
-                              <div className="flex-1 min-w-0">
-                                <div className="text-xs text-slate-200 truncate max-w-[200px]" title={row.lastMessage.body}>
-                                  {row.lastMessage.body}
-                                </div>
-                                <div className="flex items-center gap-1 mt-1">
-                                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs font-medium ${
-                                    row.lastMessage.type?.includes('SMS') ? 'border-blue-500 text-blue-300' :
-                                    row.lastMessage.type?.includes('EMAIL') ? 'border-green-500 text-green-300' :
-                                    row.lastMessage.type?.includes('CALL') ? 'border-purple-500 text-purple-300' :
-                                    row.lastMessage.type?.includes('CHAT') ? 'border-orange-500 text-orange-300' :
-                                    'border-slate-600 text-slate-300'
-                                  }`}>
-                                    {row.lastMessage.typeLabel || row.lastMessage.type}
-                                  </span>
-                                  {row.lastMessage.unread_count > 0 && (
-                                    <span className="inline-flex items-center justify-center w-4 h-4 text-xs bg-red-500 text-white rounded-full">
-                                      {row.lastMessage.unread_count}
-                                    </span>
-                                  )}
-                                </div>
+                  {allColumns
+                    .filter(col => visibleColumns.includes(col))
+                    .sort((a, b) => {
+                      // Ensure Contact Name is first, Actions is second, rest in original order
+                      if (a === "Contact Name") return -1;
+                      if (b === "Contact Name") return 1;
+                      if (a === "Actions") return -1;
+                      if (b === "Actions") return 1;
+                      return 0;
+                    })
+                    .map((col) => {
+                      switch (col) {
+                        case "Contact Name":
+                          return <TableCell key={col} className="text-white font-semibold whitespace-nowrap px-3 py-2">{row.name}</TableCell>;
+                        case "AI Status":
+                          return <TableCell key={col} className="whitespace-nowrap px-3 py-2">{(() => { const aiStatusLabel = row.aiStatus?.label ?? ''; const p = getChipProps('aiStatus', aiStatusLabel); return (<span className={`inline-flex items-center gap-2 px-2 py-0.5 rounded-md border ${p.border} ${p.text} font-medium tracking-tight h-7 text-[11px]`} style={{ borderWidth: 1 }}><span className={p.iconColor}>{p.icon}</span>{aiStatusLabel}</span>); })()}</TableCell>;
+                        case "AI Summary":
+                          return <TableCell key={col} className="whitespace-nowrap px-3 py-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="inline-flex items-center gap-2 px-2 py-0.5 rounded-md border border-blue-500 text-blue-300 font-medium tracking-tight h-7 text-[11px] hover:bg-blue-500/20 hover:text-blue-200"
+                              onClick={() => handleOpenAiSummaryDialog(row)}
+                            >
+                              <Eye className="w-3 h-3" />
+                              Read
+                            </Button>
+                          </TableCell>;
+                        case "AI Quality Grade":
+                          return <TableCell key={col} className="whitespace-nowrap px-3 py-2">{(() => { const aiQualityLabel = row.aiQuality?.label ?? ''; const p = getChipProps('aiQuality', aiQualityLabel); return (<span className={`inline-flex items-center gap-2 px-2 py-0.5 rounded-md border ${p.border} ${p.text} font-medium tracking-tight h-7 text-[11px]`} style={{ borderWidth: 1 }}><span className={p.iconColor}>{p.icon}</span>{aiQualityLabel}</span>); })()}</TableCell>;
+                        case "AI Sales Grade":
+                          return <TableCell key={col} className="whitespace-nowrap px-3 py-2">{(() => { const aiSalesLabel = row.aiSales?.label ?? ''; const p = getChipProps('aiSales', aiSalesLabel); return (<span className={`inline-flex items-center gap-2 px-2 py-0.5 rounded-md border ${p.border} ${p.text} font-medium tracking-tight h-7 text-[11px]`} style={{ borderWidth: 1 }}><span className={p.iconColor}>{p.icon}</span>{aiSalesLabel}</span>); })()}</TableCell>;
+                        case "CRM Tasks":
+                          return <TableCell key={col} className="whitespace-nowrap px-3 py-2">
+                            {row.detailsLoading ? (
+                              <div className="flex items-center gap-2">
+                                <div className="w-4 h-4 border-2 border-slate-600 border-t-blue-500 rounded-full animate-spin"></div>
+                                <span className="text-slate-400 text-xs">Loading tasks...</span>
                               </div>
-                              <Popover>
-                                <PopoverTrigger asChild>
-                                  <Info className="w-3 h-3 text-slate-400 hover:text-slate-200 cursor-help flex-shrink-0" />
-                                </PopoverTrigger>
-                                <PopoverContent className="w-80 p-3 bg-slate-800 border-slate-700 text-slate-200">
-                                  <div className="space-y-2">
-                                    <div className="font-medium text-white">Last Message</div>
-                                    <div className="text-sm">
-                                      <span className="text-slate-400">Message:</span> {row.lastMessage.body}
-                                    </div>
-                                    <div className="text-sm">
-                                      <span className="text-slate-400">Type:</span> {row.lastMessage.typeLabel || row.lastMessage.type}
-                                    </div>
-                                    {row.lastMessage.date && (
+                            ) : Array.isArray(row.tasks) && row.tasks.length > 0 ? (
+                              <div className="flex flex-col gap-1">
+                                {row.tasks.slice(0, 3).map((task: any, idx: number) => (
+                                  <div 
+                                    key={idx} 
+                                    className={`flex items-center justify-between px-2 py-1 rounded text-xs ${
+                                      task.completed 
+                                        ? 'bg-green-900/50 text-green-300 border border-green-700' 
+                                        : task.is_overdue 
+                                          ? 'bg-red-900/50 text-red-300 border border-red-700'
+                                          : 'bg-blue-900/50 text-blue-300 border border-blue-700'
+                                    }`}
+                                  >
+                                    <span className="truncate max-w-[120px]">
+                                      {task.title}
+                                    </span>
+                                    <Popover>
+                                      <PopoverTrigger asChild>
+                                        <Info className="w-3 h-3 text-slate-400 hover:text-slate-200 cursor-help flex-shrink-0 ml-1" />
+                                      </PopoverTrigger>
+                                      <PopoverContent className="w-80 p-3 bg-slate-800 border-slate-700 text-slate-200">
+                                        <div className="space-y-2">
+                                          <div className="font-medium text-white">{task.title}</div>
+                                          {task.location_name && (
+                                            <div className="text-sm">
+                                              <span className="text-slate-400">Location:</span> {task.location_name}
+                                            </div>
+                                          )}
+                                          {task.due_date && (
+                                            <div className="text-sm">
+                                              <span className="text-slate-400">Due:</span> {format(new Date(task.due_date), "MMMM d, yyyy")}
+                                            </div>
+                                          )}
+                                          {task.description && (
+                                            <div className="text-sm">
+                                              <span className="text-slate-400">Description:</span> {task.description}
+                                            </div>
+                                          )}
+                                          <div className="text-sm">
+                                            <span className="text-slate-400">Status:</span> {task.completed ? 'Completed' : task.is_overdue ? 'Overdue' : 'Pending'}
+                                          </div>
+                                        </div>
+                                      </PopoverContent>
+                                    </Popover>
+                                  </div>
+                                ))}
+                                {row.tasks.length > 3 && (
+                                  <div className="text-xs text-slate-400">
+                                    +{row.tasks.length - 3} more
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-slate-500 text-xs">No tasks</span>
+                            )}
+                          </TableCell>;
+                        case "Conversations":
+                          return <TableCell key={col} className="whitespace-nowrap px-3 py-2">
+                            {row.detailsLoading ? (
+                              <div className="flex items-center gap-2">
+                                <div className="w-4 h-4 border-2 border-slate-600 border-t-blue-500 rounded-full animate-spin"></div>
+                                <span className="text-slate-400 text-xs">Loading conversations...</span>
+                              </div>
+                            ) : Array.isArray(row.conversations) && row.conversations.length > 0 ? (
+                              <div className="flex flex-col gap-1">
+                                {row.conversations.slice(0, 3).map((conversation: any, idx: number) => (
+                                  <div 
+                                    key={idx} 
+                                    className="flex items-center justify-between px-2 py-1 rounded text-xs bg-purple-900/50 text-purple-300 border border-purple-700"
+                                  >
+                                    <span className="truncate max-w-[120px]">
+                                      {conversation.subject || conversation.conversation_id || 'Conversation'}
+                                    </span>
+                                    <Popover>
+                                      <PopoverTrigger asChild>
+                                        <Info className="w-3 h-3 text-slate-400 hover:text-slate-200 cursor-help flex-shrink-0 ml-1" />
+                                      </PopoverTrigger>
+                                      <PopoverContent className="w-80 p-3 bg-slate-800 border-slate-700 text-slate-200">
+                                        <div className="space-y-2">
+                                          <div className="font-medium text-white">
+                                            {conversation.subject || 'Conversation'}
+                                          </div>
+                                          {conversation.location_name && (
+                                            <div className="text-sm">
+                                              <span className="text-slate-400">Location:</span> {conversation.location_name}
+                                            </div>
+                                          )}
+                                          {conversation.conversation_id && (
+                                            <div className="text-sm">
+                                              <span className="text-slate-400">ID:</span> {conversation.conversation_id}
+                                            </div>
+                                          )}
+                                          {conversation.date_created && (
+                                            <div className="text-sm">
+                                              <span className="text-slate-400">Created:</span> {format(new Date(conversation.date_created), "MMMM d, yyyy")}
+                                            </div>
+                                          )}
+                                          {conversation.last_message_date && (
+                                            <div className="text-sm">
+                                              <span className="text-slate-400">Last Message:</span> {format(new Date(conversation.last_message_date), "MMMM d, yyyy")}
+                                            </div>
+                                          )}
+                                          {conversation.message_count && (
+                                            <div className="text-sm">
+                                              <span className="text-slate-400">Messages:</span> {conversation.message_count}
+                                            </div>
+                                          )}
+                                          {conversation.last_message_type && (
+                                            <div className="text-sm">
+                                              <span className="text-slate-400">Last Message Type:</span>{" "}
+                                              {lastMessageTypeLabels[conversation.last_message_type] || conversation.last_message_type}
+                                            </div>
+                                          )}
+                                        </div>
+                                      </PopoverContent>
+                                    </Popover>
+                                  </div>
+                                ))}
+                                {row.conversations.length > 3 && (
+                                  <div className="text-xs text-slate-400">
+                                    +{row.conversations.length - 3} more
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-slate-500 text-xs">No conversations</span>
+                            )}
+                          </TableCell>;
+                        case "Category":
+                          return <TableCell key={col} className="whitespace-nowrap px-3 py-2">{(() => { const category = row.category ?? ''; const p = getChipProps('category', category); return (<span className={`inline-flex items-center gap-2 px-2 py-0.5 rounded-md border ${p.border} ${p.text} font-medium tracking-tight h-7 text-[11px]`} style={{ borderWidth: 1 }}><span className={p.iconColor}>{p.icon}</span>{category}</span>); })()}</TableCell>;
+                        case "Channel":
+                          return <TableCell key={col} className="whitespace-nowrap px-3 py-2">{(() => { const channel = row.channel ?? ''; const p = getChipProps('channel', channel); return (<span className={`inline-flex items-center gap-2 px-2 py-0.5 rounded-md border ${p.border} ${p.text} font-medium tracking-tight h-7 text-[11px]`} style={{ borderWidth: 1 }}><span className={p.iconColor}>{p.icon}</span>{channel}</span>); })()}</TableCell>;
+                        case "Created By":
+                          return <TableCell key={col} className="whitespace-nowrap px-3 py-2"></TableCell>;
+                        case "Attribution":
+                          return <TableCell key={col} className="whitespace-nowrap px-3 py-2"></TableCell>;
+                        case "Assigned To":
+                          return <TableCell key={col} className="whitespace-nowrap px-3 py-2 text-slate-200">{row.assignedTo}</TableCell>;
+                        case "Speed to Lead":
+                          return <TableCell key={col} className="whitespace-nowrap px-3 py-2"></TableCell>;
+                        case "Touch Summary":
+                          return <TableCell key={col} className="whitespace-nowrap px-3 py-2">
+                            <div className="flex flex-row flex-wrap gap-1 items-center">
+                              {parseTouchSummary(row.touchSummary ?? '').map((chip, index) => (
+                                <span 
+                                  key={index} 
+                                  className={`inline-flex items-center gap-2 px-2 py-0.5 rounded-md border ${chip.border} ${chip.textColor} font-medium tracking-tight h-7 text-[11px] flex-shrink-0`} 
+                                  style={{ borderWidth: 1 }}
+                                >
+                                  <span className={chip.iconColor}>{chip.icon}</span>
+                                  {chip.text}
+                                </span>
+                              ))}
+                            </div>
+                          </TableCell>;
+                        case "Engagement Summary":
+                          return <TableCell key={col} className="whitespace-nowrap px-3 py-2">{
+                            Array.isArray(row.engagementSummary)
+                              ? row.engagementSummary.map((e, idx) => (
+                                <span key={idx} className={`inline-flex items-center gap-2 px-2 py-0.5 rounded-md border ${e.color} font-medium tracking-tight h-7 text-[11px] mr-1 mb-1`} style={{ borderWidth: 1 }}>
+                                  <span>{e.icon}</span>
+                                  {e.type === "No Engagement" ? "No Engagement" : `${e.count}x ${e.type}`}
+                                </span>
+                              ))
+                              : null
+                          }</TableCell>;
+                        case "Last Touch Date":
+                          return <TableCell key={col} className="whitespace-nowrap px-3 py-2">
+                            {row.lastTouchDate ? (
+                              <div className="flex items-center gap-2">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-slate-600 text-slate-300 font-medium tracking-tight h-7 text-[11px] bg-slate-800/50">
+                                  <Calendar className="w-3 h-3" />
+                                  {format(new Date(row.lastTouchDate), "MMM d, yyyy")}
+                                </span>
+                                <Popover>
+                                  <PopoverTrigger asChild>
+                                    <Info className="w-3 h-3 text-slate-400 hover:text-slate-200 cursor-help flex-shrink-0" />
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-64 p-3 bg-slate-800 border-slate-700 text-slate-200">
+                                    <div className="space-y-2">
+                                      <div className="font-medium text-white">Last Touch Date</div>
                                       <div className="text-sm">
-                                        <span className="text-slate-400">Date:</span> {format(new Date(row.lastMessage.date), "MMMM d, yyyy 'at' h:mm a")}
+                                        <span className="text-slate-400">Date:</span> {format(new Date(row.lastTouchDate), "MMMM d, yyyy")}
                                       </div>
-                                    )}
+                                      <div className="text-sm">
+                                        <span className="text-slate-400">Time:</span> {format(new Date(row.lastTouchDate), "h:mm a")}
+                                      </div>
+                                      <div className="text-sm">
+                                        <span className="text-slate-400">Full:</span> {format(new Date(row.lastTouchDate), "EEEE, MMMM d, yyyy 'at' h:mm a")}
+                                      </div>
+                                    </div>
+                                  </PopoverContent>
+                                </Popover>
+                              </div>
+                            ) : (
+                              <span className="text-slate-500 text-xs">No touch date</span>
+                            )}
+                          </TableCell>;
+                        case "Last Message":
+                          return <TableCell key={col} className="whitespace-nowrap px-3 py-2">
+                            {row.lastMessage ? (
+                              <div className="flex items-center gap-2">
+                                <div className="flex-1 min-w-0">
+                                  <div className="text-xs text-slate-200 truncate max-w-[200px]" title={row.lastMessage.body}>
+                                    {row.lastMessage.body}
+                                  </div>
+                                  <div className="flex items-center gap-1 mt-1">
+                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs font-medium ${
+                                      row.lastMessage.type?.includes('SMS') ? 'border-blue-500 text-blue-300' :
+                                      row.lastMessage.type?.includes('EMAIL') ? 'border-green-500 text-green-300' :
+                                      row.lastMessage.type?.includes('CALL') ? 'border-purple-500 text-purple-300' :
+                                      row.lastMessage.type?.includes('CHAT') ? 'border-orange-500 text-orange-300' :
+                                      'border-slate-600 text-slate-300'
+                                    }`}>
+                                      {row.lastMessage.typeLabel || row.lastMessage.type}
+                                    </span>
                                     {row.lastMessage.unread_count > 0 && (
-                                      <div className="text-sm">
-                                        <span className="text-slate-400">Unread:</span> {row.lastMessage.unread_count} messages
-                                      </div>
+                                      <span className="inline-flex items-center justify-center w-4 h-4 text-xs bg-red-500 text-white rounded-full">
+                                        {row.lastMessage.unread_count}
+                                      </span>
                                     )}
                                   </div>
-                                </PopoverContent>
-                              </Popover>
+                                </div>
+                                <Popover>
+                                  <PopoverTrigger asChild>
+                                    <Info className="w-3 h-3 text-slate-400 hover:text-slate-200 cursor-help flex-shrink-0" />
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-80 p-3 bg-slate-800 border-slate-700 text-slate-200">
+                                    <div className="space-y-2">
+                                      <div className="font-medium text-white">Last Message</div>
+                                      <div className="text-sm">
+                                        <span className="text-slate-400">Message:</span> {row.lastMessage.body}
+                                      </div>
+                                      <div className="text-sm">
+                                        <span className="text-slate-400">Type:</span> {row.lastMessage.typeLabel || row.lastMessage.type}
+                                      </div>
+                                      {row.lastMessage.date && (
+                                        <div className="text-sm">
+                                          <span className="text-slate-400">Date:</span> {format(new Date(row.lastMessage.date), "MMMM d, yyyy 'at' h:mm a")}
+                                        </div>
+                                      )}
+                                      {row.lastMessage.unread_count > 0 && (
+                                        <div className="text-sm">
+                                          <span className="text-slate-400">Unread:</span> {row.lastMessage.unread_count} messages
+                                        </div>
+                                      )}
+                                    </div>
+                                  </PopoverContent>
+                                </Popover>
+                              </div>
+                            ) : (
+                              <span className="text-slate-500 text-xs">No messages</span>
+                            )}
+                          </TableCell>;
+                        case "Total Pipeline Value":
+                          return <TableCell key={col} className="whitespace-nowrap px-3 py-2 text-slate-300">{row.totalPipelineValue}</TableCell>;
+                        case "Opportunities":
+                          return <TableCell key={col} className="whitespace-nowrap px-3 py-2 text-slate-300">{row.opportunities}</TableCell>;
+                        case "Contact Tags":
+                          return <TableCell key={col} className="whitespace-nowrap px-3 py-2">{row.contactTags.map((tag: any) => <span key={tag} className="inline-flex items-center px-2 py-0.5 rounded-md border border-slate-600 text-slate-300 font-medium text-xs mr-1 mb-1">{tag}</span>)}</TableCell>;
+                        case "View Calls":
+                          return <TableCell key={col} className="whitespace-nowrap px-3 py-2"><button className="text-blue-400 hover:underline flex items-center gap-1 font-medium bg-transparent border-none cursor-pointer" onClick={() => setLocation(`/call-details?contact_id=${(row as any).id}&contact=${encodeURIComponent(row.name)}&date=${encodeURIComponent(row.dateCreated)}&tags=${encodeURIComponent(Array.isArray(row.contactTags) ? row.contactTags.join(',') : '')}`)}>View <ArrowUpRight className="w-4 h-4" /></button></TableCell>;
+                        case "Date Created":
+                          // Format as 'July 8, 2025 03:45:12 PM'
+                          let dateObj = row.dateCreated;
+                          if (typeof dateObj === 'string') {
+                            dateObj = new Date(dateObj);
+                          }
+                          let formattedDate = '';
+                          if (dateObj instanceof Date && !isNaN(dateObj.getTime())) {
+                            formattedDate = format(dateObj, "MMMM d, yyyy hh:mm:ss a");
+                          } else {
+                            formattedDate = row.dateCreated;
+                          }
+                          return <TableCell key={col} className="whitespace-nowrap px-3 py-2 text-slate-300">{formattedDate}</TableCell>;
+                        case "Actions":
+                          return <TableCell key={col} className="whitespace-nowrap px-3 py-2">
+                            <div className="flex items-center space-x-1">
+                              <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                className={`text-slate-400 hover:text-white p-1 h-6 w-6 ${aiAnalysisLoading[row.id] ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                onClick={() => handleRunAiAnalysis(row)}
+                                disabled={aiAnalysisLoading[row.id]}
+                                title="Run AI Analysis"
+                              >
+                                {aiAnalysisLoading[row.id] ? (
+                                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-500"></div>
+                                ) : (
+                                  <Zap className="w-3 h-3" />
+                                )}
+                              </Button>
                             </div>
-                          ) : (
-                            <span className="text-slate-500 text-xs">No messages</span>
-                          )}
-                        </TableCell>;
-                      case "Total Pipeline Value":
-                        return <TableCell key={col} className="whitespace-nowrap px-3 py-2 text-slate-300">{row.totalPipelineValue}</TableCell>;
-                      case "Opportunities":
-                        return <TableCell key={col} className="whitespace-nowrap px-3 py-2 text-slate-300">{row.opportunities}</TableCell>;
-                      case "Contact Tags":
-                        return <TableCell key={col} className="whitespace-nowrap px-3 py-2">{row.contactTags.map((tag: any) => <span key={tag} className="inline-flex items-center px-2 py-0.5 rounded-md border border-slate-600 text-slate-300 font-medium text-xs mr-1 mb-1">{tag}</span>)}</TableCell>;
-                      case "View Calls":
-                        return <TableCell key={col} className="whitespace-nowrap px-3 py-2"><button className="text-blue-400 hover:underline flex items-center gap-1 font-medium bg-transparent border-none cursor-pointer" onClick={() => setLocation(`/call-details?contact_id=${(row as any).id}&contact=${encodeURIComponent(row.name)}&date=${encodeURIComponent(row.dateCreated)}&tags=${encodeURIComponent(Array.isArray(row.contactTags) ? row.contactTags.join(',') : '')}`)}>View <ArrowUpRight className="w-4 h-4" /></button></TableCell>;
-                      case "Date Created":
-                        // Format as 'July 8, 2025 03:45:12 PM'
-                        let dateObj = row.dateCreated;
-                        if (typeof dateObj === 'string') {
-                          dateObj = new Date(dateObj);
-                        }
-                        let formattedDate = '';
-                        if (dateObj instanceof Date && !isNaN(dateObj.getTime())) {
-                          formattedDate = format(dateObj, "MMMM d, yyyy hh:mm:ss a");
-                        } else {
-                          formattedDate = row.dateCreated;
-                        }
-                        return <TableCell key={col} className="whitespace-nowrap px-3 py-2 text-slate-300">{formattedDate}</TableCell>;
-                      default:
-                        return null;
-                    }
-                  })}
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      )}
+                          </TableCell>;
+                        default:
+                          return null;
+                      }
+                    })}
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        )}
       {/* Pagination Footer */}
       <div className="flex items-center justify-between px-4 py-2 border-t border-slate-800 bg-slate-900 text-slate-400 text-xs">
         <div className="flex items-center gap-2">
@@ -1651,6 +1529,53 @@ export default function AnalyticsContactsTable({ contacts = [], loading = false,
           </Button>
         </div>
       </div>
+
+      {/* AI Summary Dialog */}
+      <Dialog open={aiSummaryDialog.open} onOpenChange={(open) => setAiSummaryDialog(prev => ({ ...prev, open }))}>
+        <DialogContent className="max-w-2xl bg-slate-900 border-slate-800 text-slate-50">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold text-white flex items-center gap-2">
+              <Eye className="w-5 h-5 text-blue-400" />
+              AI Analysis Summary
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-6">
+            {/* Contact Name */}
+            <div>
+              <h3 className="text-lg font-semibold text-white mb-2">{aiSummaryDialog.contactName}</h3>
+            </div>
+
+            {/* AI Summary */}
+            <div>
+              <h4 className="text-md font-medium text-slate-300 mb-3 flex items-center gap-2">
+                <Activity className="w-4 h-4 text-blue-400" />
+                AI Summary
+              </h4>
+              <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
+                <p className="text-slate-200 leading-relaxed whitespace-pre-wrap">
+                  {aiSummaryDialog.aiSummary}
+                </p>
+              </div>
+            </div>
+
+            {/* AI Analysis Details */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
+                <h5 className="text-sm font-medium text-slate-400 mb-2">AI Status</h5>
+                <p className="text-white font-semibold">{aiSummaryDialog.aiStatus}</p>
+              </div>
+              <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
+                <h5 className="text-sm font-medium text-slate-400 mb-2">Quality Grade</h5>
+                <p className="text-white font-semibold">{aiSummaryDialog.aiQualityGrade}</p>
+              </div>
+              <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
+                <h5 className="text-sm font-medium text-slate-400 mb-2">Sales Grade</h5>
+                <p className="text-white font-semibold">{aiSummaryDialog.aiSalesGrade}</p>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 } 

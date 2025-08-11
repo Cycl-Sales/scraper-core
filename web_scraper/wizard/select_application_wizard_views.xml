@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        <!-- Wizard Form View -->
+        <record id="view_select_application_wizard_form" model="ir.ui.view">
+            <field name="name">select.application.wizard.form</field>
+            <field name="model">select.application.wizard</field>
+            <field name="arch" type="xml">
+                <form string="Select Application for Transcript Fetch">
+                    <group>
+                        <field name="message_id" invisible="1"/>
+                        <field name="application_id" 
+                               options="{'no_create': True, 'no_open': True}"
+                               widget="selection"/>
+                        <field name="available_applications" invisible="1"/>
+                    </group>
+                    <div class="alert alert-info" role="alert">
+                        <strong>Note:</strong> Select an application to use for fetching the transcript. 
+                        Applications with expired tokens will be automatically refreshed if possible.
+                    </div>
+                    <footer>
+                        <button name="action_fetch_transcript" 
+                                string="Fetch Transcript" 
+                                type="object" 
+                                class="btn-primary"/>
+                        <button string="Cancel" 
+                                class="btn-secondary" 
+                                special="cancel"/>
+                    </footer>
+                </form>
+            </field>
+        </record>
+
+        <!-- Wizard Action -->
+        <record id="action_select_application_wizard" model="ir.actions.act_window">
+            <field name="name">Select Application</field>
+            <field name="res_model">select.application.wizard</field>
+            <field name="view_mode">form</field>
+            <field name="target">new</field>
+            <field name="view_id" ref="view_select_application_wizard_form"/>
+        </record>
+    </data>
+</odoo> 

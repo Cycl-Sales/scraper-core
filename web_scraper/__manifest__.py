@@ -9,7 +9,7 @@
     """,
     'author': 'CyclSales',
     'website': 'https://www.cyclsales.com',
-    'depends': ['base', 'web'],
+    'depends': ['base', 'web', 'cs-dashboard-backend'],
     'data': [
         'security/ir.model.access.csv',
         'views/zillow_property_views.xml',
@@ -17,6 +17,7 @@
         'views/market_size_location_views.xml',
         'views/fetch_us_zipcode_wizard_views.xml',
         'views/upload_zipcode_reference_wizard_views.xml',
+        'wizard/select_application_wizard_views.xml',
         'views/res_config_settings_views.xml',
         'views/views.xml',
         'views/templates.xml',

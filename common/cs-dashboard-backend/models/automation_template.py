@@ -7,10 +7,38 @@ class AutomationTemplate(models.Model):
     _order = 'name'
 
     name = fields.Char(required=True)
-    location_id = fields.Many2one('installed.location', string='Location', ondelete='cascade', index=True)
+    automation_group = fields.Char(string='Automation Group', index=True, 
+                                  help='Group name to apply this template to multiple locations')
     parent_template_id = fields.Many2one('automation.template', string='Parent Template')
     is_default = fields.Boolean(default=False)
+    is_custom = fields.Boolean(default=False, help='Indicates if this is a custom template created from a default template')
     business_context = fields.Text()
+    
+    # Computed field to show all locations using this template
+    installed_location_ids = fields.Many2many('installed.location', compute='_compute_installed_location_ids', string='Locations Using This Template', readonly=True)
+    
+    # Temporary field to resolve view cache issue
+    location_ids = fields.Many2many('installed.location', compute='_compute_installed_location_ids', string='Locations (Legacy)', readonly=True)
+    
+    @api.depends('name', 'automation_group')
+    def _compute_installed_location_ids(self):
+        """Compute the locations that are using this template"""
+        for template in self:
+            try:
+                if 'installed.location' in self.env:
+                    locations = self.env['installed.location'].search([
+                        ('automation_template_id', '=', template.id)
+                    ])
+                    template.installed_location_ids = [(6, 0, locations.ids)]
+                    template.location_ids = [(6, 0, locations.ids)]  # Temporary for view cache compatibility
+                else:
+                    template.installed_location_ids = [(6, 0, [])]
+                    template.location_ids = [(6, 0, [])]  # Temporary for view cache compatibility
+            except Exception as e:
+                # Fallback in case of any issues
+                template.installed_location_ids = [(6, 0, [])]
+                template.location_ids = [(6, 0, [])]  # Temporary for view cache compatibility
+    
     # Settings relations
     call_transcript_setting_ids = fields.One2many('automation.call.transcript.setting', 'template_id', string='Call Transcript Settings')
     call_summary_setting_ids = fields.One2many('automation.call.summary.setting', 'template_id', string='Call Summary Settings')

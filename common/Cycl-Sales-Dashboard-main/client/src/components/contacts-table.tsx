@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Search, Plus, Eye, Phone, Edit } from "lucide-react";
+import { Search, Plus, Eye, Phone, Edit, Zap, Activity } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,6 +10,7 @@ import { useContacts } from "@/hooks/use-api";
 import { useToast } from "@/hooks/use-toast";
 import type { Contact as BaseContact } from "@shared/schema";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 // Extend Contact type to include details_fetched
 interface Contact extends BaseContact {
@@ -74,6 +75,26 @@ export default function ContactsTable() {
   const [details, setDetails] = useState<any>(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [detailsError, setDetailsError] = useState<string | null>(null);
+  
+  // AI Analysis state
+  const [aiAnalysisLoading, setAiAnalysisLoading] = useState<{ [key: string]: boolean }>({});
+  
+  // AI Summary Dialog state
+  const [aiSummaryDialog, setAiSummaryDialog] = useState<{
+    open: boolean;
+    contactName: string;
+    aiSummary: string;
+    aiStatus: string;
+    aiQualityGrade: string;
+    aiSalesGrade: string;
+  }>({
+    open: false,
+    contactName: '',
+    aiSummary: '',
+    aiStatus: '',
+    aiQualityGrade: '',
+    aiSalesGrade: ''
+  });
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -221,6 +242,61 @@ export default function ContactsTable() {
     }
   };
 
+  const handleRunAiAnalysis = async (contact: Contact) => {
+    if (aiAnalysisLoading[contact.id]) return;
+    
+    setAiAnalysisLoading(prev => ({ ...prev, [contact.id]: true }));
+    
+    try {
+      const response = await fetch(`/api/run-ai-analysis/${contact.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        toast({
+          title: "AI Analysis Complete",
+          description: data.message,
+          variant: "default",
+        });
+        
+        // Refresh the contact details
+        if (selectedContact && selectedContact.id === contact.id) {
+          handleViewDetails(contact);
+        }
+      } else {
+        toast({
+          title: "AI Analysis Failed",
+          description: data.error || "Failed to run AI analysis",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error("Failed to run AI analysis:", error);
+      toast({
+        title: "Error",
+        description: "Failed to run AI analysis. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setAiAnalysisLoading(prev => ({ ...prev, [contact.id]: false }));
+    }
+  };
+
+  const handleOpenAiSummaryDialog = (contact: Contact, details: any) => {
+    const fullName = `${contact.firstName || ''} ${contact.lastName || ''}`.trim() || 'Unknown Contact';
+    setAiSummaryDialog({
+      open: true,
+      contactName: fullName,
+      aiSummary: details.ai_summary || 'No AI summary available',
+      aiStatus: details.ai_status || 'No status',
+      aiQualityGrade: details.ai_quality_grade || 'No grade',
+      aiSalesGrade: details.ai_sales_grade || 'No grade'
+    });
+  };
+
   if (isLoading) {
     return (
       <Card className="bg-slate-800 border-slate-700">
@@ -341,6 +417,28 @@ export default function ContactsTable() {
                           <Button variant="ghost" size="sm" className="text-slate-400 hover:text-white">
                             <Edit className="w-4 h-4" />
                           </Button>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm" 
+                                  className={`text-slate-400 hover:text-white ${aiAnalysisLoading[contact.id] ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                  onClick={() => handleRunAiAnalysis(contact)}
+                                  disabled={aiAnalysisLoading[contact.id]}
+                                >
+                                  {aiAnalysisLoading[contact.id] ? (
+                                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
+                                  ) : (
+                                    <Zap className="w-4 h-4" />
+                                  )}
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Run AI analysis to determine contact status, quality grade, and sales potential.</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -405,6 +503,68 @@ export default function ContactsTable() {
                       {details.dateCreated ? new Date(details.dateCreated).toLocaleDateString() : 'N/A'}
                     </span>
                   </div>
+                </div>
+              </div>
+
+              {/* AI Analysis Status */}
+              <div className="bg-slate-50 p-4 rounded-lg">
+                <h3 className="text-lg font-semibold mb-3 text-slate-800">AI Analysis Status</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <span className="font-medium text-slate-600">Status:</span>
+                    <span className={`ml-2 px-2 py-1 rounded text-xs font-medium ${
+                      details.ai_analysis_status === 'completed' ? 'bg-green-100 text-green-800' :
+                      details.ai_analysis_status === 'processing' ? 'bg-yellow-100 text-yellow-800' :
+                      details.ai_analysis_status === 'failed' ? 'bg-red-100 text-red-800' :
+                      'bg-slate-100 text-slate-800'
+                    }`}>
+                      {details.ai_analysis_status || 'pending'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="font-medium text-slate-600">Last Analysis:</span>
+                    <span className="ml-2 text-slate-800">
+                      {details.ai_analysis_date ? new Date(details.ai_analysis_date).toLocaleString() : 'Never'}
+                    </span>
+                  </div>
+                  {details.ai_status && (
+                    <div>
+                      <span className="font-medium text-slate-600">AI Status:</span>
+                      <span className="ml-2 text-slate-800">{details.ai_status}</span>
+                    </div>
+                  )}
+                  {details.ai_summary && (
+                    <div>
+                      <span className="font-medium text-slate-600">AI Summary:</span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="ml-2 inline-flex items-center gap-2 px-2 py-1 rounded-md border border-blue-500 text-blue-600 font-medium text-xs hover:bg-blue-50"
+                        onClick={() => handleOpenAiSummaryDialog(selectedContact!, details)}
+                      >
+                        <Eye className="w-3 h-3" />
+                        Read
+                      </Button>
+                    </div>
+                  )}
+                  {details.ai_quality_grade && (
+                    <div>
+                      <span className="font-medium text-slate-600">AI Quality Grade:</span>
+                      <span className="ml-2 text-slate-800">{details.ai_quality_grade}</span>
+                    </div>
+                  )}
+                  {details.ai_sales_grade && (
+                    <div>
+                      <span className="font-medium text-slate-600">AI Sales Grade:</span>
+                      <span className="ml-2 text-slate-800">{details.ai_sales_grade}</span>
+                    </div>
+                  )}
+                  {details.ai_analysis_error && (
+                    <div className="col-span-2">
+                      <span className="font-medium text-slate-600">Error:</span>
+                      <span className="ml-2 text-red-600">{details.ai_analysis_error}</span>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -522,6 +682,53 @@ export default function ContactsTable() {
               )}
             </div>
           ) : null}
+        </DialogContent>
+      </Dialog>
+
+      {/* AI Summary Dialog */}
+      <Dialog open={aiSummaryDialog.open} onOpenChange={(open) => setAiSummaryDialog(prev => ({ ...prev, open }))}>
+        <DialogContent className="max-w-2xl bg-slate-900 border-slate-800 text-slate-50">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold text-white flex items-center gap-2">
+              <Eye className="w-5 h-5 text-blue-400" />
+              AI Analysis Summary
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-6">
+            {/* Contact Name */}
+            <div>
+              <h3 className="text-lg font-semibold text-white mb-2">{aiSummaryDialog.contactName}</h3>
+            </div>
+
+            {/* AI Summary */}
+            <div>
+              <h4 className="text-md font-medium text-slate-300 mb-3 flex items-center gap-2">
+                <Activity className="w-4 h-4 text-blue-400" />
+                AI Summary
+              </h4>
+              <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
+                <p className="text-slate-200 leading-relaxed whitespace-pre-wrap">
+                  {aiSummaryDialog.aiSummary}
+                </p>
+              </div>
+            </div>
+
+            {/* AI Analysis Details */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
+                <h5 className="text-sm font-medium text-slate-400 mb-2">AI Status</h5>
+                <p className="text-white font-semibold">{aiSummaryDialog.aiStatus}</p>
+              </div>
+              <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
+                <h5 className="text-sm font-medium text-slate-400 mb-2">Quality Grade</h5>
+                <p className="text-white font-semibold">{aiSummaryDialog.aiQualityGrade}</p>
+              </div>
+              <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
+                <h5 className="text-sm font-medium text-slate-400 mb-2">Sales Grade</h5>
+                <p className="text-white font-semibold">{aiSummaryDialog.aiSalesGrade}</p>
+              </div>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </Card>

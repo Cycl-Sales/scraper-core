@@ -1,6 +1,5 @@
-import { useLocation } from "wouter";
 import { useState, useEffect } from "react";
-import { ArrowUpRight, Users, User, Filter, Share2, ChevronDown, X, Phone, Clock, Calendar } from "lucide-react";
+import { Users, User, Filter, Share2, ChevronDown, X, Phone, Clock, Calendar } from "lucide-react";
 import TopNavigation from "@/components/top-navigation";
 import { Button } from "@/components/ui/button";
 import CallTranscriptDialog from "@/components/call-transcript-dialog";
@@ -8,6 +7,7 @@ import CallVolumeChart from "@/components/charts/call-volume-chart";
 import EngagementChart from "@/components/charts/engagement-chart";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
+import { CYCLSALES_APP_ID } from "@/lib/constants";
 
 function useQuery() {
   return new URLSearchParams(window.location.search);
@@ -83,7 +83,7 @@ export default function CallDetails() {
   const query = useQuery();
   const contactId = query.get("contact_id");
   const contact = query.get("contact") || "";
-  const date = query.get("date") || "";
+  // Removed unused date query param
   const tags = parseTags(query.get("tags"));
 
   // State for call messages
@@ -96,7 +96,7 @@ export default function CallDetails() {
   const [activeTab, setActiveTab] = useState("calls");
   const [transcriptDialogOpen, setTranscriptDialogOpen] = useState(false);
   const [selectedCallDetails, setSelectedCallDetails] = useState<any>(null);
-  const [loadingCallDetails, setLoadingCallDetails] = useState(false);
+  // Removed unused loadingCallDetails state
   // Add filter states
   const [notMarketingSource, setNotMarketingSource] = useState("");
   const [marketingSource, setMarketingSource] = useState("");
@@ -120,7 +120,7 @@ export default function CallDetails() {
         setLoading(true);
         setError(null);
         
-        const response = await fetch(`/api/contact-call-messages/${contactId}`);
+        const response = await fetch(`/api/contact-call-messages/${contactId}?appId=${CYCLSALES_APP_ID}`);
         const data = await response.json();
         
         if (data.success) {
@@ -143,10 +143,9 @@ export default function CallDetails() {
   // Handler for fetching detailed call information
   const handleDetailsClick = async (messageId: number) => {
     try {
-      setLoadingCallDetails(true);
       setTranscriptDialogOpen(true);
       
-      const response = await fetch(`/api/call-details/${messageId}`);
+              const response = await fetch(`/api/call-details/${messageId}?appId=${CYCLSALES_APP_ID}`);
       const data = await response.json();
       
       if (data.success) {
@@ -159,7 +158,7 @@ export default function CallDetails() {
       console.error("Error fetching call details:", err);
       setSelectedCallDetails(null);
     } finally {
-      setLoadingCallDetails(false);
+      // no-op
     }
   };
 

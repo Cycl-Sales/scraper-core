@@ -54,6 +54,20 @@ class CyclSalesApplication(models.Model):
             else:
                 record.token_status = 'valid'
 
+    def name_get(self):
+        """Custom name_get to show token status in dropdowns"""
+        result = []
+        for record in self:
+            status_icons = {
+                'valid': '✓',
+                'expired': '⚠',
+                'missing': '✗'
+            }
+            icon = status_icons.get(record.token_status, '?')
+            name = f"{record.name} ({record.app_id}) - {icon} {record.token_status.title()}"
+            result.append((record.id, name))
+        return result
+
     @api.constrains('client_id', 'app_id')
     def _check_unique_identifiers(self):
         """Ensure client_id and app_id are unique"""

@@ -207,6 +207,8 @@ class GhlContactMessageTranscript(models.Model):
         }
 
     @api.model
+
+
     def fetch_transcript_for_message(self, message_id, app_id='684c5cc0736d09f78555981f'):
         """
         Fetch transcript from GHL API for a specific message
@@ -228,12 +230,39 @@ class GhlContactMessageTranscript(models.Model):
             app = self.env['cyclsales.application'].sudo().search([
                 ('app_id', '=', app_id)
             ], limit=1)
-            if not app or not app.access_token:
-                _logger.error("No agency access token found")
+            if not app:
+                _logger.error(f"No cyclsales.application found for app_id: {app_id}")
                 return {
                     'success': False,
-                    'error': 'No agency access token found'
+                    'error': f'No application found for app_id: {app_id}'
                 }
+            
+            if not app.access_token:
+                _logger.error(f"No access token found for application {app.name} (app_id: {app_id})")
+                return {
+                    'success': False,
+                    'error': 'No access token found for the application'
+                }
+            
+            # Check if token is expired and try to refresh it
+            if app.token_status == 'expired' and app.refresh_token:
+                _logger.info(f"Token expired for application {app.name}, attempting to refresh...")
+                try:
+                    app.action_refresh_token()
+                    # Re-read the app to get the updated token
+                    app = self.env['cyclsales.application'].sudo().browse(app.id)
+                    if app.token_status == 'expired':
+                        _logger.error(f"Failed to refresh token for application {app.name}")
+                        return {
+                            'success': False,
+                            'error': 'Access token is expired and could not be refreshed'
+                        }
+                except Exception as refresh_error:
+                    _logger.error(f"Error refreshing token for application {app.name}: {str(refresh_error)}")
+                    return {
+                        'success': False,
+                        'error': f'Failed to refresh access token: {str(refresh_error)}'
+                    }
 
             # Step 2: Get location access token using installed.location.fetch_location_token method
             location = message.location_id
@@ -256,10 +285,10 @@ class GhlContactMessageTranscript(models.Model):
             _logger.info(f"[Transcript Fetch] Location token: {location_token[:20] if location_token else 'None'}...")
 
             if not location_token:
-                _logger.error(f"Failed to get location token from installed.location.fetch_location_token")
+                _logger.error(f"Failed to get location token for location {location.location_id} using agency token from app {app.name}")
                 return {
                     'success': False,
-                    'error': "Failed to get location token from installed.location.fetch_location_token"
+                    'error': f"Failed to get location token. This could be due to:\n1. Invalid or expired agency access token\n2. Location {location.location_id} not found or not accessible\n3. Company ID {company_id} is incorrect\n\nPlease check the application's access token and try refreshing it if needed."
                 }
 
             # Build API URL

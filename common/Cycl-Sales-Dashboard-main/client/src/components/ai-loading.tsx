@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { Brain, Sparkles, Zap } from "lucide-react";
+import { Brain, Sparkles } from "lucide-react";
 
 interface AILoadingProps {
   message?: string;
