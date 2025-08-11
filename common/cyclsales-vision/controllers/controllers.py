@@ -166,34 +166,6 @@ class CyclSalesVisionController(http.Controller):
                     status=200,
                 )
             
-            # Enforce required AI fields before triggering workflows
-            # Support both nested "data" and flat payloads as sent by GHL
-            payload_for_ai = data['data'] if ('data' in data and isinstance(data['data'], dict)) else data
-            summary_prompt_present = bool(payload_for_ai.get('cs_vision_summary_prompt'))
-            minimum_duration_present = 'cs_vision_call_minimum_duration' in data
-
-            if not summary_prompt_present:
-                _logger.warning("[GHL Call Summary] Missing required field: cs_vision_summary_prompt")
-                return Response(
-                    json.dumps({
-                        'error_code': 'missing_field',
-                        'message': 'Missing required field: cs_vision_summary_prompt'
-                    }),
-                    content_type='application/json',
-                    status=400
-                )
-
-            if not minimum_duration_present:
-                _logger.warning("[GHL Call Summary] Missing required field: cs_vision_call_minimum_duration")
-                return Response(
-                    json.dumps({
-                        'error_code': 'missing_field',
-                        'message': 'Missing required field: cs_vision_call_minimum_duration'
-                    }),
-                    content_type='application/json',
-                    status=400
-                )
-
             # TRIGGER WORKFLOW - Execute workflows for this call
             workflow_results = self._trigger_workflows_for_call(data, location_id, access_token)
             
@@ -293,13 +265,8 @@ class CyclSalesVisionController(http.Controller):
         try:
             _logger.info(f"[Workflow Trigger] Starting workflow trigger for location: {location.id}")
             
-            # Extract minimum duration from call data (required upstream)
-            minimum_duration = call_data.get('cs_vision_call_minimum_duration')
-            # Coerce to int defensively
-            try:
-                minimum_duration = int(minimum_duration) if minimum_duration is not None else None
-            except Exception:
-                minimum_duration = None
+            # Extract minimum duration from call data
+            minimum_duration = call_data.get('cs_vision_call_minimum_duration', 20)
             
             # Find relevant triggers for this location and call event
             triggers = request.env['cyclsales.vision.trigger'].sudo().search([
