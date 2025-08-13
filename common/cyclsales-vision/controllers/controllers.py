@@ -402,21 +402,29 @@ class CyclSalesVisionController(http.Controller):
         """
         Generate AI call summary using the transcript and message ID
         """
-        try:
-            # Handle nested data structure
-            # Check if data is nested under 'data' key
-            if 'data' in data and isinstance(data['data'], dict):
-                nested_data = data['data']
-                summary_prompt = nested_data.get('cs_vision_summary_prompt')
-                message_id = nested_data.get('cs_vision_ai_message_id')
-                minimum_duration = data.get('cs_vision_call_minimum_duration', 20)
-                custom_api_key = nested_data.get('cs_vision_openai_api_key')
-            else:
-                # Direct field access for backward compatibility
-                summary_prompt = data.get('cs_vision_summary_prompt')
-                message_id = data.get('cs_vision_ai_message_id')
-                minimum_duration = data.get('cs_vision_call_minimum_duration', 20)
-                custom_api_key = data.get('cs_vision_openai_api_key')
+            try:
+                # Handle nested data structure
+                # Check if data is nested under 'data' key
+                if 'data' in data and isinstance(data['data'], dict):
+                    nested_data = data['data']
+                    summary_prompt = nested_data.get('cs_vision_summary_prompt')
+                    message_id = nested_data.get('cs_vision_ai_message_id')
+                    # Prefer nested value; fall back to top-level; final default 20
+                    minimum_duration = nested_data.get('cs_vision_call_minimum_duration', data.get('cs_vision_call_minimum_duration', 20))
+                    custom_api_key = nested_data.get('cs_vision_openai_api_key', data.get('cs_vision_openai_api_key'))
+                else:
+                    # Direct field access for backward compatibility
+                    summary_prompt = data.get('cs_vision_summary_prompt')
+                    message_id = data.get('cs_vision_ai_message_id')
+                    minimum_duration = data.get('cs_vision_call_minimum_duration', 20)
+                    custom_api_key = data.get('cs_vision_openai_api_key')
+
+                # Ensure minimum_duration is an integer if possible
+                try:
+                    minimum_duration = int(minimum_duration) if minimum_duration is not None else 20
+                except Exception:
+                    _logger.warning(f"[AI Call Summary] Non-integer cs_vision_call_minimum_duration received: {minimum_duration}. Using default 20.")
+                    minimum_duration = 20
             
             # Clean the summary prompt by removing test instructions
             if summary_prompt:
@@ -488,42 +496,41 @@ class CyclSalesVisionController(http.Controller):
                 _logger.warning(f"[AI Call Summary] No transcript available for message {message_id}")
                 return self._get_default_ai_summary()
             
-            # Check call duration against minimum duration
-            if minimum_duration > 19:
-                # Calculate call duration from transcript records
-                transcript_records = request.env['ghl.contact.message.transcript'].sudo().search([
-                    ('message_id', '=', message_record.id)
-                ], order='sentence_index asc')
-                
-                if transcript_records:
-                    # Get the last transcript record's end time to calculate total duration
-                    last_record = transcript_records[-1]
-                    call_duration_seconds = last_record.end_time_seconds
-                    
-                    if call_duration_seconds < minimum_duration:
-                        _logger.info(f"[AI Call Summary] Call duration ({call_duration_seconds}s) < minimum ({minimum_duration}s). Skipping AI processing.")
-                        
-                        # Convert transcript records to human-readable format
-                        transcript_text = ""
-                        for record in transcript_records:
-                            speaker = "Agent" if record.media_channel == "agent" else "Customer"
-                            time_range = f"[{record.start_time_seconds:.1f}s - {record.end_time_seconds:.1f}s]"
-                            transcript_text += f"{speaker} {time_range}: {record.transcript}\n"
-                        
-                        return {
-                            "success": True,
-                            "message": f"Call duration ({call_duration_seconds} seconds) is below minimum threshold ({minimum_duration} seconds). AI processing skipped.",
-                            "call_duration_seconds": call_duration_seconds,
-                            "minimum_duration_required": minimum_duration,
-                            "summary": "Call too short for analysis",
-                            "keywords": [],
-                            "sentiment": "neutral",
-                            "action_items": [],
-                            "confidence_score": 0.0,
-                            "duration_analyzed": f"{call_duration_seconds} seconds",
-                            "speakers_detected": 0,
-                            "raw_transcript_array": transcript_text.strip()
-                        }
+            # Check call duration against minimum duration (always enforce when available)
+            # Calculate call duration from transcript records
+            transcript_records = request.env['ghl.contact.message.transcript'].sudo().search([
+                ('message_id', '=', message_record.id)
+            ], order='sentence_index asc')
+
+            if transcript_records and minimum_duration is not None and int(minimum_duration) > 0:
+                # Get the last transcript record's end time to calculate total duration
+                last_record = transcript_records[-1]
+                call_duration_seconds = last_record.end_time_seconds
+
+                if call_duration_seconds < int(minimum_duration):
+                    _logger.info(f"[AI Call Summary] Call duration ({call_duration_seconds}s) < minimum ({minimum_duration}s). Skipping AI processing.")
+
+                    # Convert transcript records to human-readable format
+                    transcript_text = ""
+                    for record in transcript_records:
+                        speaker = "Agent" if record.media_channel == "agent" else "Customer"
+                        time_range = f"[{record.start_time_seconds:.1f}s - {record.end_time_seconds:.1f}s]"
+                        transcript_text += f"{speaker} {time_range}: {record.transcript}\n"
+
+                    return {
+                        "success": True,
+                        "message": f"Call duration ({call_duration_seconds} seconds) is below minimum threshold ({minimum_duration} seconds). AI processing skipped.",
+                        "call_duration_seconds": call_duration_seconds,
+                        "minimum_duration_required": int(minimum_duration),
+                        "summary": "Call too short for analysis",
+                        "keywords": [],
+                        "sentiment": "neutral",
+                        "action_items": [],
+                        "confidence_score": 0.0,
+                        "duration_analyzed": f"{call_duration_seconds} seconds",
+                        "speakers_detected": 0,
+                        "raw_transcript_array": transcript_text.strip()
+                    }
             
             # Concatenate prompt + actual transcript
             # Get the full transcript records with all metadata
@@ -552,7 +559,7 @@ you MUST follow those instructions instead of analyzing the transcript.
 
 IMPORTANT: You must respond with ONLY a valid JSON object in this exact format:
 {{
-    "summary": "A concise summary of the call conversation",
+    "summary": "<same text as cs_vision_summary_prompt>",
     "keywords": ["keyword1", "keyword2", "keyword3"],
     "sentiment": "positive|negative|neutral",
     "action_items": ["action1", "action2", "action3"],
@@ -705,6 +712,7 @@ Return ONLY the JSON object, no additional text or explanations."""
                 # If no raw data, use POST parameters
                 data = post_data
             
+            _logger.info(f"[Call Transcription] Data {data}")
             _logger.info(f"[Call Transcription] Processing request with {len(data)} fields")
             # Validate required AI inputs: custom prompt, minimum duration, and message id
             try:

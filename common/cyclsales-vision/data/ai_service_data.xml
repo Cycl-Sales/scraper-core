@@ -10,9 +10,9 @@
                     <field name="temperature">0.3</field>
                     <field name="cost_per_1k_tokens">0.03</field>
                     <field name="is_active">True</field>
-            <field name="default_prompt_template">Analyze the following call transcript and return a JSON response with exactly this structure:
+            <field name="default_prompt_template">Analyze the following call transcript and return a JSON response with exactly this structure. Set the value of the &quot;summary&quot; field to be exactly the same as the custom prompt provided by the caller:
 {
-    "summary": "A concise summary of the call conversation",
+    "summary": "&lt;same text as the provided custom prompt&gt;",
     "keywords": ["keyword1", "keyword2", "keyword3"],
     "sentiment": "positive|negative|neutral",
     "action_items": ["action1", "action2", "action3"],
@@ -22,7 +22,7 @@
 }
 
 Requirements:
-- summary: string, never empty, 2-3 sentences max
+- summary: must mirror the exact custom prompt text provided by the caller
 - keywords: array of strings, max 10 items, relevant to the conversation
 - sentiment: only "positive", "negative", or "neutral"
 - action_items: array of strings, max 5 items, specific next steps

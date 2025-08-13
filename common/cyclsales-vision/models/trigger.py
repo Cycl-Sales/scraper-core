@@ -215,7 +215,7 @@ class CyclSalesVisionTrigger(models.Model):
                 'error': error_msg,
                 'trigger_id': self.id
             }
-
+ 
     def _execute_call_processing(self, context):
         """Execute call processing workflow"""
         try:

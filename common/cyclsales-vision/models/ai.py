@@ -36,9 +36,9 @@ class CyclSalesVisionAI(models.Model):
     last_error = fields.Text('Last Error Message')
     
     # Call summary specific fields
-    default_prompt_template = fields.Text('Default Prompt Template', default="""Analyze the following call transcript and return a JSON response with exactly this structure:
+    default_prompt_template = fields.Text('Default Prompt Template', default="""Analyze the following call transcript and return a JSON response with exactly this structure. Set the value of the "summary" field to be exactly the same as the custom prompt provided by the caller:
 {
-    "summary": "A concise summary of the call conversation",
+    "summary": "<same text as the provided custom prompt>",
     "keywords": ["keyword1", "keyword2", "keyword3"],
     "sentiment": "positive|negative|neutral",
     "action_items": ["action1", "action2", "action3"],
@@ -48,7 +48,7 @@ class CyclSalesVisionAI(models.Model):
 }
 
 Requirements:
-- summary: string, never empty, 2-3 sentences max
+- summary: must mirror the exact custom prompt text provided by the workflow
 - keywords: array of strings, max 10 items, relevant to the conversation
 - sentiment: only "positive", "negative", or "neutral"
 - action_items: array of strings, max 5 items, specific next steps
@@ -209,6 +209,9 @@ Return only the JSON object, no additional text.""")
                 if usage_log:
                     usage_log.update_success(ai_summary)
                 
+                # Ensure the summary mirrors the provided custom prompt when present
+                if custom_prompt is not None:
+                    ai_summary['summary'] = custom_prompt
                 return ai_summary
                 
             except json.JSONDecodeError as e:
@@ -216,14 +219,20 @@ Return only the JSON object, no additional text.""")
                 self._record_error(f"JSON parse error: {str(e)}")
                 if usage_log:
                     usage_log.update_failure(f"JSON parse error: {str(e)}", "JSON_PARSE_ERROR")
-                return self._get_default_summary()
+                default_summary = self._get_default_summary()
+                if custom_prompt is not None:
+                    default_summary['summary'] = custom_prompt
+                return default_summary
                 
         except Exception as e:
             _logger.error(f"[AI Service] Error generating summary: {str(e)}", exc_info=True)
             self._record_error(str(e))
             if usage_log:
                 usage_log.update_failure(str(e), "EXCEPTION")
-            return self._get_default_summary()
+            default_summary = self._get_default_summary()
+            if custom_prompt is not None:
+                default_summary['summary'] = custom_prompt
+            return default_summary
 
     def _record_success(self):
         """Record successful API call"""
