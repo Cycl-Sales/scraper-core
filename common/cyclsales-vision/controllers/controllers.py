@@ -719,10 +719,11 @@ Return ONLY the JSON object, no additional text or explanations."""
                 # Support both nested structure under 'data' and flat payloads
                 if 'data' in data and isinstance(data['data'], dict):
                     payload = data['data']
-                    minimum_duration = data.get('cs_vision_call_minimum_duration', None)
                 else:
                     payload = data
-                    minimum_duration = data.get('cs_vision_call_minimum_duration', None)
+
+                # Always read minimum duration from the same payload dict
+                minimum_duration = payload.get('cs_vision_call_minimum_duration', None)
 
                 summary_prompt = (
                     payload.get('cs_vision_summary_prompt') 
