@@ -377,7 +377,7 @@ class CyclSalesVisionController(http.Controller):
                 timeout=30
             )
             
-            if response.status_code == 200:
+            if response.status_code == 200 or response.status_code == 201:
                 _logger.info(f"[GHL Trigger] Success - Status: {response.status_code}")
                 return {
                     'success': True,
