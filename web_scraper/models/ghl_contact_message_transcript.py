@@ -305,8 +305,7 @@ class GhlContactMessageTranscript(models.Model):
             _logger.info(f"[Transcript Fetch] Fetching transcript for message {message.ghl_id}")
 
             response = requests.get(url, headers=headers, timeout=30)
-            _logger.info(f"[Transcript Fetch] Response status: {response.status_code}")
-            _logger.info(f"[Transcript Fetch] Response text: {response.text[:200]}...")
+            _logger.info(f"[Transcript Fetch] Response status: {response.status_code}") 
 
             if response.status_code == 200:
                 transcript_data = response.json()

@@ -1213,7 +1213,6 @@ class InstalledLocation(models.Model):
         }
         try:
             resp = requests.post(url, headers=headers, data=data)
-            _logger.info(f"[CyclSalesApplication] fetch_location_token response: {resp.status_code} {resp.text}")
             if resp.status_code not in [200, 201]:
                 _logger.error(f"Failed to fetch location token: {resp.text}")
                 return None

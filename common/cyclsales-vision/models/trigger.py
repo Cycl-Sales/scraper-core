@@ -226,7 +226,7 @@ class CyclSalesVisionTrigger(models.Model):
             message_id = event_data.get('messageId')
             contact_id = event_data.get('contactId')
             call_duration = event_data.get('callDuration', 0)
-            
+            _logger.info(f"[Call Processing] Call context: {context}")
             # Extract custom prompt from event data (nested structure)
             custom_prompt = None
             if 'data' in event_data and isinstance(event_data['data'], dict):
