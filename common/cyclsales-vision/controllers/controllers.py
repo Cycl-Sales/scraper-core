@@ -16,7 +16,6 @@ class CyclSalesVisionController(http.Controller):
             raw_data = request.httprequest.data
             try:
                 data = json.loads(raw_data)
-                _logger.info(f"[GHL Call Summary] Received webhook: {data}")
             except Exception as e:
                 _logger.error(f"[GHL Call Summary] JSON decode error: {str(e)} | Raw data: {raw_data}")
                 return Response(
@@ -31,12 +30,14 @@ class CyclSalesVisionController(http.Controller):
             # Only process if messageType == 'CALL'
             message_type = data.get('messageType')
             if message_type != 'CALL':
-                _logger.info(f"[GHL Call Summary] Ignored non-call messageType: {message_type}")
                 return Response(
                     json.dumps({'status': 'ignored', 'reason': 'Non-call messageType'}),
                     content_type='application/json',
                     status=200
                 )
+            
+            # Log only when it's a CALL message type
+            _logger.info(f"[GHL Call Summary] Received CALL webhook: {data}")
             
             # Early validation: Check call duration
             call_duration = data.get('callDuration', 0)
