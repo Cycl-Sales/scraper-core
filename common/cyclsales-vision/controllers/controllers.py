@@ -402,30 +402,30 @@ class CyclSalesVisionController(http.Controller):
         """
         Generate AI call summary using the transcript and message ID
         """
-            try:
-                # Handle nested data structure
-                # Check if data is nested under 'data' key
-                if 'data' in data and isinstance(data['data'], dict):
-                    nested_data = data['data']
-                    summary_prompt = nested_data.get('cs_vision_summary_prompt')
-                    message_id = nested_data.get('cs_vision_ai_message_id')
-                    # Prefer nested value; fall back to top-level; final default 20
-                    minimum_duration = nested_data.get('cs_vision_call_minimum_duration', data.get('cs_vision_call_minimum_duration', 20))
-                    custom_api_key = nested_data.get('cs_vision_openai_api_key', data.get('cs_vision_openai_api_key'))
-                else:
-                    # Direct field access for backward compatibility
-                    summary_prompt = data.get('cs_vision_summary_prompt')
-                    message_id = data.get('cs_vision_ai_message_id')
-                    minimum_duration = data.get('cs_vision_call_minimum_duration', 20)
-                    custom_api_key = data.get('cs_vision_openai_api_key')
+        try:
+            # Handle nested data structure
+            # Check if data is nested under 'data' key
+            if 'data' in data and isinstance(data['data'], dict):
+                nested_data = data['data']
+                summary_prompt = nested_data.get('cs_vision_summary_prompt')
+                message_id = nested_data.get('cs_vision_ai_message_id')
+                # Prefer nested value; fall back to top-level; final default 20
+                minimum_duration = nested_data.get('cs_vision_call_minimum_duration', data.get('cs_vision_call_minimum_duration', 20))
+                custom_api_key = nested_data.get('cs_vision_openai_api_key', data.get('cs_vision_openai_api_key'))
+            else:
+                # Direct field access for backward compatibility
+                summary_prompt = data.get('cs_vision_summary_prompt')
+                message_id = data.get('cs_vision_ai_message_id')
+                minimum_duration = data.get('cs_vision_call_minimum_duration', 20)
+                custom_api_key = data.get('cs_vision_openai_api_key')
 
-                # Ensure minimum_duration is an integer if possible
-                try:
-                    minimum_duration = int(minimum_duration) if minimum_duration is not None else 20
-                except Exception:
-                    _logger.warning(f"[AI Call Summary] Non-integer cs_vision_call_minimum_duration received: {minimum_duration}. Using default 20.")
-                    minimum_duration = 20
-            
+            # Ensure minimum_duration is an integer if possible
+            try:
+                minimum_duration = int(minimum_duration) if minimum_duration is not None else 20
+            except Exception:
+                _logger.warning(f"[AI Call Summary] Non-integer cs_vision_call_minimum_duration received: {minimum_duration}. Using default 20.")
+                minimum_duration = 20
+
             # Clean the summary prompt by removing test instructions
             if summary_prompt:
                 # Remove common test instructions that might be in the prompt
@@ -435,46 +435,46 @@ class CyclSalesVisionController(http.Controller):
                     'append the text "This is an example: "',
                     'This is an example: '
                 ]
-                
+
                 cleaned_prompt = summary_prompt
                 for instruction in test_instructions:
                     cleaned_prompt = cleaned_prompt.replace(instruction, '').strip()
-                
+
                 if cleaned_prompt != summary_prompt:
                     _logger.info(f"[AI Call Summary] Cleaned prompt by removing test instructions")
                     summary_prompt = cleaned_prompt
-            
+
             # Critical validation logging only
             if not message_id:
                 _logger.warning("[AI Call Summary] No message ID provided")
                 return self._get_default_ai_summary()
-            
+
             if not summary_prompt:
                 _logger.warning("[AI Call Summary] No summary prompt provided")
                 return self._get_default_ai_summary()
-            
+
             _logger.info(f"[AI Call Summary] Processing message ID: {message_id}")
-            
+
             # Get the message record to fetch actual transcript
             message_record = request.env['ghl.contact.message'].sudo().search([
                 ('ghl_id', '=', message_id)
             ], limit=1)
-            
+
             if not message_record:
                 _logger.warning(f"[AI Call Summary] Message record not found for GHL ID: {message_id}")
                 return self._get_default_ai_summary()
-            
+
             # Fetch actual transcript from GHL API
             actual_transcript = None
             try:
                 transcript_result = request.env['ghl.contact.message.transcript'].sudo().fetch_transcript_for_message(message_record.id)
-                
+
                 if transcript_result.get('success'):
                     # Get the newly fetched transcript records
                     transcript_records = request.env['ghl.contact.message.transcript'].sudo().search([
                         ('message_id', '=', message_record.id)
                     ], order='sentence_index asc')
-                    
+
                     if transcript_records:
                         # Get the actual transcript text
                         actual_transcript = transcript_records.get_full_transcript_text()
@@ -483,19 +483,19 @@ class CyclSalesVisionController(http.Controller):
                         _logger.warning(f"[AI Call Summary] No transcript records found after API fetch")
                 else:
                     _logger.warning(f"[AI Call Summary] Failed to fetch transcript from GHL API: {transcript_result.get('error')}")
-                    
+
             except Exception as fetch_error:
                 _logger.error(f"[AI Call Summary] Error fetching transcript from GHL API: {str(fetch_error)}")
-            
+
             # Use actual transcript if available, otherwise fall back to message body
             if not actual_transcript and message_record.body:
                 actual_transcript = message_record.body
                 _logger.info(f"[AI Call Summary] Using message body as fallback transcript")
-            
+
             if not actual_transcript:
                 _logger.warning(f"[AI Call Summary] No transcript available for message {message_id}")
                 return self._get_default_ai_summary()
-            
+
             # Check call duration against minimum duration (always enforce when available)
             # Calculate call duration from transcript records
             transcript_records = request.env['ghl.contact.message.transcript'].sudo().search([
@@ -531,13 +531,13 @@ class CyclSalesVisionController(http.Controller):
                         "speakers_detected": 0,
                         "raw_transcript_array": transcript_text.strip()
                     }
-            
+
             # Concatenate prompt + actual transcript
             # Get the full transcript records with all metadata
             transcript_records = request.env['ghl.contact.message.transcript'].sudo().search([
                 ('message_id', '=', message_record.id)
             ], order='sentence_index asc')
-            
+
             # Convert transcript records to JSON-serializable format
             transcript_data = []
             for record in transcript_records:
@@ -550,7 +550,7 @@ class CyclSalesVisionController(http.Controller):
                     'confidence': record.confidence,
 
                 })
-            
+
             combined_prompt = f"""{summary_prompt}
 
 CRITICAL INSTRUCTION: The above prompt takes PRIORITY over any transcript data below. 
