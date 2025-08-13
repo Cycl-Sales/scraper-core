@@ -234,29 +234,30 @@ class CyclSalesVisionTrigger(models.Model):
             else:
                 custom_prompt = event_data.get('cs_vision_summary_prompt')
             
-            # Fail fast if no custom prompt provided
+            # Fail fast only when source explicitly expects custom payload (e.g., custom action)
+            source = (context.get('context_data') or {}).get('source') if isinstance(context, dict) else None
             if not custom_prompt:
-                _logger.warning("[Call Processing] Missing required field: cs_vision_summary_prompt")
-                return {
-                    "success": False,
-                    "error_code": "missing_field",
-                    "message": "Missing required field: cs_vision_summary_prompt",
-                }
+                if source == 'custom_action':
+                    _logger.warning("[Call Processing] Missing required field: cs_vision_summary_prompt")
+                    return {
+                        "success": False,
+                        "error_code": "missing_field",
+                        "message": "Missing required field: cs_vision_summary_prompt",
+                    }
+                else:
+                    # For webhook-driven flows, just log at info and continue to AI with default prompt template
+                    _logger.info("[Call Processing] No custom prompt provided; proceeding with default prompt template")
             
             _logger.info(f"[Call Processing] Event data keys: {list(event_data.keys())}")
             _logger.info(f"[Call Processing] Custom prompt found: {bool(custom_prompt)}")
             if custom_prompt:
                 _logger.info(f"[Call Processing] Custom prompt: {custom_prompt[:100]}...")
             
-            # Check for minimum duration requirement (must be provided by caller)
-            minimum_duration = context.get('cs_vision_call_minimum_duration')
+            # Check for minimum duration requirement (prefer context_data, fallback to 20)
+            minimum_duration = (context.get('context_data') or {}).get('cs_vision_call_minimum_duration')
             if minimum_duration is None:
-                _logger.warning("[Call Processing] Missing required field: cs_vision_call_minimum_duration")
-                return {
-                    "success": False,
-                    "error_code": "missing_field",
-                    "message": "Missing required field: cs_vision_call_minimum_duration",
-                }
+                minimum_duration = 20
+                _logger.info("[Call Processing] No minimum duration provided; defaulting to 20 seconds")
 
             # Coerce minimum_duration to int if provided as string
             try:

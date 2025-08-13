@@ -89,29 +89,28 @@ class CyclSalesVisionController(http.Controller):
             import time
             _logger.info(f"[GHL Call Summary] Call validated, waiting 30 seconds before processing...")
             
-            # Log AI-related fields if provided
+            # Skip logging AI-related fields for webhook payloads that don't include them
             try:
-                payload_for_ai = data['data'] if ('data' in data and isinstance(data['data'], dict)) else data
-                summary_prompt_val = payload_for_ai.get('cs_vision_summary_prompt')
-                minimum_duration_val = data.get('cs_vision_call_minimum_duration')
+                if 'data' in data and isinstance(data['data'], dict) and (
+                    'cs_vision_summary_prompt' in data['data'] or 'cs_vision_call_minimum_duration' in data['data']
+                ):
+                    payload_for_ai = data['data']
+                    summary_prompt_val = payload_for_ai.get('cs_vision_summary_prompt')
+                    minimum_duration_val = payload_for_ai.get('cs_vision_call_minimum_duration')
 
-                _logger.info(
-                    f"[GHL Call Summary] cs_vision_summary_prompt present: {bool(summary_prompt_val)}"
-                )
-                if summary_prompt_val:
                     _logger.info(
-                        f"[GHL Call Summary] cs_vision_summary_prompt (first 160 chars): "
-                        f"{str(summary_prompt_val)[:160]}..."
+                        f"[GHL Call Summary] cs_vision_summary_prompt present: {bool(summary_prompt_val)}"
                     )
+                    if summary_prompt_val:
+                        _logger.info(
+                            f"[GHL Call Summary] cs_vision_summary_prompt (first 160 chars): "
+                            f"{str(summary_prompt_val)[:160]}..."
+                        )
 
-                if minimum_duration_val is not None:
-                    _logger.info(
-                        f"[GHL Call Summary] cs_vision_call_minimum_duration: {minimum_duration_val}"
-                    )
-                else:
-                    _logger.warning(
-                        "[GHL Call Summary] cs_vision_call_minimum_duration: missing"
-                    )
+                    if minimum_duration_val is not None:
+                        _logger.info(
+                            f"[GHL Call Summary] cs_vision_call_minimum_duration: {minimum_duration_val}"
+                        )
             except Exception as log_err:
                 _logger.error(
                     f"[GHL Call Summary] Error while logging AI-related fields: {str(log_err)}",
