@@ -174,13 +174,17 @@ Return only the JSON object, no additional text.""")
                 'temperature': self.temperature
             }
             
-            # Validate model type
-            if not self.model_type or self.model_type == 'False':
-                _logger.error(f"[AI Service] Invalid model type: {self.model_type}")
-                return self._get_default_summary()
+            # Validate and set model type
+            model_type = self.model_type
+            if not model_type or model_type == 'False':
+                model_type = 'gpt-4o'  # Default to GPT-4o
+                _logger.warning(f"[AI Service] Invalid model type '{self.model_type}', using default: {model_type}")
+            
+            # Update payload with validated model type
+            payload['model'] = model_type
             
             _logger.info(f"[AI Service] Sending request to {base_url}/chat/completions")
-            _logger.info(f"[AI Service] Model type: {self.model_type}")
+            _logger.info(f"[AI Service] Model type: {model_type}")
             _logger.info(f"[AI Service] API key (first 10 chars): {api_key[:10]}..." if api_key else "No API key")
             _logger.info(f"[AI Service] Payload keys: {list(payload.keys())}")
             
