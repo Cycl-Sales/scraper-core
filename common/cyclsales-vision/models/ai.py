@@ -121,6 +121,12 @@ Return only the JSON object, no additional text.""")
                     usage_log.update_failure("No API key configured", "NO_API_KEY")
                 return self._get_default_summary()
             
+            # Ensure we have a valid base URL
+            base_url = self.base_url or 'https://api.openai.com/v1'
+            if not base_url or base_url == 'False':
+                base_url = 'https://api.openai.com/v1'
+                _logger.warning(f"[AI Service] Invalid base_url '{self.base_url}', using default: {base_url}")
+            
             # Prepare the prompt
             if custom_prompt:
                 # If custom prompt is provided, combine it with the transcript
@@ -161,11 +167,11 @@ Return only the JSON object, no additional text.""")
                 'temperature': self.temperature
             }
             
-            _logger.info(f"[AI Service] Sending request to {self.base_url}/chat/completions")
+            _logger.info(f"[AI Service] Sending request to {base_url}/chat/completions")
             
             # Make the API call
             response = requests.post(
-                f'{self.base_url}/chat/completions',
+                f'{base_url}/chat/completions',
                 headers=headers,
                 json=payload,
                 timeout=30
@@ -214,6 +220,7 @@ Return only the JSON object, no additional text.""")
                 # Ensure the summary mirrors the provided custom prompt when present
                 if custom_prompt is not None:
                     ai_summary['summary'] = custom_prompt
+                    _logger.info(f"[AI Service] Set summary to custom prompt: {custom_prompt[:100]}...")
                 return ai_summary
                 
             except json.JSONDecodeError as e:
