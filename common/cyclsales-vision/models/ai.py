@@ -150,7 +150,7 @@ Return only the JSON object, no additional text.""")
 
 Please provide your response in the following JSON format:
 {{
-    "summary": "Your detailed CRM note/analysis here",
+    "summary": "{custom_prompt}",
     "keywords": ["keyword1", "keyword2", "keyword3"],
     "sentiment": "positive|negative|neutral",
     "action_items": ["action1", "action2", "action3"],
