@@ -764,15 +764,147 @@ Return ONLY the JSON object, no additional text or explanations."""
                     status=400
                 )
             
-            # Generate AI Call Summary using the actual AI service
-            ai_summary = self._generate_ai_call_summary(data)
-            
-            # Return flattened AI call summary fields
-            return Response(
-                json.dumps(ai_summary),
-                content_type='application/json',
-                status=200
-            )
+            # Generate AI Call Summary directly in this endpoint
+            try:
+                # Extract data from payload
+                if 'data' in data and isinstance(data['data'], dict):
+                    payload = data['data']
+                else:
+                    payload = data
+
+                summary_prompt = payload.get('cs_vision_summary_prompt')
+                message_id = payload.get('cs_vision_ai_message_id')
+                minimum_duration = payload.get('cs_vision_call_minimum_duration', 20)
+                custom_api_key = payload.get('cs_vision_openai_api_key')
+
+                _logger.info(f"[Call Transcription] Processing AI summary for message: {message_id}")
+                _logger.info(f"[Call Transcription] Custom prompt provided: {bool(summary_prompt)}")
+                if summary_prompt:
+                    _logger.info(f"[Call Transcription] Custom prompt (first 100 chars): {summary_prompt[:100]}...")
+                _logger.info(f"[Call Transcription] Minimum duration: {minimum_duration}")
+                _logger.info(f"[Call Transcription] Custom API key provided: {bool(custom_api_key)}")
+
+                # Get the message record
+                message_record = request.env['ghl.contact.message'].sudo().search([
+                    ('ghl_id', '=', message_id)
+                ], limit=1)
+
+                if not message_record:
+                    _logger.error(f"[Call Transcription] Message not found: {message_id}")
+                    return Response(
+                        json.dumps({
+                            'error_code': 'message_not_found',
+                            'message': f'Message with ID {message_id} not found'
+                        }),
+                        content_type='application/json',
+                        status=404
+                    )
+
+                # Fetch transcript
+                actual_transcript = None
+                try:
+                    # Get transcript from GHL API
+                    transcript_service = request.env['ghl.contact.message.transcript'].sudo()
+                    actual_transcript = transcript_service.get_full_transcript_text(message_record.id)
+                    _logger.info(f"[Call Transcription] Fetched transcript: {len(actual_transcript) if actual_transcript else 0} characters")
+                except Exception as transcript_err:
+                    _logger.warning(f"[Call Transcription] Failed to fetch transcript: {str(transcript_err)}")
+
+                # Use provided transcript if available, otherwise use fetched transcript or fall back to message body
+                if 'cs_vision_call_transcript' in payload and payload['cs_vision_call_transcript']:
+                    actual_transcript = payload['cs_vision_call_transcript']
+                    _logger.info(f"[Call Transcription] Using provided transcript: {len(actual_transcript)} characters")
+                elif not actual_transcript and message_record.body:
+                    actual_transcript = message_record.body
+                    _logger.info(f"[Call Transcription] Using message body as fallback transcript")
+
+                if not actual_transcript:
+                    _logger.warning(f"[Call Transcription] No transcript available for message {message_id}")
+                    return Response(
+                        json.dumps({
+                            'error_code': 'no_transcript',
+                            'message': 'No transcript available for this call'
+                        }),
+                        content_type='application/json',
+                        status=400
+                    )
+
+                # Check call duration against minimum duration
+                if minimum_duration is not None and int(minimum_duration) > 0:
+                    # Calculate call duration from transcript records
+                    transcript_records = request.env['ghl.contact.message.transcript'].sudo().search([
+                        ('message_id', '=', message_record.id)
+                    ], order='sentence_index asc')
+
+                    if transcript_records:
+                        # Get the last transcript record's end time to calculate total duration
+                        last_record = transcript_records[-1]
+                        call_duration_seconds = last_record.end_time_seconds
+
+                        if call_duration_seconds < int(minimum_duration):
+                            _logger.info(f"[Call Transcription] Call duration ({call_duration_seconds}s) < minimum ({minimum_duration}s). Skipping AI processing.")
+                            return Response(
+                                json.dumps({
+                                    'error_code': 'duration_too_short',
+                                    'message': f'Call duration ({call_duration_seconds}s) is below minimum threshold ({minimum_duration}s)',
+                                    'call_duration': call_duration_seconds,
+                                    'minimum_duration': int(minimum_duration)
+                                }),
+                                content_type='application/json',
+                                status=400
+                            )
+
+                # Prepare transcript data for AI
+                transcript_data = {
+                    'transcript': actual_transcript,
+                    'message_id': message_id,
+                    'contact_id': message_record.contact_id.ghl_id if message_record.contact_id else None,
+                    'call_duration': getattr(transcript_records[-1], 'end_time_seconds', None) if transcript_records else None
+                }
+
+                # Generate AI summary using the AI service
+                ai_service = request.env['cyclsales.vision.ai'].sudo()
+                ai_result = ai_service.generate_call_summary(
+                    transcript=actual_transcript,
+                    message_id=message_id,
+                    contact_id=message_record.contact_id.ghl_id if message_record.contact_id else None,
+                    custom_prompt=summary_prompt,
+                    custom_api_key=custom_api_key
+                )
+
+                if not ai_result or not ai_result.get('success'):
+                    _logger.error(f"[Call Transcription] AI summary generation failed: {ai_result}")
+                    return Response(
+                        json.dumps({
+                            'error_code': 'ai_generation_failed',
+                            'message': 'Failed to generate AI summary',
+                            'details': ai_result.get('error', 'Unknown error')
+                        }),
+                        content_type='application/json',
+                        status=500
+                    )
+
+                # Log successful generation
+                _logger.info(f"[Call Transcription] Successfully generated AI summary for message {message_id}")
+                
+                # Return the AI summary
+                return Response(
+                    json.dumps(ai_result),
+                    content_type='application/json',
+                    status=200
+                )
+
+            except Exception as ai_err:
+                _logger.error(f"[Call Transcription] AI processing error: {str(ai_err)}", exc_info=True)
+                return Response(
+                    json.dumps({
+                        'error_code': 'ai_processing_error',
+                        'message': 'Error during AI processing',
+                        'details': str(ai_err)
+                    }),
+                    content_type='application/json',
+                    status=500
+                )
             
         except Exception as e:
             _logger.error(f"[Call Transcription] Unexpected error: {str(e)}", exc_info=True)
