@@ -1014,6 +1014,18 @@ Return ONLY the JSON object, no additional text or explanations."""
                     'is_active': True
                 })
             
+            # Ensure we have a valid AI service with an ID
+            if not ai_service or not ai_service.id:
+                _logger.error("[AI Call Summary] Failed to get or create AI service")
+                return Response(
+                    json.dumps({'error': 'AI service not available'}),
+                    content_type='application/json',
+                    status=500,
+                    headers={'Access-Control-Allow-Origin': '*'}
+                )
+            
+            _logger.info(f"[AI Call Summary] Using AI service: {ai_service.name} (ID: {ai_service.id})")
+            
             # Get transcript records
             transcript_records = request.env['ghl.contact.message.transcript'].sudo().search([
                 ('message_id', '=', message_id)

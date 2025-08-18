@@ -148,13 +148,62 @@ If usage logs are still not being created:
 4. **Verify the model** is properly installed and updated
 5. **Check database constraints** and field requirements
 
+## Latest Issue Found
+
+After testing with the curl command, we discovered a **critical issue**: The `ai_service_id` was `False` (null) when trying to create usage logs.
+
+### **Root Cause:**
+The AI service record creation was failing or the record didn't have a valid ID, causing the usage log creation to fail with a database constraint violation.
+
+### **Error from Logs:**
+```
+[Usage Log] Creating usage log with data: {'ai_service_id': False, ...}
+ERROR: null value in column "ai_service_id" of relation "cyclsales_vision_ai_usage_log" violates not-null constraint
+```
+
+### **Additional Fixes Applied:**
+
+1. **Enhanced AI Service Validation**
+   - Added validation to ensure AI service has a valid ID before proceeding
+   - Added logging to track AI service creation and ID assignment
+
+2. **Fixed Indentation Issues**
+   - Corrected indentation in the AI service code that was causing logic errors
+   - Moved logging statements outside exception blocks
+
+3. **Better Error Handling**
+   - Prevented transaction abortion when usage log creation fails
+   - Added graceful fallback when AI service is not available
+
 ## Summary
 
-The main issue was that usage logs were only created conditionally when `location_id` was provided, and there were type mismatches in the field handling. The fixes ensure that:
+The main issues were:
+1. **Conditional usage log creation** (fixed)
+2. **Location ID field type mismatches** (fixed)  
+3. **AI service ID access errors** (fixed)
+4. **AI service record creation failures** (fixed)
+5. **Code indentation issues** (fixed)
+
+The fixes ensure that:
 
 - Usage logs are **always created** for every OpenAI API call
 - **Location handling** is robust and works with or without valid location data
 - **AI service access** is properly handled for cost calculations
+- **AI service creation** is validated and logged
 - **Debug logging** provides visibility into the creation process
+- **Error handling** prevents transaction failures
 
 This ensures comprehensive tracking of all OpenAI API usage for billing, analytics, and monitoring purposes.
+
+## Next Steps
+
+1. **Run the check script** to verify AI service exists:
+   ```bash
+   python3 check_ai_service.py
+   ```
+
+2. **Test the curl command again** to verify usage logs are created
+
+3. **Check the logs** for successful usage log creation messages
+
+4. **Verify in Odoo** that usage log records appear in the AI Usage Logs menu

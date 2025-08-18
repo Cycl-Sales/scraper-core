@@ -88,70 +88,75 @@ Return only the JSON object, no additional text.""")
         # Create usage log entry
         usage_log = None
         try:
-            # Always create usage log, use 'unknown' as default location_id if not provided
-            usage_location_id = location_id or 'unknown'
-            usage_log = self.env['cyclsales.vision.ai.usage.log'].sudo().create_usage_log(
-                location_id=usage_location_id,
-                ai_service_id=self.id,
-                request_type='call_summary',
-                message_id=message_id,
-                contact_id=contact_id,
-                conversation_id=None,
-                request_id=f"req_{message_id}_{fields.Datetime.now().strftime('%Y%m%d_%H%M%S')}" if message_id else None
-            )
-            usage_log.write({'status': 'processing'})
-            _logger.info(f"[AI Service] Created usage log entry: {usage_log.id}")
+            # Ensure we have a valid AI service ID
+            if not self.id:
+                _logger.error("[AI Service] No valid AI service ID available")
+                usage_log = None
+            else:
+                # Always create usage log, use 'unknown' as default location_id if not provided
+                usage_location_id = location_id or 'unknown'
+                usage_log = self.env['cyclsales.vision.ai.usage.log'].sudo().create_usage_log(
+                    location_id=usage_location_id,
+                    ai_service_id=self.id,
+                    request_type='call_summary',
+                    message_id=message_id,
+                    contact_id=contact_id,
+                    conversation_id=None,
+                    request_id=f"req_{message_id}_{fields.Datetime.now().strftime('%Y%m%d_%H%M%S')}" if message_id else None
+                )
+                usage_log.write({'status': 'processing'})
+                _logger.info(f"[AI Service] Created usage log entry: {usage_log.id}")
         except Exception as e:
             _logger.error(f"[AI Service] Failed to create usage log: {str(e)}")
             usage_log = None
+        
+        _logger.info(f"[AI Service] Generating summary for message_id: {message_id}, contact_id: {contact_id}")
+        
+        # DEBUG: Log the transcript being passed
+        # Limit transcript logging to 100 characters to avoid log flooding
+        logged_transcript = transcript[:100] + "..." if transcript and len(transcript) > 100 else transcript
+        _logger.info(f"[AI Service] Transcript received: {logged_transcript}")
+        _logger.info(f"[AI Service] Transcript type: {type(transcript)}")
+        _logger.info(f"[AI Service] Transcript length: {len(transcript) if transcript else 0}")
+        if transcript:
+            _logger.info(f"[AI Service] Transcript preview (first 100 chars): {transcript[:100]}...")
+        else:
+            _logger.warning(f"[AI Service] No transcript provided!")
+        
+        # Get API key from record or system parameters
+        api_key = self.api_key or self.env['ir.config_parameter'].sudo().get_param('web_scraper.openai_api_key')
+        if not api_key:
+            _logger.error("[AI Service] No API key configured")
+            if usage_log:
+                usage_log.update_failure("No API key configured", "NO_API_KEY")
+            return self._get_default_summary()
+        
+        # Use custom API key if provided, otherwise use configured API key
+        if custom_api_key:
+            api_key = custom_api_key
+            _logger.info(f"[AI Service] Using custom API key: {api_key[:10]}...")
+        else:
+            _logger.info(f"[AI Service] Using configured API key: {api_key[:10]}...")
+        
+        # Ensure we have a valid base URL
+        base_url = self.base_url or 'https://api.openai.com/v1'
+        if not base_url or base_url == 'False':
+            base_url = 'https://api.openai.com/v1'
+            _logger.warning(f"[AI Service] Invalid base_url '{self.base_url}', using default: {base_url}")
+        
+        # Prepare the prompt
+        if custom_prompt:
+            # If custom prompt is provided, combine it with the transcript and JSON format instructions
+            transcript_for_prompt = transcript or "No transcript available"
             
-            _logger.info(f"[AI Service] Generating summary for message_id: {message_id}, contact_id: {contact_id}")
+            # Add call metadata if available
+            metadata_info = ""
+            if call_duration is not None:
+                metadata_info += f"\nCall Duration: {call_duration} seconds"
+            if speakers_detected is not None:
+                metadata_info += f"\nSpeakers Detected: {speakers_detected}"
             
-            # DEBUG: Log the transcript being passed
-            # Limit transcript logging to 100 characters to avoid log flooding
-            logged_transcript = transcript[:100] + "..." if transcript and len(transcript) > 100 else transcript
-            _logger.info(f"[AI Service] Transcript received: {logged_transcript}")
-            _logger.info(f"[AI Service] Transcript type: {type(transcript)}")
-            _logger.info(f"[AI Service] Transcript length: {len(transcript) if transcript else 0}")
-            if transcript:
-                _logger.info(f"[AI Service] Transcript preview (first 100 chars): {transcript[:100]}...")
-            else:
-                _logger.warning(f"[AI Service] No transcript provided!")
-            
-            # Get API key from record or system parameters
-            api_key = self.api_key or self.env['ir.config_parameter'].sudo().get_param('web_scraper.openai_api_key')
-            if not api_key:
-                _logger.error("[AI Service] No API key configured")
-                if usage_log:
-                    usage_log.update_failure("No API key configured", "NO_API_KEY")
-                return self._get_default_summary()
-            
-            # Use custom API key if provided, otherwise use configured API key
-            if custom_api_key:
-                api_key = custom_api_key
-                _logger.info(f"[AI Service] Using custom API key: {api_key[:10]}...")
-            else:
-                _logger.info(f"[AI Service] Using configured API key: {api_key[:10]}...")
-            
-            # Ensure we have a valid base URL
-            base_url = self.base_url or 'https://api.openai.com/v1'
-            if not base_url or base_url == 'False':
-                base_url = 'https://api.openai.com/v1'
-                _logger.warning(f"[AI Service] Invalid base_url '{self.base_url}', using default: {base_url}")
-            
-            # Prepare the prompt
-            if custom_prompt:
-                # If custom prompt is provided, combine it with the transcript and JSON format instructions
-                transcript_for_prompt = transcript or "No transcript available"
-                
-                # Add call metadata if available
-                metadata_info = ""
-                if call_duration is not None:
-                    metadata_info += f"\nCall Duration: {call_duration} seconds"
-                if speakers_detected is not None:
-                    metadata_info += f"\nSpeakers Detected: {speakers_detected}"
-                
-                prompt = f"""{custom_prompt}
+            prompt = f"""{custom_prompt}
 
 Please provide your response in the following JSON format:
 {{
@@ -168,40 +173,40 @@ Call Metadata:{metadata_info}
 
 Call Transcript:
 {transcript_for_prompt}"""
-                _logger.info(f"[AI Service] Using custom prompt with transcript")
-                _logger.info(f"[AI Service] Custom prompt: {custom_prompt[:100]}...")
-            else:
-                # Use string replacement instead of format to avoid JSON brace conflicts
-                transcript_for_prompt = transcript or "No transcript available"
-                _logger.info(f"[AI Service] Using default prompt template with transcript")
-                _logger.info(f"[AI Service] No custom prompt provided")
-                prompt = self.default_prompt_template.replace('{transcript}', transcript_for_prompt)
-            
-            # DEBUG: Log the final prompt being sent to AI
-            _logger.info(f"[AI Service] Final prompt length: {len(prompt)}")
-            _logger.info(f"[AI Service] Final prompt preview: {prompt[:1000]}...")
-            
-            # Update usage log with prompt length
-            if usage_log:
-                usage_log.write({'prompt_length': len(prompt)})
-            
-            # Prepare the request
-            headers = {
-                'Authorization': f'Bearer {api_key}',
-                'Content-Type': 'application/json'
-            }
-            
-            payload = {
-                'model': self.model_type,
-                'messages': [
-                    {
-                        'role': 'user',
-                        'content': prompt
-                    }
-                ],
-                'max_tokens': max(self.max_tokens or 500, 1),  # Ensure minimum value of 1
-                'temperature': self.temperature or 0.3
-            }
+            _logger.info(f"[AI Service] Using custom prompt with transcript")
+            _logger.info(f"[AI Service] Custom prompt: {custom_prompt[:100]}...")
+        else:
+            # Use string replacement instead of format to avoid JSON brace conflicts
+            transcript_for_prompt = transcript or "No transcript available"
+            _logger.info(f"[AI Service] Using default prompt template with transcript")
+            _logger.info(f"[AI Service] No custom prompt provided")
+            prompt = self.default_prompt_template.replace('{transcript}', transcript_for_prompt)
+        
+        # DEBUG: Log the final prompt being sent to AI
+        _logger.info(f"[AI Service] Final prompt length: {len(prompt)}")
+        _logger.info(f"[AI Service] Final prompt preview: {prompt[:1000]}...")
+        
+        # Update usage log with prompt length
+        if usage_log:
+            usage_log.write({'prompt_length': len(prompt)})
+        
+        # Prepare the request
+        headers = {
+            'Authorization': f'Bearer {api_key}',
+            'Content-Type': 'application/json'
+        }
+        
+        payload = {
+            'model': self.model_type,
+            'messages': [
+                {
+                    'role': 'user',
+                    'content': prompt
+                }
+            ],
+            'max_tokens': max(self.max_tokens or 500, 1),  # Ensure minimum value of 1
+            'temperature': self.temperature or 0.3
+        }
             
             # Validate and set model type
             model_type = self.model_type
