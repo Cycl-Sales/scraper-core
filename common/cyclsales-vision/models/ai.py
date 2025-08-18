@@ -81,7 +81,7 @@ Return only the JSON object, no additional text.""")
             else:
                 record.status = 'active'
 
-    def generate_summary(self, message_id=None, contact_id=None, recording_url=None, transcript=None, custom_prompt=None, location_id=None):
+    def generate_summary(self, message_id=None, contact_id=None, recording_url=None, transcript=None, custom_prompt=None, location_id=None, custom_api_key=None):
         """
         Generate AI summary for call data
         """
@@ -120,6 +120,13 @@ Return only the JSON object, no additional text.""")
                 if usage_log:
                     usage_log.update_failure("No API key configured", "NO_API_KEY")
                 return self._get_default_summary()
+            
+            # Use custom API key if provided, otherwise use configured API key
+            if custom_api_key:
+                api_key = custom_api_key
+                _logger.info(f"[AI Service] Using custom API key: {api_key[:10]}...")
+            else:
+                _logger.info(f"[AI Service] Using configured API key: {api_key[:10]}...")
             
             # Ensure we have a valid base URL
             base_url = self.base_url or 'https://api.openai.com/v1'
@@ -167,7 +174,15 @@ Return only the JSON object, no additional text.""")
                 'temperature': self.temperature
             }
             
+            # Validate model type
+            if not self.model_type or self.model_type == 'False':
+                _logger.error(f"[AI Service] Invalid model type: {self.model_type}")
+                return self._get_default_summary()
+            
             _logger.info(f"[AI Service] Sending request to {base_url}/chat/completions")
+            _logger.info(f"[AI Service] Model type: {self.model_type}")
+            _logger.info(f"[AI Service] API key (first 10 chars): {api_key[:10]}..." if api_key else "No API key")
+            _logger.info(f"[AI Service] Payload keys: {list(payload.keys())}")
             
             # Make the API call
             response = requests.post(

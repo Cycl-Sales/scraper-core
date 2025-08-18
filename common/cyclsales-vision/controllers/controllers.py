@@ -866,7 +866,8 @@ Return ONLY the JSON object, no additional text or explanations."""
                     transcript=actual_transcript,
                     message_id=message_id,
                     contact_id=message_record.contact_id.external_id if message_record.contact_id else None,
-                    custom_prompt=summary_prompt
+                    custom_prompt=summary_prompt,
+                    custom_api_key=custom_api_key
                 )
 
                 if not ai_result or not ai_result.get('success'):
