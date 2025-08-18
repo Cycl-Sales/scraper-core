@@ -856,7 +856,7 @@ Return ONLY the JSON object, no additional text or explanations."""
                 transcript_data = {
                     'transcript': actual_transcript,
                     'message_id': message_id,
-                    'contact_id': message_record.contact_id.ghl_id if message_record.contact_id else None,
+                    'contact_id': message_record.contact_id.external_id if message_record.contact_id else None,
                     'call_duration': getattr(transcript_records[-1], 'end_time_seconds', None) if transcript_records else None
                 }
 
@@ -865,7 +865,7 @@ Return ONLY the JSON object, no additional text or explanations."""
                 ai_result = ai_service.generate_call_summary(
                     transcript=actual_transcript,
                     message_id=message_id,
-                    contact_id=message_record.contact_id.ghl_id if message_record.contact_id else None,
+                    contact_id=message_record.contact_id.external_id if message_record.contact_id else None,
                     custom_prompt=summary_prompt,
                     custom_api_key=custom_api_key
                 )
