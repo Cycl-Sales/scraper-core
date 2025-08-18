@@ -89,35 +89,9 @@ class CyclSalesVisionController(http.Controller):
             import time
             _logger.info(f"[GHL Call Summary] Call validated, waiting 30 seconds before processing...")
             
-            # Skip logging AI-related fields for webhook payloads that don't include them
-            try:
-                if 'data' in data and isinstance(data['data'], dict) and (
-                    'cs_vision_summary_prompt' in data['data'] or 'cs_vision_call_minimum_duration' in data['data']
-                ):
-                    payload_for_ai = data['data']
-                    summary_prompt_val = payload_for_ai.get('cs_vision_summary_prompt')
-                    minimum_duration_val = payload_for_ai.get('cs_vision_call_minimum_duration')
-
-                    _logger.info(
-                        f"[GHL Call Summary] cs_vision_summary_prompt present: {bool(summary_prompt_val)}"
-                    )
-                    if summary_prompt_val:
-                        _logger.info(
-                            f"[GHL Call Summary] cs_vision_summary_prompt (first 160 chars): "
-                            f"{str(summary_prompt_val)[:160]}..."
-                        )
-
-                    if minimum_duration_val is not None:
-                        _logger.info(
-                            f"[GHL Call Summary] cs_vision_call_minimum_duration: {minimum_duration_val}"
-                        )
-                else:
-                    _logger.info("[GHL Call Summary] No custom AI fields found in webhook payload")
-            except Exception as log_err:
-                _logger.error(
-                    f"[GHL Call Summary] Error while logging AI-related fields: {str(log_err)}",
-                    exc_info=True
-                )
+            # GHL webhook payload contains only basic call data, not custom AI fields
+            # Custom fields will be provided by the workflow action when it calls /cs-vision/action-transcribe-call
+            _logger.info("[GHL Call Summary] Webhook payload received - basic call data only")
             
             time.sleep(30)
             _logger.info(f"[GHL Call Summary] 30-second delay completed, proceeding with call processing...")
@@ -324,23 +298,9 @@ class CyclSalesVisionController(http.Controller):
                         'cs_vision_call_minimum_duration': minimum_duration
                     }
 
-                    # If a custom prompt is present in the webhook payload, forward it via context
-                    try:
-                        custom_prompt = None
-                        if isinstance(call_data, dict):
-                            if 'data' in call_data and isinstance(call_data['data'], dict):
-                                custom_prompt = call_data['data'].get('cs_vision_summary_prompt')
-                                _logger.info(f"[Workflow Trigger] Found custom prompt in call_data['data']: {bool(custom_prompt)}")
-                            if not custom_prompt:
-                                custom_prompt = call_data.get('cs_vision_summary_prompt')
-                                _logger.info(f"[Workflow Trigger] Found custom prompt in call_data: {bool(custom_prompt)}")
-                        if custom_prompt:
-                            context_data['cs_vision_summary_prompt'] = custom_prompt
-                            _logger.info(f"[Workflow Trigger] Forwarding cs_vision_summary_prompt via context data: {custom_prompt[:100]}...")
-                        else:
-                            _logger.info("[Workflow Trigger] No custom prompt found in webhook payload")
-                    except Exception as cp_err:
-                        _logger.warning(f"[Workflow Trigger] Error extracting custom prompt from webhook payload: {str(cp_err)}")
+                    # GHL webhook payload contains only basic call data
+                    # Custom prompts will be provided by workflow actions when they call /cs-vision/action-transcribe-call
+                    _logger.info("[Workflow Trigger] Processing GHL webhook with basic call data")
                     
                     result = trigger.execute_workflow(
                         event_data=call_data,
