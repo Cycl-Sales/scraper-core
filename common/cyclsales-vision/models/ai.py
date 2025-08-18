@@ -220,39 +220,59 @@ Return only the JSON object, no additional text.""")
                     'response_length': len(ai_response_text)
                 })
             
-            # Try to parse the JSON response
-            try:
-                import re
-                json_match = re.search(r'\{.*\}', ai_response_text, re.DOTALL)
-                if json_match:
-                    ai_summary = json.loads(json_match.group())
-                else:
-                    ai_summary = json.loads(ai_response_text)
-                
-                _logger.info(f"[AI Service] Parsed AI summary: {ai_summary}")
+            # Handle response based on whether we're using a custom prompt
+            if custom_prompt is not None:
+                # For custom prompts, treat the response as text and use it as the summary
+                _logger.info(f"[AI Service] Using custom prompt - treating response as text")
                 
                 # Update usage statistics
                 self._record_success()
+                
+                # Create summary with the AI response as the summary
+                ai_summary = {
+                    'summary': ai_response_text,
+                    'keywords': [],
+                    'sentiment': 'neutral',
+                    'action_items': [],
+                    'confidence_score': 0.9,
+                    'duration_analyzed': 'Unknown',
+                    'speakers_detected': 0,
+                    'raw_transcript_array': ''
+                }
                 
                 # Update usage log with success
                 if usage_log:
                     usage_log.update_success(ai_summary)
                 
-                # Ensure the summary mirrors the provided custom prompt when present
-                if custom_prompt is not None:
-                    ai_summary['summary'] = custom_prompt
-                    _logger.info(f"[AI Service] Set summary to custom prompt: {custom_prompt[:100]}...")
+                _logger.info(f"[AI Service] Created summary from custom prompt response")
                 return ai_summary
-                
-            except json.JSONDecodeError as e:
-                _logger.error(f"[AI Service] Failed to parse AI response as JSON: {str(e)}")
-                self._record_error(f"JSON parse error: {str(e)}")
-                if usage_log:
-                    usage_log.update_failure(f"JSON parse error: {str(e)}", "JSON_PARSE_ERROR")
-                default_summary = self._get_default_summary()
-                if custom_prompt is not None:
-                    default_summary['summary'] = custom_prompt
-                return default_summary
+            else:
+                # For standard prompts, try to parse as JSON
+                try:
+                    import re
+                    json_match = re.search(r'\{.*\}', ai_response_text, re.DOTALL)
+                    if json_match:
+                        ai_summary = json.loads(json_match.group())
+                    else:
+                        ai_summary = json.loads(ai_response_text)
+                    
+                    _logger.info(f"[AI Service] Parsed AI summary: {ai_summary}")
+                    
+                    # Update usage statistics
+                    self._record_success()
+                    
+                    # Update usage log with success
+                    if usage_log:
+                        usage_log.update_success(ai_summary)
+                    
+                    return ai_summary
+                    
+                except json.JSONDecodeError as e:
+                    _logger.error(f"[AI Service] Failed to parse AI response as JSON: {str(e)}")
+                    self._record_error(f"JSON parse error: {str(e)}")
+                    if usage_log:
+                        usage_log.update_failure(f"JSON parse error: {str(e)}", "JSON_PARSE_ERROR")
+                    return self._get_default_summary()
                 
         except Exception as e:
             _logger.error(f"[AI Service] Error generating summary: {str(e)}", exc_info=True)
