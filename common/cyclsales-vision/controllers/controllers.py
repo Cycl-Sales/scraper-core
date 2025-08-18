@@ -895,13 +895,13 @@ Return ONLY the JSON object, no additional text or explanations."""
                     speakers_detected=speakers_detected
                 )
 
-                if not ai_result or not ai_result.get('success'):
-                    _logger.error(f"[Call Transcription] AI summary generation failed: {ai_result}")
+                if not ai_result:
+                    _logger.error(f"[Call Transcription] AI summary generation failed: No result returned")
                     return Response(
                         json.dumps({
                             'error_code': 'ai_generation_failed',
                             'message': 'Failed to generate AI summary',
-                            'details': ai_result.get('error', 'Unknown error')
+                            'details': 'No result returned from AI service'
                         }),
                         content_type='application/json',
                         status=500
