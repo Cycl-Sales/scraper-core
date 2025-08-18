@@ -369,4 +369,162 @@ Call Transcript:
     @api.model
     def get_default_ai_service(self):
         """Get the default AI service"""
-        return self.search([('is_active', '=', True), ('status', '=', 'active')], limit=1) 
+        return self.search([('is_active', '=', True), ('status', '=', 'active')], limit=1)
+
+    @api.model
+    def ensure_usage_logging(self, api_call_func, *args, **kwargs):
+        """
+        Utility method to ensure all OpenAI API calls are logged through the usage logging system.
+        
+        This method should be used as a wrapper for any direct OpenAI API calls to ensure
+        they are properly logged in the usage tracking system.
+        
+        Args:
+            api_call_func: Function that makes the actual API call
+            *args: Arguments to pass to the API call function
+            **kwargs: Keyword arguments to pass to the API call function
+        
+        Returns:
+            The result of the API call function
+        """
+        # Extract logging parameters from kwargs
+        location_id = kwargs.pop('location_id', 'unknown')
+        message_id = kwargs.pop('message_id', 'api_call')
+        contact_id = kwargs.pop('contact_id', 'unknown')
+        conversation_id = kwargs.pop('conversation_id', 'unknown')
+        request_type = kwargs.pop('request_type', 'other')
+        custom_api_key = kwargs.pop('custom_api_key', None)
+        
+        # Get or create AI service
+        ai_service = self.search([('is_active', '=', True)], limit=1)
+        if not ai_service:
+            ai_service = self.create({
+                'name': 'Default OpenAI GPT-4 Service',
+                'model_type': 'gpt-4o',
+                'base_url': 'https://api.openai.com/v1',
+                'max_tokens': 500,
+                'temperature': 0.3,
+                'is_active': True
+            })
+        
+        # Create usage log entry
+        usage_log = None
+        try:
+            usage_log = self.env['cyclsales.vision.ai.usage.log'].sudo().create_usage_log(
+                location_id=location_id,
+                ai_service_id=ai_service.id,
+                request_type=request_type,
+                message_id=message_id,
+                contact_id=contact_id,
+                conversation_id=conversation_id
+            )
+            
+            if usage_log:
+                usage_log.write({'status': 'processing'})
+        except Exception as e:
+            _logger.error(f"[AI Service] Failed to create usage log: {str(e)}")
+        
+        try:
+            # Make the actual API call
+            result = api_call_func(*args, **kwargs)
+            
+            # Update usage log with success
+            if usage_log:
+                try:
+                    # Try to extract token information from result if available
+                    if isinstance(result, dict) and 'usage' in result:
+                        usage = result['usage']
+                        usage_log.write({
+                            'input_tokens': usage.get('prompt_tokens', 0),
+                            'output_tokens': usage.get('completion_tokens', 0),
+                            'response_length': len(str(result.get('choices', [{}])[0].get('message', {}).get('content', '')))
+                        })
+                    
+                    usage_log.update_success(result)
+                except Exception as e:
+                    _logger.error(f"[AI Service] Failed to update usage log with success: {str(e)}")
+            
+            # Update AI service usage statistics
+            ai_service._record_success()
+            
+            return result
+            
+        except Exception as e:
+            # Update usage log with failure
+            if usage_log:
+                try:
+                    usage_log.update_failure(str(e), "EXCEPTION")
+                except Exception as log_error:
+                    _logger.error(f"[AI Service] Failed to update usage log with failure: {str(log_error)}")
+            
+            # Update AI service error statistics
+            ai_service._record_error(str(e))
+            
+            # Re-raise the exception
+            raise
+
+    @api.model
+    def make_openai_api_call(self, endpoint, method='POST', headers=None, data=None, 
+                           location_id='unknown', message_id='api_call', contact_id='unknown', 
+                           conversation_id='unknown', request_type='other', custom_api_key=None):
+        """
+        Make an OpenAI API call with automatic usage logging.
+        
+        This method ensures that all OpenAI API calls are properly logged in the usage tracking system.
+        
+        Args:
+            endpoint: The OpenAI API endpoint (e.g., '/chat/completions', '/models')
+            method: HTTP method ('GET' or 'POST')
+            headers: Request headers
+            data: Request data
+            location_id: Location identifier for logging
+            message_id: Message identifier for logging
+            contact_id: Contact identifier for logging
+            conversation_id: Conversation identifier for logging
+            request_type: Type of request for logging
+            custom_api_key: Custom API key to use
+        
+        Returns:
+            The API response
+        """
+        import requests
+        
+        def api_call():
+            # Get API key
+            api_key = custom_api_key or self.env['ir.config_parameter'].sudo().get_param('web_scraper.openai_api_key')
+            if not api_key:
+                raise Exception("No OpenAI API key configured")
+            
+            # Prepare headers
+            if headers is None:
+                headers = {}
+            
+            if 'Authorization' not in headers:
+                headers['Authorization'] = f'Bearer {api_key}'
+            
+            if 'Content-Type' not in headers:
+                headers['Content-Type'] = 'application/json'
+            
+            # Make the request
+            url = f"https://api.openai.com/v1{endpoint}"
+            
+            if method.upper() == 'GET':
+                response = requests.get(url, headers=headers, timeout=30)
+            else:
+                response = requests.post(url, headers=headers, json=data, timeout=30)
+            
+            if response.status_code != 200:
+                raise Exception(f"OpenAI API error: {response.status_code} | {response.text}")
+            
+            return response.json()
+        
+        # Use the ensure_usage_logging wrapper
+        return self.ensure_usage_logging(
+            api_call,
+            location_id=location_id,
+            message_id=message_id,
+            contact_id=contact_id,
+            conversation_id=conversation_id,
+            request_type=request_type,
+            custom_api_key=custom_api_key
+        ) 

@@ -940,3 +940,178 @@ Return ONLY the JSON object, no additional text or explanations."""
                 content_type='application/json',
                 status=500
             )
+
+    @http.route('/cs-vision/action-ai-call-summary', type='http', auth='none', methods=['POST', 'OPTIONS'], cors='*', csrf=False)
+    def cs_vision_action_ai_call_summary(self, **post):
+        """Generate AI summary for call transcript"""
+        try:
+            # Handle OPTIONS request for CORS
+            if request.httprequest.method == 'OPTIONS':
+                return Response(
+                    json.dumps({'status': 'ok'}),
+                    content_type='application/json',
+                    status=200,
+                    headers={
+                        'Access-Control-Allow-Origin': '*',
+                        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                        'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+                    }
+                )
+            
+            # Get data from both request body and POST parameters
+            raw_data = request.httprequest.data
+            post_data = dict(request.params)
+            
+            # Try to parse JSON from request body
+            data = {}
+            if raw_data and raw_data != b'{}':
+                try:
+                    data = json.loads(raw_data)
+                except Exception as e:
+                    _logger.error(f"[AI Call Summary] JSON decode error: {str(e)}")
+                    # If JSON parsing fails, try to use POST parameters
+                    data = post_data
+            else:
+                data = post_data
+            
+            _logger.info(f"[AI Call Summary] Received data: {data}")
+            
+            # Extract parameters
+            message_id = data.get('message_id')
+            contact_id = data.get('contact_id')
+            conversation_id = data.get('conversation_id')
+            location_id = data.get('location_id')
+            custom_api_key = data.get('cs_vision_openai_api_key')
+            
+            # Get nested data if present
+            nested_data = data.get('data', {})
+            if nested_data:
+                message_id = nested_data.get('message_id', message_id)
+                contact_id = nested_data.get('contact_id', contact_id)
+                conversation_id = nested_data.get('conversation_id', conversation_id)
+                location_id = nested_data.get('location_id', location_id)
+                custom_api_key = nested_data.get('cs_vision_openai_api_key', data.get('cs_vision_openai_api_key'))
+            
+            # Validate required parameters
+            if not message_id:
+                return Response(
+                    json.dumps({'error': 'message_id is required'}),
+                    content_type='application/json',
+                    status=400,
+                    headers={'Access-Control-Allow-Origin': '*'}
+                )
+            
+            # Get the AI service model for usage logging
+            ai_service = request.env['cyclsales.vision.ai'].sudo().search([('is_active', '=', True)], limit=1)
+            if not ai_service:
+                # Create a default AI service if none exists
+                ai_service = request.env['cyclsales.vision.ai'].sudo().create({
+                    'name': 'Default OpenAI GPT-4 Service',
+                    'model_type': 'gpt-4o',
+                    'base_url': 'https://api.openai.com/v1',
+                    'max_tokens': 500,
+                    'temperature': 0.3,
+                    'is_active': True
+                })
+            
+            # Get transcript records
+            transcript_records = request.env['ghl.contact.message.transcript'].sudo().search([
+                ('message_id', '=', message_id)
+            ], order='start_time_seconds')
+            
+            if not transcript_records:
+                _logger.warning(f"[AI Call Summary] No transcript records found for message_id: {message_id}")
+                return Response(
+                    json.dumps({'error': 'No transcript records found'}),
+                    content_type='application/json',
+                    status=404,
+                    headers={'Access-Control-Allow-Origin': '*'}
+                )
+            
+            # Build transcript text
+            transcript_text = ""
+            for record in transcript_records:
+                speaker = "Agent" if record.media_channel == "agent" else "Customer"
+                time_range = f"[{record.start_time_seconds:.1f}s - {record.end_time_seconds:.1f}s]"
+                transcript_text += f"{speaker} {time_range}: {record.transcript}\n"
+            
+            # Calculate call metadata
+            call_duration = None
+            speakers_detected = 0
+            if transcript_records:
+                first_record = transcript_records[0]
+                last_record = transcript_records[-1]
+                call_duration = last_record.end_time_seconds - first_record.start_time_seconds
+                speakers_detected = len(set(record.media_channel for record in transcript_records))
+            
+            # Create custom prompt for call summary
+            custom_prompt = f"""Analyze this call transcript and provide a comprehensive summary in JSON format.
+
+Call Details:
+- Message ID: {message_id}
+- Contact ID: {contact_id or 'Unknown'}
+- Conversation ID: {conversation_id or 'Unknown'}
+- Call Duration: {call_duration:.1f} seconds if call_duration else 'Unknown'
+- Speakers Detected: {speakers_detected}
+
+Please provide your analysis in this exact JSON format:
+{{
+    "summary": "A comprehensive summary of the call conversation",
+    "keywords": ["keyword1", "keyword2", "keyword3"],
+    "sentiment": "positive|negative|neutral",
+    "action_items": ["action1", "action2", "action3"],
+    "confidence_score": 0.85,
+    "duration_analyzed": "{call_duration:.1f} seconds" if call_duration else "Unknown",
+    "speakers_detected": {speakers_detected}
+}}
+
+Call Transcript:
+{transcript_text.strip()}
+
+Return ONLY the JSON object, no additional text or explanations."""
+            
+            # Use the AI service model to generate summary with usage logging
+            try:
+                ai_summary = ai_service.generate_summary(
+                    message_id=message_id,
+                    contact_id=contact_id or 'unknown',
+                    transcript=transcript_text.strip(),
+                    custom_prompt=custom_prompt,
+                    custom_api_key=custom_api_key,
+                    call_duration=call_duration,
+                    speakers_detected=speakers_detected,
+                    location_id=location_id
+                )
+                
+                # Convert transcript records to human-readable format for response
+                transcript_text_formatted = ""
+                for record in transcript_records:
+                    speaker = "Agent" if record.media_channel == "agent" else "Customer"
+                    time_range = f"[{record.start_time_seconds:.1f}s - {record.end_time_seconds:.1f}s]"
+                    transcript_text_formatted += f"{speaker} {time_range}: {record.transcript}\n"
+                
+                # Add raw transcript array to the response
+                ai_summary['raw_transcript_array'] = transcript_text_formatted.strip()
+                
+                return Response(
+                    json.dumps(ai_summary),
+                    content_type='application/json',
+                    headers={'Access-Control-Allow-Origin': '*'}
+                )
+                
+            except Exception as e:
+                _logger.error(f"[AI Call Summary] Error generating AI summary: {str(e)}", exc_info=True)
+                return Response(
+                    json.dumps(self._get_default_ai_summary()),
+                    content_type='application/json',
+                    headers={'Access-Control-Allow-Origin': '*'}
+                )
+                
+        except Exception as e:
+            _logger.error(f"[AI Call Summary] Error in endpoint: {str(e)}", exc_info=True)
+            return Response(
+                json.dumps({'error': str(e)}),
+                content_type='application/json',
+                status=500,
+                headers={'Access-Control-Allow-Origin': '*'}
+            )

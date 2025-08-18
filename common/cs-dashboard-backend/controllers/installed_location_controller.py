@@ -3833,6 +3833,32 @@ class InstalledLocationController(http.Controller):
                     headers=get_cors_headers(request)
                 )
 
+            # Get the AI service model for usage logging
+            ai_service = request.env['cyclsales.vision.ai'].sudo().search([('is_active', '=', True)], limit=1)
+            if not ai_service:
+                # Create a default AI service if none exists
+                ai_service = request.env['cyclsales.vision.ai'].sudo().create({
+                    'name': 'Default OpenAI GPT-4 Service',
+                    'model_type': 'gpt-4o',
+                    'base_url': 'https://api.openai.com/v1',
+                    'max_tokens': 500,
+                    'temperature': 0.3,
+                    'is_active': True
+                })
+
+            # Create usage log entry for validation
+            usage_log = request.env['cyclsales.vision.ai.usage.log'].sudo().create_usage_log(
+                location_id=location_id,
+                ai_service_id=ai_service.id,
+                request_type='test_connection',
+                message_id='api_key_validation',
+                contact_id='validation',
+                conversation_id='validation'
+            )
+            
+            if usage_log:
+                usage_log.write({'status': 'processing'})
+
             # Validate the API key by making a simple test request to OpenAI
             try:
                 import requests
@@ -3851,6 +3877,18 @@ class InstalledLocationController(http.Controller):
                 )
                 
                 if response.status_code == 200:
+                    # Update usage log with success
+                    if usage_log:
+                        usage_log.write({
+                            'input_tokens': 0,
+                            'output_tokens': 0,
+                            'response_length': 0
+                        })
+                        usage_log.update_success({'validation': 'success'})
+                    
+                    # Update AI service usage statistics
+                    ai_service._record_success()
+                    
                     return Response(
                         json.dumps({
                             'success': True,
@@ -3861,6 +3899,13 @@ class InstalledLocationController(http.Controller):
                         headers=get_cors_headers(request)
                     )
                 else:
+                    # Update usage log with failure
+                    if usage_log:
+                        usage_log.update_failure(f"Invalid API key. Status: {response.status_code}", f"HTTP_{response.status_code}")
+                    
+                    # Update AI service error statistics
+                    ai_service._record_error(f"Invalid API key. Status: {response.status_code}")
+                    
                     return Response(
                         json.dumps({
                             'success': False,
@@ -3873,6 +3918,13 @@ class InstalledLocationController(http.Controller):
                     )
                     
             except requests.exceptions.RequestException as e:
+                # Update usage log with failure
+                if usage_log:
+                    usage_log.update_failure(f"Network error: {str(e)}", "NETWORK_ERROR")
+                
+                # Update AI service error statistics
+                ai_service._record_error(f"Network error: {str(e)}")
+                
                 return Response(
                     json.dumps({
                         'success': False,
