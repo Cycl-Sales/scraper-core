@@ -111,6 +111,8 @@ class CyclSalesVisionController(http.Controller):
                         _logger.info(
                             f"[GHL Call Summary] cs_vision_call_minimum_duration: {minimum_duration_val}"
                         )
+                else:
+                    _logger.info("[GHL Call Summary] No custom AI fields found in webhook payload")
             except Exception as log_err:
                 _logger.error(
                     f"[GHL Call Summary] Error while logging AI-related fields: {str(log_err)}",

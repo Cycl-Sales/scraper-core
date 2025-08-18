@@ -103,11 +103,13 @@ Return only the JSON object, no additional text.""")
             _logger.info(f"[AI Service] Generating summary for message_id: {message_id}, contact_id: {contact_id}")
             
             # DEBUG: Log the transcript being passed
-            _logger.info(f"[AI Service] Transcript received: {transcript}")
+            # Limit transcript logging to 100 characters to avoid log flooding
+            logged_transcript = transcript[:100] + "..." if transcript and len(transcript) > 100 else transcript
+            _logger.info(f"[AI Service] Transcript received: {logged_transcript}")
             _logger.info(f"[AI Service] Transcript type: {type(transcript)}")
             _logger.info(f"[AI Service] Transcript length: {len(transcript) if transcript else 0}")
             if transcript:
-                _logger.info(f"[AI Service] Transcript preview (first 500 chars): {transcript[:500]}...")
+                _logger.info(f"[AI Service] Transcript preview (first 100 chars): {transcript[:100]}...")
             else:
                 _logger.warning(f"[AI Service] No transcript provided!")
             

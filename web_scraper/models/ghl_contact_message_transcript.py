@@ -163,7 +163,9 @@ class GhlContactMessageTranscript(models.Model):
                 transcript_parts.append(t.transcript)
         
         full_text = ' '.join(transcript_parts)
-        _logger.info(f"[get_full_transcript_text] Final combined text: '{full_text}'")
+        # Limit the logged text to 100 characters to avoid log flooding
+        logged_text = full_text[:100] + "..." if len(full_text) > 100 else full_text
+        _logger.info(f"[get_full_transcript_text] Final combined text: '{logged_text}'")
         _logger.info(f"[get_full_transcript_text] Total length: {len(full_text)} characters")
         
         return full_text
