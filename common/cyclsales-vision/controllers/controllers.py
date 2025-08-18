@@ -860,14 +860,19 @@ Return ONLY the JSON object, no additional text or explanations."""
                     last_record = transcript_records[-1]
                     call_duration_seconds = last_record.end_time_seconds
                     
-                    # Count unique speakers from transcript records
+                    # Count unique speakers from media_channel field
                     unique_speakers = set()
                     for record in transcript_records:
-                        if record.speaker:
-                            unique_speakers.add(record.speaker)
+                        if record.media_channel and record.media_channel.strip():
+                            unique_speakers.add(record.media_channel.strip())
                     speakers_detected = len(unique_speakers)
                     
-                    _logger.info(f"[Call Transcription] Calculated duration: {call_duration_seconds}s, speakers: {speakers_detected}")
+                    # If no speakers detected, default to 2 (typical for phone calls)
+                    if speakers_detected == 0:
+                        speakers_detected = 2
+                        _logger.info(f"[Call Transcription] No speakers detected in media_channel, defaulting to 2")
+                    
+                    _logger.info(f"[Call Transcription] Calculated duration: {call_duration_seconds}s, speakers: {speakers_detected} (from {list(unique_speakers) if unique_speakers else 'default'})")
 
                 # Prepare transcript data for AI
                 transcript_data = {
