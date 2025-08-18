@@ -321,6 +321,24 @@ class CyclSalesVisionController(http.Controller):
                         'source': 'call_summary_webhook',
                         'cs_vision_call_minimum_duration': minimum_duration
                     }
+
+                    # If a custom prompt is present in the webhook payload, forward it via context
+                    try:
+                        custom_prompt = None
+                        if isinstance(call_data, dict):
+                            if 'data' in call_data and isinstance(call_data['data'], dict):
+                                custom_prompt = call_data['data'].get('cs_vision_summary_prompt')
+                                _logger.info(f"[Workflow Trigger] Found custom prompt in call_data['data']: {bool(custom_prompt)}")
+                            if not custom_prompt:
+                                custom_prompt = call_data.get('cs_vision_summary_prompt')
+                                _logger.info(f"[Workflow Trigger] Found custom prompt in call_data: {bool(custom_prompt)}")
+                        if custom_prompt:
+                            context_data['cs_vision_summary_prompt'] = custom_prompt
+                            _logger.info(f"[Workflow Trigger] Forwarding cs_vision_summary_prompt via context data: {custom_prompt[:100]}...")
+                        else:
+                            _logger.info("[Workflow Trigger] No custom prompt found in webhook payload")
+                    except Exception as cp_err:
+                        _logger.warning(f"[Workflow Trigger] Error extracting custom prompt from webhook payload: {str(cp_err)}")
                     
                     result = trigger.execute_workflow(
                         event_data=call_data,

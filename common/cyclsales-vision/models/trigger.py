@@ -231,8 +231,26 @@ class CyclSalesVisionTrigger(models.Model):
             custom_prompt = None
             if 'data' in event_data and isinstance(event_data['data'], dict):
                 custom_prompt = event_data['data'].get('cs_vision_summary_prompt')
+                _logger.info(f"[Call Processing] Found custom prompt in event_data['data']: {bool(custom_prompt)}")
             else:
                 custom_prompt = event_data.get('cs_vision_summary_prompt')
+                _logger.info(f"[Call Processing] Found custom prompt in event_data: {bool(custom_prompt)}")
+            
+            # Fallback: check context data for custom prompt when not present in event_data
+            if not custom_prompt and isinstance(context, dict):
+                ctx_data = context.get('context_data') or {}
+                _logger.info(f"[Call Processing] Context data keys: {list(ctx_data.keys()) if isinstance(ctx_data, dict) else 'Not a dict'}")
+                if isinstance(ctx_data, dict):
+                    ctx_prompt = ctx_data.get('cs_vision_summary_prompt')
+                    if ctx_prompt:
+                        custom_prompt = ctx_prompt
+                        _logger.info("[Call Processing] Using custom prompt from context data")
+                    else:
+                        _logger.info("[Call Processing] No custom prompt found in context data")
+                else:
+                    _logger.info(f"[Call Processing] Context data is not a dict: {type(ctx_data)}")
+            else:
+                _logger.info(f"[Call Processing] Context is not a dict: {type(context)}")
             
             # Fail fast only when source explicitly expects custom payload (e.g., custom action)
             source = (context.get('context_data') or {}).get('source') if isinstance(context, dict) else None
