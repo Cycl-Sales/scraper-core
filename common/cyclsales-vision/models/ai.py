@@ -88,17 +88,22 @@ Return only the JSON object, no additional text.""")
         # Create usage log entry
         usage_log = None
         try:
-            if location_id:
-                usage_log = self.env['cyclsales.vision.ai.usage.log'].sudo().create_usage_log(
-                    location_id=location_id,
-                    ai_service_id=self.id,
-                    request_type='call_summary',
-                    message_id=message_id,
-                    contact_id=contact_id,
-                    conversation_id=None,
-                    request_id=f"req_{message_id}_{fields.Datetime.now().strftime('%Y%m%d_%H%M%S')}" if message_id else None
-                )
-                usage_log.write({'status': 'processing'})
+            # Always create usage log, use 'unknown' as default location_id if not provided
+            usage_location_id = location_id or 'unknown'
+            usage_log = self.env['cyclsales.vision.ai.usage.log'].sudo().create_usage_log(
+                location_id=usage_location_id,
+                ai_service_id=self.id,
+                request_type='call_summary',
+                message_id=message_id,
+                contact_id=contact_id,
+                conversation_id=None,
+                request_id=f"req_{message_id}_{fields.Datetime.now().strftime('%Y%m%d_%H%M%S')}" if message_id else None
+            )
+            usage_log.write({'status': 'processing'})
+            _logger.info(f"[AI Service] Created usage log entry: {usage_log.id}")
+        except Exception as e:
+            _logger.error(f"[AI Service] Failed to create usage log: {str(e)}")
+            usage_log = None
             
             _logger.info(f"[AI Service] Generating summary for message_id: {message_id}, contact_id: {contact_id}")
             

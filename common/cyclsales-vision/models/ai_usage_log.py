@@ -17,7 +17,7 @@ class CyclSalesVisionAIUsageLog(models.Model):
     display_name = fields.Char('Display Name', compute='_compute_display_name', store=True)
     
     # Location and User Information
-    location_id = fields.Many2one('installed.location', string='Location', required=True, index=True)
+    location_id = fields.Many2one('installed.location', string='Location', required=False, index=True)
     company_id = fields.Char('Company ID', help='Company identifier')
     user_id = fields.Many2one('res.users', string='User', default=lambda self: self.env.user)
     
@@ -149,17 +149,57 @@ class CyclSalesVisionAIUsageLog(models.Model):
         """
         Create a new usage log entry
         """
+        # Get the AI service record to access its cost_per_1k_tokens
+        ai_service = None
+        if isinstance(ai_service_id, int):
+            ai_service = self.env['cyclsales.vision.ai'].browse(ai_service_id)
+        elif hasattr(ai_service_id, 'cost_per_1k_tokens'):
+            ai_service = ai_service_id
+        
+        cost_per_1k_tokens = 0.0
+        if ai_service and hasattr(ai_service, 'cost_per_1k_tokens'):
+            cost_per_1k_tokens = ai_service.cost_per_1k_tokens
+        
+        # Handle location_id - if it's a string or None, try to find a default location
+        final_location_id = None
+        if isinstance(location_id, int):
+            final_location_id = location_id
+        elif isinstance(location_id, str) and location_id != 'unknown':
+            # Try to find location by name or other identifier
+            location = self.env['installed.location'].search([('location_id', '=', location_id)], limit=1)
+            if location:
+                final_location_id = location.id
+        
+        # If no valid location found, try to get a default location
+        if not final_location_id:
+            default_location = self.env['installed.location'].search([], limit=1)
+            if default_location:
+                final_location_id = default_location.id
+        
         log_data = {
-            'location_id': location_id,
-            'ai_service_id': ai_service_id,
+            'ai_service_id': ai_service_id if isinstance(ai_service_id, int) else ai_service_id.id,
             'request_type': request_type,
             'status': 'pending',
             'request_start_time': fields.Datetime.now(),
-            'cost_per_1k_tokens': ai_service_id.cost_per_1k_tokens if hasattr(ai_service_id, 'cost_per_1k_tokens') else 0.0,
+            'cost_per_1k_tokens': cost_per_1k_tokens,
             **kwargs
         }
         
-        return self.create(log_data)
+        # Only add location_id if we have a valid one
+        if final_location_id:
+            log_data['location_id'] = final_location_id
+        
+        import logging
+        _logger = logging.getLogger(__name__)
+        _logger.info(f"[Usage Log] Creating usage log with data: {log_data}")
+        
+        try:
+            result = self.create(log_data)
+            _logger.info(f"[Usage Log] Successfully created usage log: {result.id}")
+            return result
+        except Exception as e:
+            _logger.error(f"[Usage Log] Failed to create usage log: {str(e)}")
+            raise
 
     def update_success(self, response_data=None, **kwargs):
         """
