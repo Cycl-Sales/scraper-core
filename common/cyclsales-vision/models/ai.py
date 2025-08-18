@@ -170,8 +170,8 @@ Return only the JSON object, no additional text.""")
                         'content': prompt
                     }
                 ],
-                'max_tokens': self.max_tokens,
-                'temperature': self.temperature
+                'max_tokens': max(self.max_tokens or 500, 1),  # Ensure minimum value of 1
+                'temperature': self.temperature or 0.3
             }
             
             # Validate and set model type
@@ -186,6 +186,8 @@ Return only the JSON object, no additional text.""")
             _logger.info(f"[AI Service] Sending request to {base_url}/chat/completions")
             _logger.info(f"[AI Service] Model type: {model_type}")
             _logger.info(f"[AI Service] API key (first 10 chars): {api_key[:10]}..." if api_key else "No API key")
+            _logger.info(f"[AI Service] Max tokens: {payload['max_tokens']}")
+            _logger.info(f"[AI Service] Temperature: {payload['temperature']}")
             _logger.info(f"[AI Service] Payload keys: {list(payload.keys())}")
             
             # Make the API call
