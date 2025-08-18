@@ -862,7 +862,7 @@ Return ONLY the JSON object, no additional text or explanations."""
 
                 # Generate AI summary using the AI service
                 ai_service = request.env['cyclsales.vision.ai'].sudo()
-                ai_result = ai_service.generate_call_summary(
+                ai_result = ai_service.generate_summary(
                     transcript=actual_transcript,
                     message_id=message_id,
                     contact_id=message_record.contact_id.external_id if message_record.contact_id else None,
