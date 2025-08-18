@@ -852,12 +852,30 @@ Return ONLY the JSON object, no additional text or explanations."""
                                 status=400
                             )
 
+                # Calculate actual duration and speaker count from transcript records
+                call_duration_seconds = None
+                speakers_detected = 0
+                if transcript_records:
+                    # Get the last transcript record's end time to calculate total duration
+                    last_record = transcript_records[-1]
+                    call_duration_seconds = last_record.end_time_seconds
+                    
+                    # Count unique speakers from transcript records
+                    unique_speakers = set()
+                    for record in transcript_records:
+                        if record.speaker:
+                            unique_speakers.add(record.speaker)
+                    speakers_detected = len(unique_speakers)
+                    
+                    _logger.info(f"[Call Transcription] Calculated duration: {call_duration_seconds}s, speakers: {speakers_detected}")
+
                 # Prepare transcript data for AI
                 transcript_data = {
                     'transcript': actual_transcript,
                     'message_id': message_id,
                     'contact_id': message_record.contact_id.external_id if message_record.contact_id else None,
-                    'call_duration': getattr(transcript_records[-1], 'end_time_seconds', None) if transcript_records else None
+                    'call_duration': call_duration_seconds,
+                    'speakers_detected': speakers_detected
                 }
 
                 # Generate AI summary using the AI service
@@ -867,7 +885,9 @@ Return ONLY the JSON object, no additional text or explanations."""
                     message_id=message_id,
                     contact_id=message_record.contact_id.external_id if message_record.contact_id else None,
                     custom_prompt=summary_prompt,
-                    custom_api_key=custom_api_key
+                    custom_api_key=custom_api_key,
+                    call_duration=call_duration_seconds,
+                    speakers_detected=speakers_detected
                 )
 
                 if not ai_result or not ai_result.get('success'):

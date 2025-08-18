@@ -81,7 +81,7 @@ Return only the JSON object, no additional text.""")
             else:
                 record.status = 'active'
 
-    def generate_summary(self, message_id=None, contact_id=None, recording_url=None, transcript=None, custom_prompt=None, location_id=None, custom_api_key=None):
+    def generate_summary(self, message_id=None, contact_id=None, recording_url=None, transcript=None, custom_prompt=None, location_id=None, custom_api_key=None, call_duration=None, speakers_detected=None):
         """
         Generate AI summary for call data
         """
@@ -136,9 +136,33 @@ Return only the JSON object, no additional text.""")
             
             # Prepare the prompt
             if custom_prompt:
-                # If custom prompt is provided, combine it with the transcript
+                # If custom prompt is provided, combine it with the transcript and JSON format instructions
                 transcript_for_prompt = transcript or "No transcript available"
-                prompt = f"{custom_prompt}\n\nCall Transcript:\n{transcript_for_prompt}"
+                
+                # Add call metadata if available
+                metadata_info = ""
+                if call_duration is not None:
+                    metadata_info += f"\nCall Duration: {call_duration} seconds"
+                if speakers_detected is not None:
+                    metadata_info += f"\nSpeakers Detected: {speakers_detected}"
+                
+                prompt = f"""{custom_prompt}
+
+Please provide your response in the following JSON format:
+{{
+    "summary": "Your detailed CRM note/analysis here",
+    "keywords": ["keyword1", "keyword2", "keyword3"],
+    "sentiment": "positive|negative|neutral",
+    "action_items": ["action1", "action2", "action3"],
+    "confidence_score": 0.85,
+    "duration_analyzed": "{call_duration} seconds" if call_duration else "Unknown",
+    "speakers_detected": {speakers_detected if speakers_detected else 0}
+}}
+
+Call Metadata:{metadata_info}
+
+Call Transcript:
+{transcript_for_prompt}"""
                 _logger.info(f"[AI Service] Using custom prompt with transcript")
                 _logger.info(f"[AI Service] Custom prompt: {custom_prompt[:100]}...")
             else:
@@ -220,59 +244,46 @@ Return only the JSON object, no additional text.""")
                     'response_length': len(ai_response_text)
                 })
             
-            # Handle response based on whether we're using a custom prompt
-            if custom_prompt is not None:
-                # For custom prompts, treat the response as text and use it as the summary
-                _logger.info(f"[AI Service] Using custom prompt - treating response as text")
+            # Handle response - try to parse as JSON for both custom and standard prompts
+            try:
+                import re
+                json_match = re.search(r'\{.*\}', ai_response_text, re.DOTALL)
+                if json_match:
+                    ai_summary = json.loads(json_match.group())
+                else:
+                    ai_summary = json.loads(ai_response_text)
+                
+                _logger.info(f"[AI Service] Parsed AI summary: {ai_summary}")
                 
                 # Update usage statistics
                 self._record_success()
-                
-                # Create summary with the AI response as the summary
-                ai_summary = {
-                    'summary': ai_response_text,
-                    'keywords': [],
-                    'sentiment': 'neutral',
-                    'action_items': [],
-                    'confidence_score': 0.9,
-                    'duration_analyzed': 'Unknown',
-                    'speakers_detected': 0,
-                    'raw_transcript_array': ''
-                }
                 
                 # Update usage log with success
                 if usage_log:
                     usage_log.update_success(ai_summary)
                 
-                _logger.info(f"[AI Service] Created summary from custom prompt response")
                 return ai_summary
-            else:
-                # For standard prompts, try to parse as JSON
-                try:
-                    import re
-                    json_match = re.search(r'\{.*\}', ai_response_text, re.DOTALL)
-                    if json_match:
-                        ai_summary = json.loads(json_match.group())
-                    else:
-                        ai_summary = json.loads(ai_response_text)
-                    
-                    _logger.info(f"[AI Service] Parsed AI summary: {ai_summary}")
-                    
-                    # Update usage statistics
-                    self._record_success()
-                    
-                    # Update usage log with success
-                    if usage_log:
-                        usage_log.update_success(ai_summary)
-                    
-                    return ai_summary
-                    
-                except json.JSONDecodeError as e:
-                    _logger.error(f"[AI Service] Failed to parse AI response as JSON: {str(e)}")
-                    self._record_error(f"JSON parse error: {str(e)}")
-                    if usage_log:
-                        usage_log.update_failure(f"JSON parse error: {str(e)}", "JSON_PARSE_ERROR")
-                    return self._get_default_summary()
+                
+            except json.JSONDecodeError as e:
+                _logger.error(f"[AI Service] Failed to parse AI response as JSON: {str(e)}")
+                self._record_error(f"JSON parse error: {str(e)}")
+                if usage_log:
+                    usage_log.update_failure(f"JSON parse error: {str(e)}", "JSON_PARSE_ERROR")
+                
+                # Fallback: create a summary with the raw response as summary
+                fallback_summary = {
+                    'summary': ai_response_text,
+                    'keywords': [],
+                    'sentiment': 'neutral',
+                    'action_items': [],
+                    'confidence_score': 0.5,
+                    'duration_analyzed': 'Unknown',
+                    'speakers_detected': 0,
+                    'raw_transcript_array': ''
+                }
+                
+                _logger.warning(f"[AI Service] Using fallback summary due to JSON parse error")
+                return fallback_summary
                 
         except Exception as e:
             _logger.error(f"[AI Service] Error generating summary: {str(e)}", exc_info=True)
