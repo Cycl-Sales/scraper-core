@@ -207,13 +207,13 @@ Call Transcript:
             'max_tokens': max(self.max_tokens or 500, 1),  # Ensure minimum value of 1
             'temperature': self.temperature or 0.3
         }
-            
-            # Validate and set model type
-            model_type = self.model_type
-            if not model_type or model_type == 'False':
-                model_type = 'gpt-4o'  # Default to GPT-4o
-                _logger.warning(f"[AI Service] Invalid model type '{self.model_type}', using default: {model_type}")
-            
+        
+        # Validate and set model type
+        model_type = self.model_type
+        if not model_type or model_type == 'False':
+            model_type = 'gpt-4o'  # Default to GPT-4o
+            _logger.warning(f"[AI Service] Invalid model type '{self.model_type}', using default: {model_type}")
+        
             # Update payload with validated model type
             payload['model'] = model_type
             
@@ -295,15 +295,15 @@ Call Transcript:
                 _logger.warning(f"[AI Service] Using fallback summary due to JSON parse error")
                 return fallback_summary
                 
-        except Exception as e:
-            _logger.error(f"[AI Service] Error generating summary: {str(e)}", exc_info=True)
-            self._record_error(str(e))
-            if usage_log:
-                usage_log.update_failure(str(e), "EXCEPTION")
-            default_summary = self._get_default_summary()
-            if custom_prompt is not None:
-                default_summary['summary'] = custom_prompt
-            return default_summary
+            except Exception as e:
+                _logger.error(f"[AI Service] Error generating summary: {str(e)}", exc_info=True)
+                self._record_error(str(e))
+                if usage_log:
+                    usage_log.update_failure(str(e), "EXCEPTION")
+                default_summary = self._get_default_summary()
+                if custom_prompt is not None:
+                    default_summary['summary'] = custom_prompt
+                return default_summary
 
     def _record_success(self):
         """Record successful API call"""
