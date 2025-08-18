@@ -804,19 +804,17 @@ Return ONLY the JSON object, no additional text or explanations."""
                 actual_transcript = None
                 try:
                     # Get transcript from GHL API
-                    transcript_service = request.env['ghl.contact.message.transcript'].sudo()
-                    actual_transcript = transcript_service.get_full_transcript_text(message_record.id)
-                    _logger.info(f"[Call Transcription] Fetched transcript: {len(actual_transcript) if actual_transcript else 0} characters")
+                    transcript_records = request.env['ghl.contact.message.transcript'].sudo().search([
+                        ('message_id', '=', message_record.id)
+                    ], order='sentence_index asc')
+                    
+                    if transcript_records:
+                        actual_transcript = transcript_records.get_full_transcript_text()
+                        _logger.info(f"[Call Transcription] Fetched transcript: {len(actual_transcript) if actual_transcript else 0} characters")
+                    else:
+                        _logger.warning(f"[Call Transcription] No transcript records found for message {message_record.id}")
                 except Exception as transcript_err:
                     _logger.warning(f"[Call Transcription] Failed to fetch transcript: {str(transcript_err)}")
-
-                # Use provided transcript if available, otherwise use fetched transcript or fall back to message body
-                if 'cs_vision_call_transcript' in payload and payload['cs_vision_call_transcript']:
-                    actual_transcript = payload['cs_vision_call_transcript']
-                    _logger.info(f"[Call Transcription] Using provided transcript: {len(actual_transcript)} characters")
-                elif not actual_transcript and message_record.body:
-                    actual_transcript = message_record.body
-                    _logger.info(f"[Call Transcription] Using message body as fallback transcript")
 
                 if not actual_transcript:
                     _logger.warning(f"[Call Transcription] No transcript available for message {message_id}")
