@@ -36,6 +36,12 @@ interface CallData {
   transcript: TranscriptEntry[];
   summary: CallSummary;
   aiAnalysis: AIAnalysis;
+  aiCallSummary?: {
+    html: string;
+    generated: boolean;
+    date: string | null;
+  };
+  callGrade?: string;
 }
 
 interface TranscriptEntry {
@@ -70,6 +76,7 @@ interface CallTranscriptDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   callData: CallData | null;
+  onDataRefresh?: () => void; // Callback to refresh parent data
 }
 
 // Helper to parse timestamp string to seconds
@@ -83,12 +90,13 @@ function parseTimestamp(ts: string): number {
   return 0;
 }
 
-export default function CallTranscriptDialog({ open, onOpenChange, callData }: CallTranscriptDialogProps) {
+export default function CallTranscriptDialog({ open, onOpenChange, callData, onDataRefresh }: CallTranscriptDialogProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [audioRef, setAudioRef] = useState<HTMLAudioElement | null>(null);
   const transcriptRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
 
   // Auto-scroll to active transcript entry
   useEffect(() => {
@@ -208,6 +216,55 @@ export default function CallTranscriptDialog({ open, onOpenChange, callData }: C
     }
   };
 
+  const handleGenerateAISummary = async () => {
+    if (!callData) return;
+    
+    setIsGeneratingSummary(true);
+    try {
+      console.log('Generating AI summary for call:', callData.id);
+
+      const response = await fetch(`/api/generate-call-summary/${callData.id}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({}), // No API key needed - backend handles it
+      });
+
+      console.log('API Response status:', response.status);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('API Error response:', errorText);
+        throw new Error(`Failed to generate AI summary: ${response.status} ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      console.log('API Response result:', result);
+      
+      if (result.success) {
+        // Show success message
+        alert('AI Summary generated successfully! Refreshing data...');
+        
+        // Trigger data refresh
+        if (onDataRefresh) {
+          await onDataRefresh();
+        } else {
+          // Fallback: close and reopen dialog to trigger refresh
+          onOpenChange(false);
+          setTimeout(() => onOpenChange(true), 100);
+        }
+      } else {
+        throw new Error(result.error || 'Failed to generate AI summary');
+      }
+    } catch (error) {
+      console.error('Error generating AI summary:', error);
+      alert(`Error generating AI summary: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsGeneratingSummary(false);
+    }
+  };
+
   // Find the active transcript index for highlighting
   let activeIndex = -1;
   const transcriptTimes = callData.transcript.map(entry => parseTimestamp(entry.timestamp));
@@ -227,13 +284,37 @@ export default function CallTranscriptDialog({ open, onOpenChange, callData }: C
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-6xl h-[90vh] bg-slate-900 border-slate-800 text-slate-50 flex flex-col overflow-hidden">
         <DialogHeader className="pb-4 flex-shrink-0">
-          <DialogTitle className="text-xl font-bold text-white flex items-center gap-2">
-            <Phone className="w-5 h-5 text-blue-500" />
-            Call Details - {callData.contactName}
-          </DialogTitle>
-          <DialogDescription className="text-slate-400">
-            View call recording, transcript, and AI analysis for this conversation.
-          </DialogDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <DialogTitle className="text-xl font-bold text-white flex items-center gap-2">
+                <Phone className="w-5 h-5 text-blue-500" />
+                Call Details - {callData.contactName}
+              </DialogTitle>
+              <DialogDescription className="text-slate-400">
+                View call recording, transcript, and AI analysis for this conversation.
+              </DialogDescription>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                onClick={handleGenerateAISummary}
+                disabled={isGeneratingSummary}
+                className={`${callData.aiCallSummary?.generated ? 'bg-orange-600 hover:bg-orange-700' : 'bg-blue-600 hover:bg-blue-700'} text-white border-0`}
+                size="sm"
+              >
+                {isGeneratingSummary ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <Brain className="w-4 h-4 mr-2" />
+                    {callData.aiCallSummary?.generated ? 'Regenerate AI Summary' : 'Generate AI Summary'}
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
         </DialogHeader>
 
         {/* New Two-Column Layout with custom widths */}
@@ -266,46 +347,80 @@ export default function CallTranscriptDialog({ open, onOpenChange, callData }: C
               </div>
               <Separator className="bg-slate-700" />
 
-              {/* Call Summary */}
-              <div>
-                <span className="text-base font-semibold text-white">Call Summary</span>
-                <p className="text-sm text-slate-300 mt-2">{callData.summary.outcome}</p>
-              </div>
-              <Separator className="bg-slate-700" />
+              {/* AI Call Summary */}
+              {callData.aiCallSummary?.generated && callData.aiCallSummary.html ? (
+                <>
+                  <div>
+                    <span className="text-base font-semibold text-white flex items-center gap-2">
+                      <Brain className="w-4 h-4 text-blue-400" />
+                      AI Call Summary
+                      {callData.aiCallSummary.date && (
+                        <span className="text-xs text-slate-400">
+                          {new Date(callData.aiCallSummary.date).toLocaleDateString()}
+                        </span>
+                      )}
+                    </span>
+                    {/* Debug: Show raw HTML content */}
+                    {process.env.NODE_ENV === 'development' && (
+                      <details className="mt-2 p-2 bg-slate-800 rounded text-xs">
+                        <summary className="cursor-pointer text-slate-400">Debug: Raw HTML</summary>
+                        <pre className="mt-2 text-slate-300 whitespace-pre-wrap">{callData.aiCallSummary.html}</pre>
+                      </details>
+                    )}
+                    <div 
+                      className="text-sm text-slate-300 mt-2 max-w-none ai-summary-html"
+                      dangerouslySetInnerHTML={{ __html: callData.aiCallSummary.html }}
+                      style={{
+                        lineHeight: '1.6',
+                      }}
+                    />
+                  </div>
+                  <Separator className="bg-slate-700" />
+                </>
+              ) : (
+                <>
+                  {/* Fallback Call Summary */}
+                  <div>
+                    <span className="text-base font-semibold text-white">Call Summary</span>
+                    <p className="text-sm text-slate-300 mt-2">{callData.summary.outcome}</p>
+                  </div>
+                  <Separator className="bg-slate-700" />
 
-              {/* Inquiry Details */}
-              <div>
-                <span className="text-base font-semibold text-white">Inquiry Details</span>
-                <ul className="text-sm text-slate-300 mt-2 space-y-1 list-disc list-inside">
-                  {callData.summary.keyPoints.map((point, idx) => (
-                    <li key={idx}>{point}</li>
-                  ))}
-                </ul>
-              </div>
-              <Separator className="bg-slate-700" />
+                  {/* Fallback Inquiry Details */}
+                  <div>
+                    <span className="text-base font-semibold text-white">Inquiry Details</span>
+                    <ul className="text-sm text-slate-300 mt-2 space-y-1 list-disc list-inside">
+                      {callData.summary.keyPoints.map((point, idx) => (
+                        <li key={idx}>{point}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  <Separator className="bg-slate-700" />
 
-              {/* Financial Details */}
-              <div>
-                <span className="text-base font-semibold text-white">Financial Details</span>
-                <ul className="text-sm text-slate-300 mt-2 space-y-1 list-disc list-inside">
-                  <li>Payments Behind: 9</li>
-                  <li>Monthly Mortgage Payment: $1,900</li>
-                  <li>Household Income: $7,400 per month (with wife)</li>
-                  <li>Estimated Mortgage Owed: $244,000</li>
-                </ul>
-              </div>
-              <Separator className="bg-slate-700" />
+                  {/* Fallback Financial Details */}
+                  <div>
+                    <span className="text-base font-semibold text-white">Financial Details</span>
+                    <ul className="text-sm text-slate-300 mt-2 space-y-1 list-disc list-inside">
+                      <li>Payments Behind: 9</li>
+                      <li>Monthly Mortgage Payment: $1,900</li>
+                      <li>Household Income: $7,400 per month (with wife)</li>
+                      <li>Estimated Mortgage Owed: $244,000</li>
+                    </ul>
+                  </div>
+                  <Separator className="bg-slate-700" />
 
-              {/* Property & Occupancy Details */}
-              <div>
-                <span className="text-base font-semibold text-white">Property & Occupancy Details</span>
-                <ul className="text-sm text-slate-300 mt-2 space-y-1 list-disc list-inside">
-                  <li>Occupancy: Owner occupied, spouse lives in the property</li>
-                  <li>Property Type: Single family home</li>
-                  <li>Location: Middleville</li>
-                </ul>
-              </div>
-              <Separator className="bg-slate-700" />
+                  {/* Fallback Property & Occupancy Details */}
+                  <div>
+                    <span className="text-base font-semibold text-white">Property & Occupancy Details</span>
+                    <ul className="text-sm text-slate-300 mt-2 space-y-1 list-disc list-inside">
+                      <li>Occupancy: Owner occupied, spouse lives in the property</li>
+                      <li>Property Type: Single family home</li>
+                      <li>Location: Middleville</li>
+                    </ul>
+                  </div>
+                  <Separator className="bg-slate-700" />
+                </>
+              )}
 
               {/* AI Analysis */}
               <div>

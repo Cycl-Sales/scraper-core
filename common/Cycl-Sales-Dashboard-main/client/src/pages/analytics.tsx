@@ -68,8 +68,7 @@ export default function Analytics() {
   const [syncStatus, setSyncStatus] = useState<string>("");
   const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    console.log("locationId from query:", locationId);
+  useEffect(() => { 
     if (locationId) {
       setLocationNameLoading(true);
               fetch(`/api/location-name?location_id=${encodeURIComponent(locationId)}&appId=${CYCLSALES_APP_ID}`)
@@ -88,14 +87,12 @@ export default function Analytics() {
       setLoading(true);
               fetch(`/api/get-location-users?location_id=${encodeURIComponent(locationId)}&appId=${CYCLSALES_APP_ID}`)
         .then(res => res.json())
-        .then(data => {
-          console.log("Triggered GHL user fetch:", data);
+        .then(data => { 
           // Then fetch users from our database
           return fetch(`/api/location-users?location_id=${encodeURIComponent(locationId)}&appId=${CYCLSALES_APP_ID}`);
         })
         .then(res => res.json())
         .then(data => {
-          console.log("Fetched users from database:", data);
           if (data.success) {
             setUsers(data.users || []);
           }

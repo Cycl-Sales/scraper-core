@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
-import { Users, User, Filter, Share2, ChevronDown, X, Phone, Clock, Calendar } from "lucide-react";
+import { Users, User, Filter, Share2, ChevronDown, X, Phone, Clock, Calendar, Eye } from "lucide-react";
 import TopNavigation from "@/components/top-navigation";
 import { Button } from "@/components/ui/button";
 import CallTranscriptDialog from "@/components/call-transcript-dialog";
+import CallSummaryDialog from "@/components/call-summary-dialog";
 import CallVolumeChart from "@/components/charts/call-volume-chart";
 import EngagementChart from "@/components/charts/engagement-chart";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
@@ -96,6 +97,8 @@ export default function CallDetails() {
   const [activeTab, setActiveTab] = useState("calls");
   const [transcriptDialogOpen, setTranscriptDialogOpen] = useState(false);
   const [selectedCallDetails, setSelectedCallDetails] = useState<any>(null);
+  const [summaryDialogOpen, setSummaryDialogOpen] = useState(false);
+  const [selectedCallSummary, setSelectedCallSummary] = useState<any>(null);
   // Removed unused loadingCallDetails state
   // Add filter states
   const [notMarketingSource, setNotMarketingSource] = useState("");
@@ -145,7 +148,7 @@ export default function CallDetails() {
     try {
       setTranscriptDialogOpen(true);
       
-              const response = await fetch(`/api/call-details/${messageId}?appId=${CYCLSALES_APP_ID}`);
+      const response = await fetch(`/api/call-details/${messageId}?appId=${CYCLSALES_APP_ID}`);
       const data = await response.json();
       
       if (data.success) {
@@ -159,6 +162,105 @@ export default function CallDetails() {
       setSelectedCallDetails(null);
     } finally {
       // no-op
+    }
+  };
+
+  // Function to refresh call details data
+  const refreshCallDetails = async () => {
+    if (selectedCallDetails?.id) {
+      try {
+        const response = await fetch(`/api/call-details/${selectedCallDetails.id}?appId=${CYCLSALES_APP_ID}`);
+        const data = await response.json();
+        
+        if (data.success) {
+          setSelectedCallDetails(data.call_details);
+        }
+      } catch (err) {
+        console.error("Error refreshing call details:", err);
+      }
+    }
+  };
+
+  // Function to handle viewing call summary
+  const handleViewSummary = async (messageId: number) => {
+    try {
+      const response = await fetch(`/api/call-details/${messageId}?appId=${CYCLSALES_APP_ID}`);
+      const data = await response.json();
+      
+      if (data.success) {
+        const callDetails = data.call_details;
+        if (callDetails.aiCallSummary?.generated) {
+          setSelectedCallSummary({
+            html: callDetails.aiCallSummary.html,
+            callGrade: callDetails.callGrade,
+            callDate: callDetails.callDate,
+            contactName: callDetails.contactName,
+            hasSummary: true,
+            // Additional call details
+            callDirection: callDetails.direction,
+            agent: callDetails.agent,
+            duration: callDetails.duration,
+            status: callDetails.status,
+            contactPhone: callDetails.contactPhone,
+            callTime: callDetails.callTime,
+            aiAnalysis: callDetails.aiAnalysis
+          });
+        } else {
+          setSelectedCallSummary({
+            html: '',
+            callGrade: callDetails.callGrade,
+            callDate: callDetails.callDate,
+            contactName: callDetails.contactName,
+            hasSummary: false,
+            messageId: messageId,
+            // Additional call details
+            callDirection: callDetails.direction,
+            agent: callDetails.agent,
+            duration: callDetails.duration,
+            status: callDetails.status,
+            contactPhone: callDetails.contactPhone,
+            callTime: callDetails.callTime,
+            aiAnalysis: callDetails.aiAnalysis
+          });
+        }
+        setSummaryDialogOpen(true);
+      } else {
+        alert('Failed to fetch call details');
+      }
+    } catch (err) {
+      console.error("Error fetching call summary:", err);
+      alert('Error fetching call summary');
+    }
+  };
+
+  // Function to handle generating AI summary
+  const handleGenerateSummary = async (messageId: number) => {
+    try {
+      const response = await fetch(`/api/generate-call-summary/${messageId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({}),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to generate AI summary: ${response.status} ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      
+      if (result.success) {
+        alert('AI Summary generated successfully! Refreshing data...');
+        // Refresh the call messages to show updated data
+        window.location.reload();
+      } else {
+        throw new Error(result.error || 'Failed to generate AI summary');
+      }
+    } catch (error) {
+      console.error('Error generating AI summary:', error);
+      alert(`Error generating AI summary: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 
@@ -438,7 +540,6 @@ export default function CallDetails() {
                       <th className="text-left py-3 px-4 font-medium text-slate-400 whitespace-nowrap">Summary</th>
                       <th className="text-left py-3 px-4 font-medium text-slate-400 whitespace-nowrap">Call Date</th>
                       <th className="text-left py-3 px-4 font-medium text-slate-400 whitespace-nowrap">User Name</th>
-                      <th className="text-left py-3 px-4 font-medium text-slate-400 whitespace-nowrap">Contact Tags</th>
                       <th className="text-left py-3 px-4 font-medium text-slate-400 whitespace-nowrap">Actions</th>
                     </tr>
                   </thead>
@@ -465,17 +566,6 @@ export default function CallDetails() {
                       } else if (message.meta?.duration) {
                         // Check if duration is in meta.duration
                         duration = formatDuration(message.meta.duration);
-                      }
-                      
-                      // Debug logging (remove in production)
-                      if (index === 0) {
-                        console.log('Message data for debugging:', {
-                          id: message.id,
-                          meta: message.meta,
-                          duration: message.duration,
-                          call_duration: message.meta?.call_duration,
-                          meta_duration: message.meta?.duration
-                        });
                       }
 
                       return (
@@ -508,11 +598,28 @@ export default function CallDetails() {
                             {duration !== 'N/A' && <Clock className="w-3 h-3 inline mr-1" />}
                             {duration}
                           </td>
-                          <td className="py-3 px-4 whitespace-nowrap text-slate-400">
-                            {message.meta?.call_status || 'N/A'}
+                          <td className="py-3 px-4 whitespace-nowrap">
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border font-medium text-xs ${
+                              message.ai_call_grade === 'A' ? 'border-green-500 text-green-300' :
+                              message.ai_call_grade === 'B' ? 'border-blue-500 text-blue-300' :
+                              message.ai_call_grade === 'C' ? 'border-yellow-500 text-yellow-300' :
+                              message.ai_call_grade === 'D' ? 'border-orange-500 text-orange-300' :
+                              message.ai_call_grade === 'F' ? 'border-red-500 text-red-300' :
+                              'border-slate-500 text-slate-400'
+                            }`}>
+                              {message.ai_call_grade || 'N/A'}
+                            </span>
                           </td>
-                          <td className="py-3 px-4 whitespace-nowrap text-slate-300 max-w-[200px] truncate" title={message.body}>
-                            {message.body || 'No summary available'}
+                          <td className="py-3 px-4 whitespace-nowrap">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="bg-slate-800 border border-blue-500 text-blue-400 hover:bg-slate-700 px-2 py-1 rounded-md text-xs font-medium flex items-center gap-1"
+                              onClick={() => handleViewSummary(message.id)}
+                            >
+                              <Eye className="w-3 h-3" />
+                              Read
+                            </Button>
                           </td>
                           <td className="py-3 px-4 whitespace-nowrap text-slate-300">
                             <div className="flex items-center gap-1">
@@ -523,13 +630,6 @@ export default function CallDetails() {
                           </td>
                           <td className="py-3 px-4 whitespace-nowrap text-slate-300">
                             {message.user_id || 'Unknown'}
-                          </td>
-                          <td className="py-3 px-4 whitespace-nowrap">
-                            <div className="flex flex-row overflow-x-auto whitespace-nowrap gap-1 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-slate-900">
-                              {tags.map((tag, i) => (
-                                <span key={i} className="inline-flex items-center px-2 py-0.5 rounded-md border border-slate-600 text-slate-300 font-medium text-xs mr-1">{tag}</span>
-                              ))}
-                            </div>
                           </td>
                           <td className="py-3 px-4 whitespace-nowrap">
                             <Button
@@ -577,6 +677,32 @@ export default function CallDetails() {
           }
         }}
         callData={selectedCallDetails}
+        onDataRefresh={refreshCallDetails}
+      />
+
+      {/* Call Summary Dialog */}
+      <CallSummaryDialog
+        open={summaryDialogOpen}
+        onOpenChange={(open) => {
+          setSummaryDialogOpen(open);
+          if (!open) {
+            setSelectedCallSummary(null);
+          }
+        }}
+        summaryHtml={selectedCallSummary?.html || ''}
+        callGrade={selectedCallSummary?.callGrade}
+        callDate={selectedCallSummary?.callDate}
+        contactName={selectedCallSummary?.contactName}
+        hasSummary={selectedCallSummary?.hasSummary}
+        messageId={selectedCallSummary?.messageId}
+        onGenerateSummary={handleGenerateSummary}
+        callDirection={selectedCallSummary?.callDirection}
+        agent={selectedCallSummary?.agent}
+        duration={selectedCallSummary?.duration}
+        status={selectedCallSummary?.status}
+        contactPhone={selectedCallSummary?.contactPhone}
+        callTime={selectedCallSummary?.callTime}
+        aiAnalysis={selectedCallSummary?.aiAnalysis}
       />
     </div>
   );

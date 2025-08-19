@@ -18,6 +18,8 @@
                     <field name="user_id_rel"/>
                     <field name="date_added"/>
                     <field name="body"/>
+                    <field name="ai_call_grade" invisible="message_type != 'TYPE_CALL'"/>
+                    <field name="ai_call_summary_date" invisible="message_type != 'TYPE_CALL'"/>
                 </list>
             </field>
         </record>
@@ -54,6 +56,11 @@
                                 type="object" 
                                 class="btn-success"
                                 invisible="message_type != 'TYPE_CALL'"/>
+                        <button name="action_generate_ai_call_summary" 
+                                string="Generate AI Summary" 
+                                type="object" 
+                                class="btn-primary"
+                                invisible="message_type != 'TYPE_CALL' or not transcript_ids"/>
                     </header>
                     <sheet>
                         <group>
@@ -85,8 +92,48 @@
                                 <field name="recording_size"/>
                                 <field name="recording_data" invisible="1"/>
                             </group>
+                            <group string="AI Analysis" invisible="message_type != 'TYPE_CALL'">
+                                <field name="ai_call_summary_generated"/>
+                                <field name="ai_call_summary_date"/>
+                                <field name="ai_call_grade"/>
+                                <field name="ai_overall_score"/>
+                                <field name="ai_call_intent"/>
+                                <field name="ai_satisfaction_level"/>
+                                <field name="ai_communication_score"/>
+                                <field name="ai_professionalism_score"/>
+                                <field name="ai_problem_solving_score"/>
+                                <field name="ai_followup_score"/>
+                                <field name="ai_highlights"/>
+                                <field name="ai_improvements"/>
+                                <field name="ai_next_steps"/>
+                                <field name="ai_call_summary_html" widget="html"/>
+                            </group>
                         </group>
                         <notebook>
+                            <page string="Transcripts" invisible="message_type != 'TYPE_CALL'">
+                                <field name="transcript_ids">
+                                    <list>
+                                        <field name="sentence_index"/>
+                                        <field name="transcript"/>
+                                        <field name="confidence"/>
+                                        <field name="start_time_seconds"/>
+                                        <field name="end_time_seconds"/>
+                                        <field name="duration"/>
+                                        <field name="media_channel"/>
+                                    </list>
+                                    <form string="Transcript Entry">
+                                        <group>
+                                            <field name="sentence_index"/>
+                                            <field name="transcript"/>
+                                            <field name="confidence"/>
+                                            <field name="start_time_seconds"/>
+                                            <field name="end_time_seconds"/>
+                                            <field name="duration"/>
+                                            <field name="media_channel"/>
+                                        </group>
+                                    </form>
+                                </field>
+                            </page>
                             <page string="Attachments">
                                 <field name="attachment_ids">
                                     <list>
@@ -107,6 +154,36 @@
                             </page>
                             <page string="Meta Data">
                                 <field name="meta_id"/>
+                            </page>
+                            <page string="AI Analysis" invisible="message_type != 'TYPE_CALL'">
+                                <group>
+                                    <group string="AI Summary Status">
+                                        <field name="ai_call_summary_generated"/>
+                                        <field name="ai_call_summary_date"/>
+                                        <field name="ai_call_grade"/>
+                                    </group>
+                                    <group string="AI Scores">
+                                        <field name="ai_overall_score"/>
+                                        <field name="ai_communication_score"/>
+                                        <field name="ai_professionalism_score"/>
+                                        <field name="ai_problem_solving_score"/>
+                                        <field name="ai_followup_score"/>
+                                    </group>
+                                </group>
+                                <group>
+                                    <group string="AI Analysis Details">
+                                        <field name="ai_call_intent"/>
+                                        <field name="ai_satisfaction_level"/>
+                                    </group>
+                                    <group string="AI Content">
+                                        <field name="ai_highlights"/>
+                                        <field name="ai_improvements"/>
+                                        <field name="ai_next_steps"/>
+                                    </group>
+                                </group>
+                                <group string="AI Generated Summary">
+                                    <field name="ai_call_summary_html" widget="html" nolabel="1"/>
+                                </group>
                             </page>
                         </notebook>
                     </sheet>

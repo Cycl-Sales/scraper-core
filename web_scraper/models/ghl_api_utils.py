@@ -210,7 +210,13 @@ class GHLAPIPaginator:
             body = {
                 "locationId": location_id,
                 "page": page,
-                "pageLimit": page_limit
+                "pageLimit": page_limit,
+                "sort": [
+                    {
+                        "field": "dateUpdated",
+                        "direction": "desc"
+                    }
+                ]
             }
             url = f"{self.base_url}/contacts/search"
             try:

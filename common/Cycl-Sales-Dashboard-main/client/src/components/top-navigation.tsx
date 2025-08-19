@@ -1,18 +1,10 @@
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger
-} from "@/components/ui/dropdown-menu";
-import { BarChart3, Grid, Moon, Sun } from "lucide-react";
+import { BarChart3 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
-import { useTheme } from "../theme-context";
 
 export default function TopNavigation() {
   const [activeNav, setActiveNav] = useState("Analytics");
-  const { theme, setTheme } = useTheme();
   const [location] = useLocation();
 
   // Set active nav based on route
@@ -25,7 +17,6 @@ export default function TopNavigation() {
   // Use selectedLocation from localStorage if available
   const selectedLocation = typeof window !== 'undefined' && window.localStorage ? window.localStorage.getItem('automations_selected_location') || 'all' : 'all';
   const navButtons = [
-    { label: "Actions" },
     { label: "Overview" },
     { label: "Analytics" },
     { label: "Automations", href: `/automations?location_id=${encodeURIComponent(selectedLocation)}` },
@@ -39,10 +30,14 @@ export default function TopNavigation() {
       <nav className="w-full bg-slate-900 border-b border-slate-800 px-6 py-4 flex items-center justify-between">
         {/* Left: Logo and Title */}
         <div className="flex items-center space-x-3 min-w-[200px]">
-          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-            <BarChart3 className="w-4 h-4 text-white" />
-          </div>
-          <span className="text-white font-semibold text-xl">Cycl Sales</span>
+          <Link href="/overview">
+            <div className="flex items-center space-x-3 cursor-pointer hover:opacity-80 transition-opacity">
+              <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+                <BarChart3 className="w-4 h-4 text-white" />
+              </div>
+              <span className="text-white font-semibold text-xl">Cycl Sales</span>
+            </div>
+          </Link>
         </div>
         {/* Right: Nav Buttons and Icon Buttons */}
         <div className="flex items-center space-x-2 min-w-[80px] justify-end">
@@ -89,51 +84,6 @@ export default function TopNavigation() {
               )
             ))}
           </div>
-          {/* <Button
-            variant="ghost"
-            size="icon"
-            className="text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-700 rounded-lg"
-          >
-            <Settings className="h-5 w-5" />
-          </Button> */}
-          {/* Grid/Menu Dropdown */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-700 rounded-lg"
-              >
-                <Grid className="h-5 w-5" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-44 bg-slate-900 border-slate-700">
-              <DropdownMenuItem
-                className="text-slate-300 hover:text-white hover:bg-slate-800 cursor-pointer"
-                onClick={() => setTheme("system")}
-              >
-                <Grid className="h-4 w-4 mr-2" />
-                System
-                {theme === "system" && <span className="ml-auto">✓</span>}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className="text-slate-300 hover:text-white hover:bg-slate-800 cursor-pointer"
-                onClick={() => setTheme("light")}
-              >
-                <Sun className="h-4 w-4 mr-2" />
-                Light
-                {theme === "light" && <span className="ml-auto">✓</span>}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className="text-slate-300 hover:text-white hover:bg-slate-800 cursor-pointer"
-                onClick={() => setTheme("dark")}
-              >
-                <Moon className="h-4 w-4 mr-2" />
-                Dark
-                {theme === "dark" && <span className="ml-auto">✓</span>}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
         </div>
       </nav> 
     </>

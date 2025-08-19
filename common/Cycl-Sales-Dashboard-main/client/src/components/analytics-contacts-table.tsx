@@ -79,10 +79,10 @@ function parseTouchSummary(touchSummary: string) {
     const match = part.match(/^(\d+)\s+(.+)$/);
     if (match) {
       const type = match[2].toUpperCase();
-      
+
       // Determine colors and icons based on message type
       let border, textColor, iconColor, icon;
-      
+
       if (type.includes('SMS')) {
         border = 'border-blue-500';
         textColor = 'text-blue-300';
@@ -274,7 +274,7 @@ function getChipProps(type: string, value: string) {
       if (value === 'no_touches') {
         return { border: 'border-slate-600', text: 'text-slate-400', iconColor: 'text-slate-400', icon: <span className="text-lg">&#10005;</span> };
       }
-      
+
       // Check for different message types and assign colors
       if (value.includes('SMS')) {
         return { border: 'border-blue-500', text: 'text-blue-300', iconColor: 'text-blue-300', icon: <MessageSquare className="w-4 h-4" /> };
@@ -306,7 +306,7 @@ function getChipProps(type: string, value: string) {
       if (value.includes('ACTIVITY')) {
         return { border: 'border-pink-500', text: 'text-pink-300', iconColor: 'text-pink-300', icon: <Activity className="w-4 h-4" /> };
       }
-      
+
       // Default for other types
       return { border: 'border-slate-500', text: 'text-slate-300', iconColor: 'text-slate-300', icon: <MessageSquare className="w-4 h-4" /> };
     case 'engagementSummary':
@@ -330,7 +330,7 @@ interface AnalyticsContactsTableProps {
 
 export default function AnalyticsContactsTable({ loading = false, locationId }: AnalyticsContactsTableProps) {
   const { toast } = useToast();
-  
+
   // --- New state for lazy loading ---
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [page, setPage] = useState(1);
@@ -339,9 +339,15 @@ export default function AnalyticsContactsTable({ loading = false, locationId }: 
   const [contactsData, setContactsData] = useState<any[]>([]);
   // Removed unused countLoading and syncStatus state
   const [hasMore, setHasMore] = useState(false);
-  
+
+  // Search state
+  const [search, setSearch] = useState("");
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchTimeout, setSearchTimeout] = useState<NodeJS.Timeout | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
+
   // --- New state for detailed data loading ---
-  const [detailedDataLoading] = useState<Set<number>>(new Set());
+
 
   // AI Analysis state
   const [aiAnalysisLoading, setAiAnalysisLoading] = useState<{ [key: string]: boolean }>({});
@@ -363,6 +369,8 @@ export default function AnalyticsContactsTable({ loading = false, locationId }: 
     aiSalesGrade: ''
   });
 
+  const [detailedDataLoading, setDetailedDataLoading] = useState<Record<number, boolean>>({});
+
   // Store polling intervals for cleanup - DISABLED
   // const [pollingIntervals, setPollingIntervals] = useState<Set<NodeJS.Timeout>>(new Set());
 
@@ -377,7 +385,7 @@ export default function AnalyticsContactsTable({ loading = false, locationId }: 
     setTotalContacts(0);
     setPage(1);
     // Fetch count
-            fetch(`/api/location-contacts-count?location_id=${locationId}&appId=${CYCLSALES_APP_ID}`)
+    fetch(`/api/location-contacts-count?location_id=${locationId}&appId=${CYCLSALES_APP_ID}`)
       .then(res => res.json())
       .then(data => {
         if (data.success) {
@@ -386,24 +394,25 @@ export default function AnalyticsContactsTable({ loading = false, locationId }: 
           setTotalContacts(0);
         }
       })
-      .finally(() => {});
+      .finally(() => { });
   }, [locationId]);
 
   // Fetch contacts for current page
   useEffect(() => {
-    if (!locationId) return;
+    if (!locationId || isSearching) {
+      return; // Don't fetch if we're searching
+    }
     setContactsLoading(true);
-    
+
     // Use the new optimized endpoint
-            fetch(`/api/location-contacts-optimized?location_id=${locationId}&page=${page}&limit=${rowsPerPage}&appId=${CYCLSALES_APP_ID}`)
+    fetch(`/api/location-contacts-optimized?location_id=${locationId}&page=${page}&limit=${rowsPerPage}&appId=${CYCLSALES_APP_ID}`)
       .then(res => res.json())
       .then(data => {
         if (data.success) {
           setContactsData(data.contacts || []);
           setHasMore(data.has_more || false);
-          
-          // Background sync is now disabled by default - no automatic polling
-          // startPollingForDetails(data.contacts.map((c: any) => c.id));
+                      // Don't automatically fetch details - let frontend request them on-demand
+            // Details will be fetched when user interacts with specific contacts
         } else {
           setContactsData([]);
           setHasMore(false);
@@ -426,10 +435,59 @@ export default function AnalyticsContactsTable({ loading = false, locationId }: 
   //   // Function disabled since background sync is turned off
   // };
 
-  // --- Updated function to fetch detailed contact data (fallback) - DISABLED ---
-  // const fetchContactDetails = async (contactIds: number[]) => {
-  //   // Function disabled to prevent automatic background sync
-  // };
+  // --- Function to fetch detailed contact data ---
+  const fetchContactDetails = async (contactId: number) => {
+    if (detailedDataLoading[contactId]) return; // Already loading
+
+    setDetailedDataLoading(prev => ({ ...prev, [contactId]: true }));
+
+    try {
+      const response = await fetch(`/api/contact-details?contact_id=${contactId}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        // Update the contact data with the fetched details
+        setContactsData(prev => prev.map(contact => {
+          if (contact.id === contactId) {
+            return {
+              ...contact,
+              tasks: data.contact.tasks || [],
+              tasks_count: data.contact.tasks_count || 0,
+              conversations: data.contact.conversations || [],
+              conversations_count: data.contact.conversations_count || 0,
+              // Update touch summary data from the API response
+              touch_summary: data.contact.touch_summary || contact.touch_summary || 'no_touches',
+              last_touch_date: data.contact.last_touch_date || contact.last_touch_date || '',
+              last_message: data.contact.last_message || contact.last_message || '',
+              details_fetched: true,
+              has_tasks: data.contact.tasks_count > 0,
+              has_conversations: data.contact.conversations_count > 0,
+              loading_details: false,
+            };
+          }
+          return contact;
+        }));
+      } else {
+        console.error('Failed to fetch contact details:', data.error);
+      }
+    } catch (error) {
+      console.error('Error fetching contact details:', error);
+    } finally {
+      setDetailedDataLoading(prev => ({ ...prev, [contactId]: false }));
+    }
+  };
+
+  // --- Function to fetch details for specific contacts only ---
+  const fetchContactDetailsOnDemand = async (contactId: number) => {
+    // Only fetch details for a specific contact when needed
+    await fetchContactDetails(contactId);
+  };
 
   // --- Function to trigger background sync - DISABLED ---
   // const triggerBackgroundSync = async () => {
@@ -438,7 +496,91 @@ export default function AnalyticsContactsTable({ loading = false, locationId }: 
 
   // Removed details polling effect as background sync is disabled
 
-  const [search, setSearch] = useState("");
+  // Search functionality
+  const handleSearch = async (searchTerm: string) => {
+    if (!locationId) return;
+
+    setSearchLoading(true);
+    setIsSearching(true);
+    
+    try {
+      const url = `/api/location-contacts-search?location_id=${locationId}&search=${encodeURIComponent(searchTerm)}&appId=${CYCLSALES_APP_ID}`;
+      
+      const response = await fetch(url);
+      const data = await response.json();
+      
+      if (data.success) {
+        setContactsData(data.contacts || []);
+        setTotalContacts(data.total_contacts || 0);
+        setPage(1); // Reset to first page when searching
+      } else {
+        console.error('Search failed:', data.error);
+        setContactsData([]);
+        setTotalContacts(0);
+      }
+    } catch (error) {
+      console.error('Error searching contacts:', error);
+      setContactsData([]);
+      setTotalContacts(0);
+    } finally {
+      setSearchLoading(false);
+      setIsSearching(false);
+    }
+  };
+
+  // Function to fetch normal contacts (without search)
+  const fetchContacts = async () => {
+    if (!locationId) return;
+    
+    setContactsLoading(true);
+    setIsSearching(false);
+    try {
+      const response = await fetch(`/api/location-contacts-optimized?location_id=${locationId}&page=${page}&limit=${rowsPerPage}&appId=${CYCLSALES_APP_ID}`);
+      const data = await response.json();
+      
+      if (data.success) {
+        setContactsData(data.contacts || []);
+        setTotalContacts(data.total_contacts || 0);
+        setHasMore(data.has_more || false);
+      } else {
+        setContactsData([]);
+        setTotalContacts(0);
+        setHasMore(false);
+      }
+    } catch (error) {
+      console.error('Error fetching contacts:', error);
+      setContactsData([]);
+      setTotalContacts(0);
+      setHasMore(false);
+    } finally {
+      setContactsLoading(false);
+    }
+  };
+
+  // Debounced search effect
+  useEffect(() => {
+    if (searchTimeout) {
+      clearTimeout(searchTimeout);
+    }
+
+    if (search.trim() === '') {
+      // If search is empty, let the normal fetching effect handle it
+      setIsSearching(false);
+    } else {
+      // Debounce search to avoid too many API calls
+      const timeout = setTimeout(() => {
+        handleSearch(search);
+      }, 300);
+      setSearchTimeout(timeout);
+    }
+
+    return () => {
+      if (searchTimeout) {
+        clearTimeout(searchTimeout);
+      }
+    };
+  }, [search, locationId]);
+
   const allColumns = columns;
   const requiredColumns = ["Contact Name", "Actions"]; // Make Actions always visible
   const optionalColumns = allColumns.filter((col) => !requiredColumns.includes(col));
@@ -451,7 +593,7 @@ export default function AnalyticsContactsTable({ loading = false, locationId }: 
         ? prev.filter((c) => c !== col)
         : [...prev, col]
     );
-  }; 
+  };
   const handleToggleHideAll = () => {
     if (visibleColumns.length === requiredColumns.length && requiredColumns.every(col => visibleColumns.includes(col))) {
       setVisibleColumns([...allColumns]);
@@ -462,9 +604,9 @@ export default function AnalyticsContactsTable({ loading = false, locationId }: 
 
   const handleRunAiAnalysis = async (contact: any) => {
     if (aiAnalysisLoading[contact.id]) return;
-    
+
     setAiAnalysisLoading(prev => ({ ...prev, [contact.id]: true }));
-    
+
     try {
       const response = await fetch(`/api/run-ai-analysis/${contact.id}`, {
         method: 'POST',
@@ -472,9 +614,9 @@ export default function AnalyticsContactsTable({ loading = false, locationId }: 
           'Content-Type': 'application/json',
         },
       });
-      
+
       const result = await response.json();
-      
+
       if (result.success) {
         toast({
           title: "AI Analysis Complete",
@@ -484,7 +626,7 @@ export default function AnalyticsContactsTable({ loading = false, locationId }: 
         // Trigger a re-fetch of the current page
         const response = await fetch(`/api/location-contacts-optimized?location_id=${locationId}&page=${page}&limit=${rowsPerPage}&appId=${CYCLSALES_APP_ID}`);
         const refreshData = await response.json();
-        
+
         if (refreshData.success) {
           setContactsData(refreshData.contacts || []);
         }
@@ -535,14 +677,8 @@ export default function AnalyticsContactsTable({ loading = false, locationId }: 
 
   // Transform contacts data to match the expected format
   const transformedContacts = contactsData.map((contact: any) => {
-    // Debug: Log AI fields to see what's being received
-    console.log(`Contact ${contact.id} AI fields:`, {
-      ai_status: contact.ai_status,
-      ai_summary: contact.ai_summary,
-      ai_quality_grade: contact.ai_quality_grade,
-      ai_sales_grade: contact.ai_sales_grade
-    });
-    
+
+
     // Map AI status
     const aiStatusMap: { [key: string]: any } = {
       'valid_lead': { label: 'Valid Lead', color: 'bg-blue-900 text-blue-300', icon: '👤' },
@@ -550,7 +686,7 @@ export default function AnalyticsContactsTable({ loading = false, locationId }: 
       'unqualified': { label: 'Unqualified', color: 'bg-slate-800 text-slate-400', icon: '👤' },
       'not_contacted': { label: 'Not Contacted', color: 'bg-slate-800 text-slate-400', icon: '👤' }
     };
-    
+
     // Map AI quality grades
     const aiQualityMap: { [key: string]: any } = {
       'grade_a': { label: 'Lead Grade A', color: 'bg-green-900 text-green-300' },
@@ -558,7 +694,7 @@ export default function AnalyticsContactsTable({ loading = false, locationId }: 
       'grade_c': { label: 'Lead Grade C', color: 'bg-yellow-900 text-yellow-300' },
       'no_grade': { label: 'No Grade', color: 'bg-slate-800 text-slate-400' }
     };
-    
+
     // Map AI sales grades
     const aiSalesMap: { [key: string]: any } = {
       'grade_a': { label: 'Sales Grade A', color: 'bg-green-900 text-green-300' },
@@ -567,7 +703,7 @@ export default function AnalyticsContactsTable({ loading = false, locationId }: 
       'grade_d': { label: 'Sales Grade D', color: 'bg-orange-900 text-orange-300' },
       'no_grade': { label: 'No Grade', color: 'bg-slate-800 text-slate-400' }
     };
-    
+
     // Map CRM tasks
     const crmTasksMap: { [key: string]: any } = {
       'overdue': { label: '1 Overdue', color: 'bg-red-900 text-red-400' },
@@ -575,7 +711,7 @@ export default function AnalyticsContactsTable({ loading = false, locationId }: 
       'no_tasks': { label: 'No Tasks', color: 'bg-slate-800 text-slate-400' },
       'empty': { label: '', color: '' }
     };
-    
+
     return {
       id: contact.id, // Add the contact ID
       name: contact.name || '',
@@ -596,12 +732,12 @@ export default function AnalyticsContactsTable({ loading = false, locationId }: 
       lastTouchDate: (() => {
         if (Array.isArray(contact.conversations) && contact.conversations.length > 0) {
           // Sort conversations by write_date (most recent first) and get the latest one
-          const sortedConversations = [...contact.conversations].sort((a, b) => 
-            new Date(b.write_date || b.create_date || 0).getTime() - 
+          const sortedConversations = [...contact.conversations].sort((a, b) =>
+            new Date(b.write_date || b.create_date || 0).getTime() -
             new Date(a.write_date || a.create_date || 0).getTime()
           );
           const latestConversation = sortedConversations[0];
-          
+
           if (latestConversation && (latestConversation.write_date || latestConversation.create_date)) {
             return latestConversation.write_date || latestConversation.create_date;
           }
@@ -613,12 +749,12 @@ export default function AnalyticsContactsTable({ loading = false, locationId }: 
       lastMessage: (() => {
         if (Array.isArray(contact.conversations) && contact.conversations.length > 0) {
           // Sort conversations by write_date (most recent first) and get the latest one
-          const sortedConversations = [...contact.conversations].sort((a, b) => 
-            new Date(b.write_date || b.create_date || 0).getTime() - 
+          const sortedConversations = [...contact.conversations].sort((a, b) =>
+            new Date(b.write_date || b.create_date || 0).getTime() -
             new Date(a.write_date || a.create_date || 0).getTime()
           );
           const latestConversation = sortedConversations[0];
-          
+
           if (latestConversation && latestConversation.last_message_body) {
             return {
               body: latestConversation.last_message_body,
@@ -642,7 +778,7 @@ export default function AnalyticsContactsTable({ loading = false, locationId }: 
       conversations: Array.isArray(contact.conversations) ? contact.conversations : [],
       conversationsCount: contact.conversations_count || 0,
       detailsFetched: contact.details_fetched || false,
-      detailsLoading: detailedDataLoading.has(contact.id),
+      detailsLoading: detailedDataLoading[contact.id] || false,
     };
   });
 
@@ -687,7 +823,7 @@ export default function AnalyticsContactsTable({ loading = false, locationId }: 
   const [, setLocation] = useLocation();
 
   // Debug: log the fetched contacts
-  console.log('fetchedContacts', contactsData);
+  
 
   return (
     <div className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-900 p-0">
@@ -701,10 +837,28 @@ export default function AnalyticsContactsTable({ loading = false, locationId }: 
         )}
         {contactsLoading && <span className="text-blue-300 text-xs animate-pulse ml-2">Loading contacts...</span>}
       </div> */}
-      {/* Header with title, filter, and customize columns button */}
+      {/* Header with title, search bar, filter, and customize columns button */}
       <div className="flex items-center justify-between px-4 pt-4 pb-2">
         <span className="text-lg font-semibold text-white">Contacts</span>
         <div className="flex gap-2 items-center">
+          {/* Search Bar */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
+            <Input
+              placeholder="Search contacts..."
+              value={search}
+              onChange={(e) => {
+        
+                setSearch(e.target.value);
+              }}
+              className="pl-10 pr-4 py-2 bg-slate-800 border border-slate-700 text-slate-200 placeholder-slate-400 w-64 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+            {searchLoading && (
+              <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
+              </div>
+            )}
+          </div>
           <Popover>
             <PopoverTrigger asChild>
               <Button variant="outline" className="flex gap-2 items-center bg-slate-900 text-slate-200 border-slate-700 px-4 py-1.5 h-9 text-sm font-medium">
@@ -837,10 +991,10 @@ export default function AnalyticsContactsTable({ loading = false, locationId }: 
                     <SelectContent>
                       {touchSummaryOptions.filter(opt => opt !== "").map(opt => (
                         <SelectItem key={opt} value={opt}>
-                          {opt === 'no_touches' ? 'No Touches' : 
-                           opt === 'PHONE CALL' ? 'Phone Call' :
-                           opt === 'WEBCHAT' ? 'Web Chat' :
-                           opt}
+                          {opt === 'no_touches' ? 'No Touches' :
+                            opt === 'PHONE CALL' ? 'Phone Call' :
+                              opt === 'WEBCHAT' ? 'Web Chat' :
+                                opt}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -1131,10 +1285,10 @@ export default function AnalyticsContactsTable({ loading = false, locationId }: 
                   return 0;
                 })
                 .map((col) => (
-                <TableHead key={col} className="text-slate-400 whitespace-nowrap px-3 py-2 font-medium">
-                  {col}
-                </TableHead>
-              ))}
+                  <TableHead key={col} className="text-slate-400 whitespace-nowrap px-3 py-2 font-medium">
+                    {col}
+                  </TableHead>
+                ))}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -1188,15 +1342,14 @@ export default function AnalyticsContactsTable({ loading = false, locationId }: 
                             ) : Array.isArray(row.tasks) && row.tasks.length > 0 ? (
                               <div className="flex flex-col gap-1">
                                 {row.tasks.slice(0, 3).map((task: any, idx: number) => (
-                                  <div 
-                                    key={idx} 
-                                    className={`flex items-center justify-between px-2 py-1 rounded text-xs ${
-                                      task.completed 
-                                        ? 'bg-green-900/50 text-green-300 border border-green-700' 
-                                        : task.is_overdue 
+                                  <div
+                                    key={idx}
+                                    className={`flex items-center justify-between px-2 py-1 rounded text-xs ${task.completed
+                                        ? 'bg-green-900/50 text-green-300 border border-green-700'
+                                        : task.is_overdue
                                           ? 'bg-red-900/50 text-red-300 border border-red-700'
                                           : 'bg-blue-900/50 text-blue-300 border border-blue-700'
-                                    }`}
+                                      }`}
                                   >
                                     <span className="truncate max-w-[120px]">
                                       {task.title}
@@ -1251,8 +1404,8 @@ export default function AnalyticsContactsTable({ loading = false, locationId }: 
                             ) : Array.isArray(row.conversations) && row.conversations.length > 0 ? (
                               <div className="flex flex-col gap-1">
                                 {row.conversations.slice(0, 3).map((conversation: any, idx: number) => (
-                                  <div 
-                                    key={idx} 
+                                  <div
+                                    key={idx}
                                     className="flex items-center justify-between px-2 py-1 rounded text-xs bg-purple-900/50 text-purple-300 border border-purple-700"
                                   >
                                     <span className="truncate max-w-[120px]">
@@ -1329,9 +1482,9 @@ export default function AnalyticsContactsTable({ loading = false, locationId }: 
                           return <TableCell key={col} className="whitespace-nowrap px-3 py-2">
                             <div className="flex flex-row flex-wrap gap-1 items-center">
                               {parseTouchSummary(row.touchSummary ?? '').map((chip, index) => (
-                                <span 
-                                  key={index} 
-                                  className={`inline-flex items-center gap-2 px-2 py-0.5 rounded-md border ${chip.border} ${chip.textColor} font-medium tracking-tight h-7 text-[11px] flex-shrink-0`} 
+                                <span
+                                  key={index}
+                                  className={`inline-flex items-center gap-2 px-2 py-0.5 rounded-md border ${chip.border} ${chip.textColor} font-medium tracking-tight h-7 text-[11px] flex-shrink-0`}
                                   style={{ borderWidth: 1 }}
                                 >
                                   <span className={chip.iconColor}>{chip.icon}</span>
@@ -1392,13 +1545,12 @@ export default function AnalyticsContactsTable({ loading = false, locationId }: 
                                     {row.lastMessage.body}
                                   </div>
                                   <div className="flex items-center gap-1 mt-1">
-                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs font-medium ${
-                                      row.lastMessage.type?.includes('SMS') ? 'border-blue-500 text-blue-300' :
-                                      row.lastMessage.type?.includes('EMAIL') ? 'border-green-500 text-green-300' :
-                                      row.lastMessage.type?.includes('CALL') ? 'border-purple-500 text-purple-300' :
-                                      row.lastMessage.type?.includes('CHAT') ? 'border-orange-500 text-orange-300' :
-                                      'border-slate-600 text-slate-300'
-                                    }`}>
+                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs font-medium ${row.lastMessage.type?.includes('SMS') ? 'border-blue-500 text-blue-300' :
+                                        row.lastMessage.type?.includes('EMAIL') ? 'border-green-500 text-green-300' :
+                                          row.lastMessage.type?.includes('CALL') ? 'border-purple-500 text-purple-300' :
+                                            row.lastMessage.type?.includes('CHAT') ? 'border-orange-500 text-orange-300' :
+                                              'border-slate-600 text-slate-300'
+                                      }`}>
                                       {row.lastMessage.typeLabel || row.lastMessage.type}
                                     </span>
                                     {row.lastMessage.unread_count > 0 && (
@@ -1463,9 +1615,9 @@ export default function AnalyticsContactsTable({ loading = false, locationId }: 
                         case "Actions":
                           return <TableCell key={col} className="whitespace-nowrap px-3 py-2">
                             <div className="flex items-center space-x-1">
-                              <Button 
-                                variant="ghost" 
-                                size="sm" 
+                              <Button
+                                variant="ghost"
+                                size="sm"
                                 className={`text-slate-400 hover:text-white p-1 h-6 w-6 ${aiAnalysisLoading[row.id] ? 'opacity-50 cursor-not-allowed' : ''}`}
                                 onClick={() => handleRunAiAnalysis(row)}
                                 disabled={aiAnalysisLoading[row.id]}
@@ -1483,12 +1635,12 @@ export default function AnalyticsContactsTable({ loading = false, locationId }: 
                           return null;
                       }
                     })}
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        )}
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      )}
       {/* Pagination Footer */}
       <div className="flex items-center justify-between px-4 py-2 border-t border-slate-800 bg-slate-900 text-slate-400 text-xs">
         <div className="flex items-center gap-2">

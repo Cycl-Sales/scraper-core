@@ -927,11 +927,17 @@ Return only the JSON object, no additional text."""
             }
             # Calculate page number (1-based)
             page = (skip // limit) + 1
-            # Prepare search data with correct pagination keys
+            # Prepare search data with correct pagination keys and sorting
             data = {
                 'locationId': location_id,
                 'pageLimit': limit,
-                'page': page
+                'page': page,
+                'sort': [
+                    {
+                        'field': 'dateUpdated',
+                        'direction': 'desc'
+                    }
+                ]
             }
             _logger.info(f"Fetching contacts for location {location_id} with pageLimit={limit}, page={page}")
             response = requests.post(url, headers=headers, json=data, timeout=30)
@@ -939,7 +945,13 @@ Return only the JSON object, no additional text."""
                 result = response.json()
                 contacts = result.get('contacts', [])
                 total_count = result.get('total', 0)
-                _logger.info(f"Successfully fetched {len(contacts)} contacts (total: {total_count})")
+                _logger.info(f"Successfully fetched {len(contacts)} contacts (total: {total_count}) for page {page}")
+                
+                # Log the first few contacts to see what we're getting
+                for i, contact in enumerate(contacts[:3]):
+                    contact_name = contact.get('contactName', 'Unknown')
+                    contact_id = contact.get('id', 'Unknown')
+                    _logger.info(f"GHL API Contact {i+1} on page {page}: ID={contact_id}, Name='{contact_name}'")
                 return {
                     'success': True,
                     'contacts_data': contacts,

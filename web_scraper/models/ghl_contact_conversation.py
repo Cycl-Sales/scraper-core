@@ -465,7 +465,9 @@ class GhlContactConversation(models.Model):
                 data = response.json()
                 conversations = data.get('conversations', [])
                 _logger.info(f"Found {len(conversations)} conversations for contact {contact_id}")
-                
+
+
+
                 # Find the installed location and contact records
                 installed_location = self.env['installed.location'].sudo().search([
                     ('location_id', '=', location_id)

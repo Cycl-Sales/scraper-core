@@ -99,6 +99,34 @@ class GhlContactMessage(models.Model):
     recording_size = fields.Integer('Recording Size (bytes)')
     recording_fetched = fields.Boolean('Recording Fetched', default=False)
 
+    # AI Analysis fields
+    ai_call_summary_html = fields.Html('AI Call Summary', help='AI-generated HTML summary of the call')
+    ai_call_summary_generated = fields.Boolean('AI Summary Generated', default=False)
+    ai_call_summary_date = fields.Datetime('AI Summary Date')
+    
+    # AI Analysis structured data
+    ai_overall_score = fields.Integer('AI Overall Score', help='Overall AI analysis score (1-10)')
+    ai_communication_score = fields.Integer('AI Communication Score', help='Communication score (1-10)')
+    ai_professionalism_score = fields.Integer('AI Professionalism Score', help='Professionalism score (1-10)')
+    ai_problem_solving_score = fields.Integer('AI Problem Solving Score', help='Problem solving score (1-10)')
+    ai_followup_score = fields.Integer('AI Follow-up Score', help='Follow-up score (1-10)')
+    ai_call_intent = fields.Char('AI Call Intent', help='AI-determined call intent')
+    ai_satisfaction_level = fields.Selection([
+        ('high', 'High'),
+        ('medium', 'Medium'),
+        ('low', 'Low')
+    ], string='AI Satisfaction Level', help='AI-determined customer satisfaction level')
+    ai_highlights = fields.Text('AI Highlights', help='AI-generated highlights from the call')
+    ai_improvements = fields.Text('AI Improvements', help='AI-suggested improvements')
+    ai_next_steps = fields.Text('AI Next Steps', help='AI-generated next steps')
+    ai_call_grade = fields.Selection([
+        ('A', 'A - Excellent'),
+        ('B', 'B - Good'),
+        ('C', 'C - Average'),
+        ('D', 'D - Below Average'),
+        ('F', 'F - Poor')
+    ], string='AI Call Grade', help='AI-determined call grade based on performance analysis')
+
     # Computed fields
     display_name = fields.Char('Display Name', compute='_compute_display_name', store=True)
 
@@ -907,6 +935,195 @@ class GhlContactMessage(models.Model):
         except Exception as e:
             _logger.error(f"Error fetching single message: {e}")
             return None
+
+    def action_generate_ai_call_summary(self, api_key=None):
+        """Generate AI call summary using OpenAI API"""
+        import requests
+        import json
+        from datetime import datetime
+        
+        for record in self:
+            if record.message_type != 'TYPE_CALL':
+                _logger.warning(f"Message {record.id} is not a call message. Skipping AI summary generation.")
+                continue
+                
+            if not record.transcript_ids:
+                _logger.warning(f"Message {record.id} has no transcript. Skipping AI summary generation.")
+                continue
+            
+            try:
+                # Get OpenAI API key - use provided key or fall back to location's API key
+                if not api_key:
+                    api_key = record.location_id.openai_api_key
+                
+                if not api_key:
+                    raise Exception("OpenAI API key is required. Please provide an API key or configure it in the location settings.")
+                
+                # Prepare transcript data
+                transcript_text = ""
+                for transcript in record.transcript_ids.sorted('sentence_index'):
+                    speaker = "Agent" if transcript.media_channel == "2" else "Contact"
+                    transcript_text += f"{speaker}: {transcript.transcript}\n"
+                
+                if not transcript_text.strip():
+                    raise Exception("No transcript content available for AI analysis.")
+                
+                # Create the AI prompt for comprehensive analysis
+                prompt = f"""Analyze the following call transcript and provide a comprehensive analysis in JSON format.
+
+You need to provide two parts:
+
+PART 1 - HTML Summary:
+Generate an HTML summary with these sections:
+1. **Call Summary** - A brief overview of the call
+2. **Inquiry Details** - Key points discussed during the call
+3. **Financial Details** - Any financial information mentioned (payments, income, mortgage details, etc.)
+4. **Property & Occupancy Details** - Property type, location, occupancy status, etc.
+5. **Next Steps** - Action items and follow-up tasks
+
+PART 2 - Analysis Data:
+Provide structured analysis data including:
+- Performance scores (1-10 scale) for Communication, Professionalism, Problem Solving, Follow-up
+- Overall score (1-10)
+- Call grade (A, B, C, D, or F) based on overall performance and effectiveness
+- Call intent (e.g., "Initial outreach", "Follow-up", "Sales pitch", "Customer service")
+- Customer satisfaction level ("high", "medium", "low")
+- Highlights (positive aspects of the call)
+- Improvements (areas for improvement)
+- Next steps (action items)
+
+Call Transcript:
+{transcript_text}
+
+IMPORTANT: Respond with ONLY a valid JSON object. Do not include any markdown formatting, code blocks, or additional text.
+
+Expected JSON format:
+{{
+  "html_summary": "<h3>Call Summary</h3><p>...</p><h3>Inquiry Details</h3><ul>...</ul>...",
+  "analysis": {{
+    "overall_score": 7,
+    "communication_score": 8,
+    "professionalism_score": 7,
+    "problem_solving_score": 6,
+    "followup_score": 7,
+    "call_grade": "B",
+    "call_intent": "Initial outreach",
+    "satisfaction_level": "medium",
+    "highlights": [
+      "Clear communication",
+      "Professional tone",
+      "Good listening skills"
+    ],
+    "improvements": [
+      "Could ask more probing questions",
+      "Should provide more specific next steps"
+    ],
+    "next_steps": [
+      "Schedule follow-up call",
+      "Send requested information",
+      "Update CRM with call notes"
+    ]
+  }}
+}}
+
+Return ONLY the JSON object, no markdown formatting or code blocks."""
+
+                # Call OpenAI API
+                headers = {
+                    'Authorization': f'Bearer {api_key}',
+                    'Content-Type': 'application/json'
+                }
+                
+                payload = {
+                    'model': 'gpt-4o',
+                    'messages': [
+                        {
+                            'role': 'user',
+                            'content': prompt
+                        }
+                    ],
+                    'max_tokens': 1500,
+                    'temperature': 0.3
+                }
+                
+                response = requests.post(
+                    'https://api.openai.com/v1/chat/completions',
+                    headers=headers,
+                    json=payload,
+                    timeout=30
+                )
+                
+                if response.status_code == 200:
+                    result = response.json()
+                    ai_response = result['choices'][0]['message']['content'].strip()
+                    
+                    try:
+                        # Parse the JSON response - handle markdown code blocks
+                        import json
+                        import re
+                        
+                        # Extract JSON from markdown code blocks if present
+                        json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', ai_response, re.DOTALL)
+                        if json_match:
+                            json_content = json_match.group(1)
+                            _logger.info(f"Extracted JSON from markdown code block for message {record.id}")
+                        else:
+                            # Try to parse as direct JSON
+                            json_content = ai_response.strip()
+                            _logger.info(f"Attempting to parse direct JSON for message {record.id}")
+                        
+                        # Clean up any potential whitespace or newlines
+                        json_content = json_content.strip()
+                        
+                        ai_data = json.loads(json_content)
+                        
+                        # Extract HTML summary and analysis data
+                        html_summary = ai_data.get('html_summary', '')
+                        analysis = ai_data.get('analysis', {})
+                        
+                        # Prepare update values
+                        update_vals = {
+                            'ai_call_summary_html': html_summary,
+                            'ai_call_summary_generated': True,
+                            'ai_call_summary_date': datetime.now(),
+                            'ai_overall_score': analysis.get('overall_score', 0),
+                            'ai_communication_score': analysis.get('communication_score', 0),
+                            'ai_professionalism_score': analysis.get('professionalism_score', 0),
+                            'ai_problem_solving_score': analysis.get('problem_solving_score', 0),
+                            'ai_followup_score': analysis.get('followup_score', 0),
+                            'ai_call_grade': analysis.get('call_grade', 'C'),
+                            'ai_call_intent': analysis.get('call_intent', ''),
+                            'ai_satisfaction_level': analysis.get('satisfaction_level', 'medium'),
+                            'ai_highlights': '\n'.join(analysis.get('highlights', [])),
+                            'ai_improvements': '\n'.join(analysis.get('improvements', [])),
+                            'ai_next_steps': '\n'.join(analysis.get('next_steps', []))
+                        }
+                        
+                        # Update the record
+                        record.write(update_vals)
+                        
+                        _logger.info(f"Successfully generated comprehensive AI analysis for message {record.id}")
+                        _logger.info(f"AI Analysis - Overall Score: {analysis.get('overall_score')}, Call Intent: {analysis.get('call_intent')}")
+                        
+                    except json.JSONDecodeError as e:
+                        _logger.error(f"Failed to parse AI response as JSON: {e}")
+                        _logger.error(f"Raw AI response: {ai_response}")
+                        _logger.error(f"Attempted to extract JSON content: {json_content if 'json_content' in locals() else 'Not available'}")
+                        
+                        # Try to provide more helpful error message
+                        if '```' in ai_response:
+                            raise Exception(f"AI response contains markdown formatting. Please ensure the AI returns pure JSON without code blocks.")
+                        else:
+                            raise Exception(f"AI response is not valid JSON: {str(e)}")
+                    
+                else:
+                    error_msg = f"OpenAI API error: {response.status_code} - {response.text}"
+                    _logger.error(error_msg)
+                    raise Exception(error_msg)
+                    
+            except Exception as e:
+                _logger.error(f"Error generating AI call summary for message {record.id}: {str(e)}")
+                raise Exception(f"Failed to generate AI call summary: {str(e)}")
 
 
 class GhlContactMessageAttachment(models.Model):

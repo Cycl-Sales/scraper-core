@@ -1,4 +1,4 @@
-import { Switch, Route } from "wouter";
+import { Switch, Route, Redirect } from "wouter";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import Dashboard from "@/pages/dashboard";
@@ -19,11 +19,11 @@ import { ThemeProvider } from "./theme-context";
 function Router() {
   return (
     <Switch>
-      <Route path="/" component={Dashboard} />
+      <Route path="/" component={() => <Redirect to="/overview" />} />
+      <Route path="/overview" component={Overview} />
       <Route path="/dashboard" component={Dashboard} />
       <Route path="/contacts" component={Contacts} />
       <Route path="/calls" component={Calls} />
-      <Route path="/overview" component={Overview} />
       <Route path="/analytics" component={Analytics} />
       <Route path="/ai-assistant" component={AIAssistant} />
       <Route path="/automation-rules" component={AutomationRules} />

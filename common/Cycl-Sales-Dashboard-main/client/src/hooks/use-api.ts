@@ -92,8 +92,6 @@ export function useApiConfig() {
 
   const updateBaseUrl = useCallback((newBaseUrl: string) => {
     setBaseUrl(newBaseUrl);
-    // You might want to update the axios instance here
-    console.log('API Base URL updated to:', newBaseUrl);
   }, []);
 
   return {

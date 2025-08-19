@@ -136,21 +136,17 @@ export default function Automations() {
   useEffect(() => {
     if (locationId) {
       // URL has location_id, use it and cache it
-      console.log('Using location from URL:', locationId);
       setSelectedLocation(locationId);
       if (typeof window !== 'undefined' && window.localStorage) {
         window.localStorage.setItem('automations_selected_location', locationId);
-        console.log('Cached location from URL:', locationId);
       }
     } else {
       // No URL location_id, try to get from localStorage
       if (typeof window !== 'undefined' && window.localStorage) {
         const cachedLocation = window.localStorage.getItem('automations_selected_location');
         if (cachedLocation) {
-          console.log('Restoring location from cache:', cachedLocation);
           setSelectedLocation(cachedLocation);
         } else {
-          console.log('No cached location found');
         }
       }
     }
@@ -178,7 +174,6 @@ export default function Automations() {
           if (wasHidden === 'true' && !isStillOnAutomationsPage) {
             // Page was hidden and we're no longer on the automations page
             // This means we navigated away - clear the cached location
-            console.log('Navigating away from automations page - clearing cached location');
             window.localStorage.removeItem('automations_selected_location');
           }
           
@@ -194,8 +189,7 @@ export default function Automations() {
     // Add event listener for beforeunload to clear cache when leaving the page
     const handleBeforeUnload = () => {
       // Clear the cached location when leaving the page
-      if (typeof window !== 'undefined' && window.localStorage) {
-        console.log('Page unloading - clearing cached location');
+      if (typeof window !== 'undefined' && window.localStorage) { 
         window.localStorage.removeItem('automations_selected_location');
       }
     };
@@ -209,7 +203,6 @@ export default function Automations() {
       
       // Clear the active flag and cached location when component unmounts
       if (typeof window !== 'undefined' && window.localStorage) {
-        console.log('Component unmounting - clearing cached location');
         window.localStorage.removeItem('automations_page_active');
         window.localStorage.removeItem('automations_page_was_hidden');
         window.localStorage.removeItem('automations_selected_location');
@@ -226,14 +219,10 @@ export default function Automations() {
 
   // Handle location selection change
   const handleLocationChange = (locationId: string) => {
-    console.log('Location changed to:', locationId);
     setSelectedLocation(locationId);
     // Clear single location name when changing location
     setSingleLocationName('');
   };
-
-  console.log('Current selectedLocation state:', selectedLocation);
-  console.log('Current locationId from URL:', locationId);
 
   useEffect(() => {
     // Determine which location to use (URL param takes precedence)
@@ -299,37 +288,25 @@ export default function Automations() {
   // Load automation template and OpenAI API key when location is selected
   useEffect(() => {
     const effectId = Date.now();
-    console.log(`=== LOCATION TEMPLATE LOADING useEffect TRIGGERED [ID: ${effectId}] ===`);
-    console.log('selectedLocation changed to:', selectedLocation);
-    console.log('selectedLocation type:', typeof selectedLocation);
-    console.log('selectedLocation length:', selectedLocation ? selectedLocation.length : 0);
-    console.log('Is initial render:', isInitialRender.current);
     
     // Skip the first render to prevent empty API calls
     if (isInitialRender.current) {
-      console.log('Skipping initial render');
       isInitialRender.current = false;
       return;
     }
     
     // Only make API call if selectedLocation has a meaningful value
     if (selectedLocation && selectedLocation !== '' && selectedLocation !== 'all' && selectedLocation.length > 0) {
-      console.log(`[ID: ${effectId}] Loading automation template for location:`, selectedLocation);
+
       const requestBody = { 
         location_id: selectedLocation,
         appId: CYCLSALES_APP_ID
       };
-      console.log(`[ID: ${effectId}] Request body:`, requestBody);
       
       // Double-check that we have valid data before making the request
       if (!requestBody.location_id || requestBody.location_id.trim() === '') {
-        console.log('Skipping API call - location_id is empty or invalid');
         return;
       }
-      
-      console.log(`[ID: ${effectId}] Making API call to /api/automation_template/get`);
-      console.log(`[ID: ${effectId}] Request headers:`, { 'Content-Type': 'application/json' });
-      console.log(`[ID: ${effectId}] Request body stringified:`, JSON.stringify(requestBody));
       
       fetch('/api/automation_template/get', {
         method: 'POST',
@@ -337,26 +314,14 @@ export default function Automations() {
         body: JSON.stringify(requestBody),
       })
         .then(res => {
-          console.log('Response status:', res.status);
           return res.json();
         })
         .then(data => {
-          console.log('Automation template data for location:', data);
           
           // Extract the actual template data from the JSON-RPC response
           const templateData = data.result || data;
           
           if (templateData && !data.error) {
-            console.log('Updating form with template data:', templateData);
-            console.log('Template name:', templateData.name);
-            console.log('Business context:', templateData.business_context);
-            console.log('Call transcript settings:', templateData.call_transcript_setting_ids);
-            console.log('Call summary settings:', templateData.call_summary_setting_ids);
-            console.log('AI sales scoring settings:', templateData.ai_sales_scoring_setting_ids);
-            console.log('Run contact automations settings:', templateData.run_contact_automations_setting_ids);
-            
-            // Update template name and other fields
-            console.log('Setting business context to:', templateData.business_context);
             setTemplateName(getDisplayName(templateData.name || ''));
             setBusinessContext(templateData.business_context || '');
             setIsDefaultConfig(!!templateData.is_default);
@@ -377,7 +342,6 @@ export default function Automations() {
               setTemplateId(templateData.id);
             }
           } else {
-            console.log('No template data found or error:', data);
             // If no template found, set default values
             setTemplateName('Generic Default');
             setBusinessContext('This company acquires residential properties that are in pre-foreclosure or facing auction. The goal is to either reinstate the mortgage with funding or purchase the property. Once acquired, the company temporarily holds the property, assigns the ...');
@@ -414,13 +378,7 @@ export default function Automations() {
           setOpenaiApiKeyError('Failed to load API key');
         })
         .finally(() => setOpenaiApiKeyLoading(false));
-    } else {
-      console.log('NOT loading template - selectedLocation is empty, invalid, or "all"');
-      console.log('selectedLocation value:', selectedLocation);
-      console.log('selectedLocation truthy check:', !!selectedLocation);
-      console.log('selectedLocation !== "" check:', selectedLocation !== '');
-      console.log('selectedLocation !== "all" check:', selectedLocation !== 'all');
-    }
+    } 
   }, [selectedLocation]);
 
   useEffect(() => {
@@ -436,7 +394,6 @@ export default function Automations() {
       .then(res => res.json())
       .then(data => {
         const templates = data.result?.templates || data.templates || [];
-        console.log('Available templates:', templates);
         setTemplateOptions(templates);
         
         // If we have a selected location, try to find its template
@@ -464,12 +421,11 @@ export default function Automations() {
 
   // Fetch automation template data for selected templateId
   useEffect(() => {
-    console.log('templateId in useEffect:', templateId);
     if (templateId === null || !Number.isInteger(templateId) || templateId <= 0) return;
     
     // Only load template by ID if we're not already loading by location
     if (selectedLocation && selectedLocation !== 'all' && selectedLocation !== '') {
-      console.log('Skipping template-based loading because location-based loading is active');
+
       return;
     }
     
@@ -487,7 +443,6 @@ export default function Automations() {
         const templateData = data.result || data;
         
         if (templateData && !data.error) {
-          console.log('Template-based loading - Setting business context to:', templateData.business_context);
           setTemplateName(getDisplayName(templateData.name || ''));
           setBusinessContext(templateData.business_context || '');
           setIsDefaultConfig(!!templateData.is_default);
@@ -503,11 +458,6 @@ export default function Automations() {
         }
       });
   }, [templateId, selectedLocation]);
-
-  // Debug business context state
-  useEffect(() => {
-    console.log('Current businessContext state:', businessContext);
-  }, [businessContext]);
 
   // Update dropdown change handler to never set templateId to null/undefined
   const handleTemplateChange = (val: string) => {
@@ -627,12 +577,6 @@ export default function Automations() {
       requestData.name = templateName;
     }
     
-    console.log('Saving template with data:', requestData);
-    console.log('selectedLocation:', selectedLocation);
-    console.log('templateName:', templateName);
-    console.log('businessContext:', businessContext);
-    console.log('isEditingDefaultTemplate:', isEditingDefaultTemplate);
-    
     // Show saving status
     setSaveStatus('Saving...');
     
@@ -643,8 +587,6 @@ export default function Automations() {
     })
       .then(res => res.json())
       .then(data => {
-        console.log('Save response:', data);
-        
         if (data && !data.error) {
           // Check if this is a new template (has parent_template_id)
           if (data.parent_template_id) {
@@ -673,7 +615,6 @@ export default function Automations() {
             .then(res => res.json())
             .then(listData => {
               const templates = listData.result?.templates || listData.templates || [];
-              console.log('Updated template list:', templates);
               setTemplateOptions(templates);
               
               // Update the current template if it was created/updated
@@ -689,8 +630,7 @@ export default function Automations() {
           setSaveStatus('❌ Error saving template: ' + (data.error || 'Unknown error'));
         }
       })
-      .catch((error) => {
-        console.error('Error saving template:', error);
+      .catch((error) => { 
         setSaveStatus('❌ Error saving template: ' + error.message);
       });
   };
@@ -760,7 +700,6 @@ export default function Automations() {
       const data = await response.json();
 
       if (response.ok && data.success) {
-        console.log('OpenAI API key saved successfully');
         setHasOpenaiApiKey(true);
         // Mask using first and last parts without exposing full key
         const mk = openaiApiKey.length > 11 ? `${openaiApiKey.slice(0,7)}...${openaiApiKey.slice(-4)}` : '••••••';
@@ -770,7 +709,6 @@ export default function Automations() {
         setOpenaiApiKeyError(data.error || 'Failed to save API key');
       }
     } catch (error) {
-      console.error('Error saving OpenAI API key:', error);
       setOpenaiApiKeyError('Network error while saving API key');
     } finally {
       setOpenaiApiKeyLoading(false);

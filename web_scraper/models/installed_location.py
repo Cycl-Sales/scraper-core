@@ -540,7 +540,17 @@ class InstalledLocation(models.Model):
                 'Authorization': f'Bearer {location_token}',
                 'Version': '2021-07-28',
             }
-            data = {'locationId': self.location_id, 'pageLimit': 1, 'page': 1}
+            data = {
+                'locationId': self.location_id, 
+                'pageLimit': 1, 
+                'page': 1,
+                'sort': [
+                    {
+                        'field': 'dateUpdated',
+                        'direction': 'desc'
+                    }
+                ]
+            }
             _logger.info(f"Fetching contacts count for location {self.location_id}")
             response = requests.post(url, headers=headers, json=data, timeout=30)
             if response.status_code == 200:
@@ -697,6 +707,12 @@ class InstalledLocation(models.Model):
                                     ('external_id', '=', external_id),
                                     ('location_id', '=', installed_location.id)
                                 ], limit=1)
+                                
+                                # Debug: Log what we found
+                                if existing_contact:
+                                    _logger.info(f"Found existing contact: ID={existing_contact.id}, Name='{existing_contact.name}', External_ID='{existing_contact.external_id}'")
+                                else:
+                                    _logger.info(f"No existing contact found for external_id: {external_id}")
                             except Exception as cursor_error:
                                 if "could not serialize access due to concurrent update" in str(cursor_error):
                                     _logger.warning(
@@ -751,11 +767,11 @@ class InstalledLocation(models.Model):
                                 if existing_contact:
                                     existing_contact.write(contact_vals)
                                     updated_count += 1
-                                    _logger.info(f"Updated contact record for external_id: {external_id}")
+                                    _logger.info(f"Updated contact record for external_id: {external_id}, Name: {contact_name}")
                                 else:
-                                    env['ghl.location.contact'].sudo().create(contact_vals)
+                                    new_contact = env['ghl.location.contact'].sudo().create(contact_vals)
                                     created_count += 1
-                                    _logger.info(f"Created contact record for external_id: {external_id}")
+                                    _logger.info(f"Created contact record for external_id: {external_id}, Name: {contact_name}, New ID: {new_contact.id}")
                                 cr.commit()
                                 break  # Success, exit retry loop
                             except Exception as write_error:

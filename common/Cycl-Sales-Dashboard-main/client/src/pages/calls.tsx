@@ -142,6 +142,13 @@ export default function Calls() {
     setTranscriptDialogOpen(true);
   };
 
+  // Function to refresh call details data (for sample data, this is a no-op)
+  const refreshCallDetails = async () => {
+    // For sample data, we don't need to refresh
+    // This function is here for consistency with the real data implementation
+    console.log('Refresh requested for sample call data');
+  };
+
   return (
     <div className="min-h-screen w-full bg-slate-950 text-slate-50 overflow-x-hidden">
       <TopNavigation />
@@ -391,6 +398,7 @@ export default function Calls() {
           open={transcriptDialogOpen}
           onOpenChange={setTranscriptDialogOpen}
           callData={selectedCall}
+          onDataRefresh={refreshCallDetails}
         />
       </main>
     </div>

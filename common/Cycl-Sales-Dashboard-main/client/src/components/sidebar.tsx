@@ -40,12 +40,14 @@ export default function Sidebar() {
     <aside className="w-80 bg-slate-900 border-r border-slate-800 flex flex-col">
       {/* Logo Section */}
       <div className="p-6 border-b border-slate-800">
-        <div className="flex items-center space-x-3">
-          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-            <BarChart3 className="w-4 h-4 text-white" />
+        <Link href="/overview">
+          <div className="flex items-center space-x-3 cursor-pointer hover:opacity-80 transition-opacity">
+            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+              <BarChart3 className="w-4 h-4 text-white" />
+            </div>
+            <h1 className="text-xl font-semibold text-white">StreamDash</h1>
           </div>
-          <h1 className="text-xl font-semibold text-white">StreamDash</h1>
-        </div>
+        </Link>
       </div>
 
       {/* Navigation Menu */}
