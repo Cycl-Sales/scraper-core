@@ -75,9 +75,10 @@ class GHLLocationContact(models.Model):
     assigned_user_name = fields.Char(string='Assigned User Name', compute='_compute_assigned_user_name', store=False)
 
     # AI and Analytics Fields (for frontend table)
-    ai_status = fields.Selection(selection='_get_ai_status_selection', string='AI Status', default='not_contacted')
+    ai_status = fields.Html(string='AI Status', default='<span style="color: #6b7280;">Not Contacted</span>')
 
-    ai_summary = fields.Char(string='AI Summary', default='AI analysis pending')
+    ai_summary = fields.Html(string='AI Summary', default='<span style="color: #6b7280;">AI analysis pending</span>')
+    ai_reasoning = fields.Html(string='AI Reasoning', default='<span style="color: #6b7280;">No analysis available</span>')
     ai_quality_grade = fields.Selection([
         ('grade_a', 'Lead Grade A'),
         ('grade_b', 'Lead Grade B'),
@@ -422,17 +423,18 @@ class GHLLocationContact(models.Model):
                 raise Exception("No automation template found for this contact's location. Please assign an automation template to the location first.")
             
             _logger.info(f"Starting AI analysis for contact {self.id} using template {automation_template.name}")
+            _logger.info(f"Contact location: {self.location_id.name} (ID: {self.location_id.id})")
+            _logger.info(f"Automation template: {automation_template.name} (ID: {automation_template.id})")
             
-            # Get the AI service
-            ai_service = self.env['cyclsales.vision.ai'].sudo().get_default_ai_service()
-            if not ai_service:
-                raise Exception("No active AI service found")
+            # Get the location's OpenAI API key
+            if not self.location_id.openai_api_key:
+                raise Exception("No OpenAI API key configured for this location. Please add an OpenAI API key to the location settings.")
             
             # Prepare contact data for AI analysis
             contact_data = self._prepare_contact_data_for_ai()
             
-            # Generate AI analysis using the AI service
-            ai_result = self._generate_ai_analysis(ai_service, contact_data, automation_template)
+            # Generate AI analysis using the location's API key
+            ai_result = self._generate_ai_analysis_with_api_key(self.location_id.openai_api_key, contact_data, automation_template)
             
             # Update contact fields with AI results
             self._update_contact_with_ai_results(ai_result)
@@ -542,6 +544,14 @@ class GHLLocationContact(models.Model):
                 'touch_summary': self.touch_summary,
                 'last_touch_date': self.last_touch_date.isoformat() if self.last_touch_date else None
             },
+            'ai_analysis': {
+                'current_ai_status': self.ai_status,
+                'current_ai_summary': self.ai_summary,
+                'current_ai_quality_grade': self.ai_quality_grade,
+                'current_ai_sales_grade': self.ai_sales_grade,
+                'ai_analysis_status': self.ai_analysis_status,
+                'ai_analysis_date': self.ai_analysis_date.isoformat() if self.ai_analysis_date else None
+            },
             'conversations': conversation_data,
             'messages': message_data,
             'opportunities': opportunity_data,
@@ -550,8 +560,238 @@ class GHLLocationContact(models.Model):
 
         return contact_data
 
+    def _generate_ai_analysis_with_api_key(self, api_key, contact_data, automation_template):
+        """Generate AI analysis using the provided API key directly"""
+        import json
+        import logging
+        import requests
+        _logger = logging.getLogger(__name__)
+
+        # Validate API key
+        if not api_key:
+            _logger.error(f"No API key provided for contact {self.id}")
+            return {
+                'ai_status': '<span style="color: #dc2626;">❌ No API Key</span>',
+                'ai_summary': '<div style="color: #dc2626;"><h4>API Error</h4><p>No OpenAI API key provided</p></div>',
+                'ai_quality_grade': 'no_grade',
+                'ai_sales_grade': 'no_grade',
+                'analysis_reasoning': '<div style="color: #dc2626;"><h4>Missing API Key</h4><p>OpenAI API key is required for analysis</p></div>'
+            }
+
+        # Validate API key format
+        if not api_key.startswith('sk-'):
+            _logger.error(f"Invalid API key format for contact {self.id}. Expected 'sk-' prefix, got: {api_key[:10]}...")
+            return {
+                'ai_status': '<span style="color: #dc2626;">❌ Invalid API Key</span>',
+                'ai_summary': '<div style="color: #dc2626;"><h4>API Error</h4><p>Invalid OpenAI API key format</p></div>',
+                'ai_quality_grade': 'no_grade',
+                'ai_sales_grade': 'no_grade',
+                'analysis_reasoning': '<div style="color: #dc2626;"><h4>Invalid API Key</h4><p>API key must start with "sk-"</p></div>'
+            }
+
+        # Log API key info (first 10 chars for debugging)
+        api_key_preview = api_key[:10] + "..." if len(api_key) > 10 else api_key
+        _logger.info(f"Using API key for contact {self.id}: {api_key_preview}")
+        _logger.info(f"API key length: {len(api_key)} characters")
+
+        # Create AI prompt for contact analysis
+        prompt = self._create_ai_analysis_prompt(contact_data, automation_template)
+        
+        # Log the prompt for debugging
+        _logger.info(f"AI prompt for contact {self.id}: {prompt}")
+
+        # Convert contact data to text for AI analysis
+        contact_text = json.dumps(contact_data, indent=2)
+
+        # Validate prompt and data sizes
+        prompt_length = len(prompt)
+        contact_text_length = len(contact_text)
+        total_length = prompt_length + contact_text_length
+        
+        _logger.info(f"Data sizes for contact {self.id}:")
+        _logger.info(f"  Prompt length: {prompt_length} characters")
+        _logger.info(f"  Contact data length: {contact_text_length} characters")
+        _logger.info(f"  Total length: {total_length} characters")
+        
+        # Check if data is too large (OpenAI has limits)
+        if total_length > 100000:  # Conservative limit
+            _logger.warning(f"Data too large for contact {self.id}, truncating contact data")
+            # Truncate contact data to fit within limits
+            max_contact_length = 100000 - prompt_length - 1000  # Leave some buffer
+            if max_contact_length > 0:
+                contact_text = contact_text[:max_contact_length] + "... (truncated)"
+                _logger.info(f"Truncated contact data to {len(contact_text)} characters")
+            else:
+                _logger.error(f"Prompt too large for contact {self.id}, cannot proceed")
+                return {
+                    'ai_status': '<span style="color: #dc2626;">❌ Data Too Large</span>',
+                    'ai_summary': '<div style="color: #dc2626;"><h4>Analysis Error</h4><p>Contact data too large for analysis</p></div>',
+                    'ai_quality_grade': 'no_grade',
+                    'ai_sales_grade': 'no_grade',
+                    'analysis_reasoning': '<div style="color: #dc2626;"><h4>Size Limit</h4><p>Contact data exceeds maximum size for analysis</p></div>'
+                }
+
+        # Prepare the request to OpenAI API
+        headers = {
+            'Content-Type': 'application/json',
+            'Authorization': f'Bearer {api_key}'
+        }
+
+        data = {
+            'model': 'gpt-4o',  # Updated to use gpt-4o which is more current
+            'messages': [
+                {
+                    'role': 'system',
+                    'content': 'You are an AI assistant that analyzes contact data and provides detailed insights. Always respond with valid JSON only.'
+                },
+                {
+                    'role': 'user',
+                    'content': f"{prompt}\n\nContact Data:\n{contact_text}"
+                }
+            ],
+            'temperature': 0.7,
+            'max_tokens': 2000
+        }
+
+        # Log request details for debugging
+        _logger.info(f"OpenAI API request for contact {self.id}:")
+        _logger.info(f"  URL: https://api.openai.com/v1/chat/completions")
+        _logger.info(f"  Model: {data['model']}")
+        _logger.info(f"  Max tokens: {data['max_tokens']}")
+        _logger.info(f"  Temperature: {data['temperature']}")
+        _logger.info(f"  System message length: {len(data['messages'][0]['content'])} chars")
+        _logger.info(f"  User message length: {len(data['messages'][1]['content'])} chars")
+        
+        # Log a sample of the user message content for debugging
+        user_message = data['messages'][1]['content']
+        user_message_preview = user_message[:200] + "..." if len(user_message) > 200 else user_message
+        _logger.info(f"  User message preview: {user_message_preview}")
+
+        try:
+            # Make the API call
+            response = requests.post(
+                'https://api.openai.com/v1/chat/completions',
+                headers=headers,
+                json=data,
+                timeout=30
+            )
+            
+            # Log response details for debugging
+            _logger.info(f"OpenAI API response for contact {self.id}:")
+            _logger.info(f"  Status code: {response.status_code}")
+            _logger.info(f"  Response headers: {dict(response.headers)}")
+            
+            if response.status_code != 200:
+                _logger.error(f"OpenAI API error response for contact {self.id}:")
+                _logger.error(f"  Status code: {response.status_code}")
+                _logger.error(f"  Response text: {response.text}")
+                try:
+                    error_json = response.json()
+                    _logger.error(f"  Error JSON: {error_json}")
+                except:
+                    _logger.error(f"  Could not parse error response as JSON")
+            
+            response.raise_for_status()
+
+            # Parse the response
+            result = response.json()
+            ai_response_text = result['choices'][0]['message']['content']
+
+            _logger.info(f"Raw AI response for contact {self.id}: {ai_response_text}")
+
+            # Parse the JSON response
+            try:
+                import re
+                
+                # First, try to extract JSON from markdown code blocks
+                markdown_json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', ai_response_text, re.DOTALL)
+                if markdown_json_match:
+                    json_text = markdown_json_match.group(1)
+                    ai_result = json.loads(json_text)
+                else:
+                    # Fallback: try to find JSON object in the response
+                    json_match = re.search(r'\{.*\}', ai_response_text, re.DOTALL)
+                    if json_match:
+                        ai_result = json.loads(json_match.group())
+                    else:
+                        ai_result = json.loads(ai_response_text)
+
+                _logger.info(f"Parsed AI result for contact {self.id}: {ai_result}")
+                return ai_result
+
+            except json.JSONDecodeError as e:
+                _logger.error(f"Failed to parse AI response as JSON for contact {self.id}: {str(e)}")
+                # Return a fallback result
+                return {
+                    'ai_status': '<span style="color: #dc2626;">❌ Analysis Failed</span>',
+                    'ai_summary': f'<div style="color: #dc2626;"><h4>Analysis Error</h4><p>Failed to parse AI response: {str(e)}</p></div>',
+                    'ai_quality_grade': 'no_grade',
+                    'ai_sales_grade': 'no_grade',
+                    'analysis_reasoning': f'<div style="color: #dc2626;"><h4>Parse Error</h4><p>Unable to parse AI response: {str(e)}</p></div>'
+                }
+
+        except requests.exceptions.RequestException as e:
+            _logger.error(f"API request failed for contact {self.id}: {str(e)}")
+            
+            # Try fallback to gpt-3.5-turbo if gpt-4o fails
+            if 'gpt-4o' in str(data.get('model', '')):
+                _logger.info(f"Trying fallback to gpt-3.5-turbo for contact {self.id}")
+                try:
+                    data['model'] = 'gpt-3.5-turbo'
+                    response = requests.post(
+                        'https://api.openai.com/v1/chat/completions',
+                        headers=headers,
+                        json=data,
+                        timeout=30
+                    )
+                    
+                    if response.status_code == 200:
+                        _logger.info(f"Fallback model succeeded for contact {self.id}")
+                        result = response.json()
+                        ai_response_text = result['choices'][0]['message']['content']
+                        
+                        # Parse the JSON response (same logic as above)
+                        try:
+                            import re
+                            markdown_json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', ai_response_text, re.DOTALL)
+                            if markdown_json_match:
+                                json_text = markdown_json_match.group(1)
+                                ai_result = json.loads(json_text)
+                            else:
+                                json_match = re.search(r'\{.*\}', ai_response_text, re.DOTALL)
+                                if json_match:
+                                    ai_result = json.loads(json_match.group())
+                                else:
+                                    ai_result = json.loads(ai_response_text)
+                            
+                            _logger.info(f"Parsed AI result with fallback model for contact {self.id}: {ai_result}")
+                            return ai_result
+                            
+                        except json.JSONDecodeError as e:
+                            _logger.error(f"Failed to parse fallback AI response as JSON for contact {self.id}: {str(e)}")
+                            return {
+                                'ai_status': '<span style="color: #dc2626;">❌ Analysis Failed</span>',
+                                'ai_summary': f'<div style="color: #dc2626;"><h4>Analysis Error</h4><p>Failed to parse AI response: {str(e)}</p></div>',
+                                'ai_quality_grade': 'no_grade',
+                                'ai_sales_grade': 'no_grade',
+                                'analysis_reasoning': f'<div style="color: #dc2626;"><h4>Parse Error</h4><p>Unable to parse AI response: {str(e)}</p></div>'
+                            }
+                    else:
+                        _logger.error(f"Fallback model also failed for contact {self.id}: {response.status_code} - {response.text}")
+                        
+                except Exception as fallback_error:
+                    _logger.error(f"Fallback model request failed for contact {self.id}: {str(fallback_error)}")
+            
+            return {
+                'ai_status': '<span style="color: #dc2626;">❌ API Error</span>',
+                'ai_summary': f'<div style="color: #dc2626;"><h4>API Error</h4><p>Failed to connect to OpenAI API: {str(e)}</p></div>',
+                'ai_quality_grade': 'no_grade',
+                'ai_sales_grade': 'no_grade',
+                'analysis_reasoning': f'<div style="color: #dc2626;"><h4>Connection Error</h4><p>Unable to connect to OpenAI API: {str(e)}</p></div>'
+            }
+
     def _generate_ai_analysis(self, ai_service, contact_data, automation_template):
-        """Generate AI analysis using the AI service"""
+        """Generate AI analysis using the AI service (legacy method)"""
         import json
         import logging
         _logger = logging.getLogger(__name__)
@@ -577,11 +817,25 @@ class GHLLocationContact(models.Model):
 
     def _create_ai_analysis_prompt(self, contact_data, automation_template):
         """Create AI prompt for contact analysis using automation template settings"""
-        # Get contact status options from automation template
+        import logging
+        _logger = logging.getLogger(__name__)
+        
+        # Get contact status settings from automation template
         contact_status_setting = automation_template.contact_status_setting_ids.filtered(lambda s: s.enabled)
-        status_options = []
+        contact_status_rules = ""
         if contact_status_setting:
             status_options = contact_status_setting[0].status_option_ids
+            if status_options:
+                contact_status_rules = "Available Contact Status Options:\n"
+                for option in status_options:
+                    contact_status_rules += f"- {option.name}: {option.description}\n"
+                _logger.info(f"Contact status rules for contact {self.id}: {contact_status_rules}")
+                _logger.info(f"Found {len(status_options)} status options for contact {self.id}")
+            else:
+                _logger.warning(f"No status options found for contact {self.id} in automation template {automation_template.name}")
+        else:
+            _logger.warning(f"No enabled contact status settings found for contact {self.id} in automation template {automation_template.name}")
+            _logger.info(f"All contact status settings for template {automation_template.name}: {automation_template.contact_status_setting_ids}")
         
         # Get AI contact scoring rules from automation template
         ai_contact_scoring_setting = automation_template.ai_contact_scoring_setting_ids.filtered(lambda s: s.enabled)
@@ -595,42 +849,37 @@ class GHLLocationContact(models.Model):
         if ai_sales_scoring_setting:
             sales_scoring_rules = ai_sales_scoring_setting[0].framework or ""
         
-        # Build status options for the prompt
-        status_options_text = ""
-        if status_options:
-            status_options_text = "Available status options:\n"
-            for option in status_options:
-                status_options_text += f"- {option.name}: {option.description}\n"
-        
         # Build the prompt
         prompt = f"""Analyze the following contact data and return a JSON response with exactly this structure:
 {{
-    "ai_status": "status_option_name",
-    "ai_summary": "Detailed summary text (2-4 sentences)",
+    "ai_status": "Custom status description with HTML formatting",
+    "ai_summary": "Detailed HTML-formatted summary with comprehensive analysis",
     "ai_quality_grade": "grade_a|grade_b|grade_c|no_grade",
     "ai_sales_grade": "grade_a|grade_b|grade_c|grade_d|no_grade",
-    "analysis_reasoning": "Brief explanation of the analysis decisions"
+    "analysis_reasoning": "Detailed HTML-formatted reasoning with categories and explanations"
 }}
 
 Business Context: {automation_template.business_context or 'No specific business context provided.'}
 
-{status_options_text}
+Contact Status Rules: {contact_status_rules}
 
 Contact Scoring Rules: {contact_scoring_rules}
 
 Sales Scoring Rules: {sales_scoring_rules}
 
+Current AI Analysis: The contact currently has an AI status of "{contact_data.get('ai_analysis', {}).get('current_ai_status', 'not_contacted')}" with a summary of "{contact_data.get('ai_analysis', {}).get('current_ai_summary', 'No summary available')}". Consider this current analysis when generating the new summary and status. If the current status is still accurate based on recent activity, you may keep it or update it as needed.
+
 Requirements:
-- ai_status: Choose from the available status options above based on engagement level and conversation quality
-- ai_summary: Provide a detailed 2-4 sentence summary of the contact's engagement, key interactions, and current status. Include specific details about conversations, opportunities, and any notable patterns. If no meaningful interactions exist, provide a brief summary of the contact's basic information and lack of engagement.
+- ai_status: CRITICAL: You MUST use ONLY the status options provided in the Contact Status Rules section above. Do NOT create your own status names or descriptions. If Contact Status Rules are provided, you MUST choose one of those exact status names and format it with HTML styling. Use the EXACT status name as provided by the user. Format with appropriate colors: green for positive statuses, orange for neutral, red for negative. Use HTML styling like: "<span style='color: #dc2626; font-weight: bold;'>❄️ [EXACT_STATUS_NAME]</span>" or "<span style='color: #059669; font-weight: bold;'>🔥 [EXACT_STATUS_NAME]</span>". If no Contact Status Rules are provided, you may create a generic status.
+- ai_summary: Provide a comprehensive, detailed summary in HTML format. Include multiple sections with headers, bullet points, and formatting. Cover: Contact Overview, Engagement History, Communication Patterns, Key Interactions, Opportunities & Pipeline, Risk Assessment, and Recommendations. Use specific examples from the contact data. Be as detailed as possible with concrete details about conversations, messages, opportunities, and any notable patterns. If no meaningful interactions exist, provide a detailed analysis of the contact's basic information and explain the lack of engagement.
 - ai_quality_grade: Based on engagement quality and conversation depth using the contact scoring rules
 - ai_sales_grade: Based on sales potential and opportunity value using the sales scoring rules
-- analysis_reasoning: 2-3 sentences explaining your decisions
+- analysis_reasoning: Provide a comprehensive, detailed analysis in HTML format with multiple categories. Include sections like "Engagement Analysis", "Communication Patterns", "Sales Potential", "Risk Factors", "Recommendations", etc. Use headers, bullet points, and formatting to make it easy to read. Be as detailed as possible with specific examples from the contact data.
 
 Contact Data:
 {json.dumps(contact_data, indent=2)}
 
-Return only the JSON object, no additional text."""
+IMPORTANT: Return ONLY the JSON object. Do not wrap it in markdown code blocks (```json) or add any additional text before or after the JSON."""
         
         return prompt
 
@@ -640,40 +889,69 @@ Return only the JSON object, no additional text."""
         _logger = logging.getLogger(__name__)
         
         try:
-            # Extract AI results
-            ai_status = ai_result.get('ai_status', 'not_contacted')
-            ai_summary = ai_result.get('ai_summary', 'No summary available')
+            # Extract AI results - handle both direct fields and summary wrapper
+            if 'summary' in ai_result and isinstance(ai_result['summary'], str):
+                # The AI response is wrapped in a summary field, try to parse it
+                try:
+                    import re
+                    # Try to extract JSON from the summary field
+                    json_match = re.search(r'\{.*\}', ai_result['summary'], re.DOTALL)
+                    if json_match:
+                        parsed_summary = json.loads(json_match.group())
+                        ai_status = parsed_summary.get('ai_status', '<span style="color: #6b7280;">Not Contacted</span>')
+                        ai_summary = parsed_summary.get('ai_summary', '<span style="color: #6b7280;">No summary available</span>')
+                        ai_reasoning = parsed_summary.get('analysis_reasoning', '<span style="color: #6b7280;">No analysis available</span>')
+                    else:
+                        # Fallback to direct fields
+                        ai_status = ai_result.get('ai_status', '<span style="color: #6b7280;">Not Contacted</span>')
+                        ai_summary = ai_result.get('ai_summary', '<span style="color: #6b7280;">No summary available</span>')
+                        ai_reasoning = ai_result.get('analysis_reasoning', '<span style="color: #6b7280;">No analysis available</span>')
+                except:
+                    # If parsing fails, use direct fields
+                    ai_status = ai_result.get('ai_status', '<span style="color: #6b7280;">Not Contacted</span>')
+                    ai_summary = ai_result.get('ai_summary', '<span style="color: #6b7280;">No summary available</span>')
+                    ai_reasoning = ai_result.get('analysis_reasoning', '<span style="color: #6b7280;">No analysis available</span>')
+            else:
+                # Direct field access
+                ai_status = ai_result.get('ai_status', '<span style="color: #6b7280;">Not Contacted</span>')
+                ai_summary = ai_result.get('ai_summary', '<span style="color: #6b7280;">No summary available</span>')
+                ai_reasoning = ai_result.get('analysis_reasoning', '<span style="color: #6b7280;">No analysis available</span>')
             ai_quality_grade = ai_result.get('ai_quality_grade', 'no_grade')
             ai_sales_grade = ai_result.get('ai_sales_grade', 'no_grade')
-            
-            # Get valid status options from automation template
-            valid_statuses = ['not_contacted']  # Default fallback
-            if self.location_id and self.location_id.automation_template_id:
-                contact_status_setting = self.location_id.automation_template_id.contact_status_setting_ids.filtered(lambda s: s.enabled)
-                if contact_status_setting:
-                    valid_statuses = [option.name for option in contact_status_setting[0].status_option_ids]
-                    valid_statuses.append('not_contacted')  # Always allow this fallback
             
             # Validate and set values
             valid_quality_grades = ['grade_a', 'grade_b', 'grade_c', 'no_grade']
             valid_sales_grades = ['grade_a', 'grade_b', 'grade_c', 'grade_d', 'no_grade']
             
-            if ai_status in valid_statuses:
-                self.ai_status = ai_status
-            else:
-                self.ai_status = 'not_contacted'
-                _logger.warning(f"Invalid AI status '{ai_status}' for contact {self.id}. Valid options: {valid_statuses}")
+            # Set AI status (HTML formatted)
+            self.ai_status = ai_status
             
-            # Validate and set AI summary - should be a detailed text, not just "Read" or "No Summary"
+            # Log the AI status for debugging
+            _logger.info(f"Setting AI status for contact {self.id}: {ai_status}")
+            
+            # Set AI summary (HTML formatted)
             if ai_summary and isinstance(ai_summary, str) and len(ai_summary.strip()) > 0:
-                # Ensure the summary is not just "Read" or "No Summary" - it should be detailed
+                # Check if the summary is just placeholder text
                 if ai_summary.lower() in ['read', 'no summary', 'no summary available']:
-                    # Generate a basic summary if AI returned placeholder text
-                    self.ai_summary = f"Contact {self.name or self.external_id} has been analyzed. {ai_summary}"
+                    # Generate a basic HTML summary if AI returned placeholder text
+                    self.ai_summary = f"""
+                    <div style="color: #6b7280;">
+                        <h4>Contact Analysis</h4>
+                        <p>Contact {self.name or self.external_id} has been analyzed. {ai_summary}</p>
+                    </div>
+                    """
                 else:
                     self.ai_summary = ai_summary
             else:
-                self.ai_summary = f"Contact {self.name or self.external_id} has been analyzed. No detailed summary available."
+                self.ai_summary = f"""
+                <div style="color: #6b7280;">
+                    <h4>Contact Analysis</h4>
+                    <p>Contact {self.name or self.external_id} has been analyzed. No detailed summary available.</p>
+                </div>
+                """
+            
+            # Set AI reasoning (HTML formatted)
+            self.ai_reasoning = ai_reasoning
             
             if ai_quality_grade in valid_quality_grades:
                 self.ai_quality_grade = ai_quality_grade
@@ -691,6 +969,7 @@ Return only the JSON object, no additional text."""
             self.write({
                 'ai_status': self.ai_status,
                 'ai_summary': self.ai_summary,
+                'ai_reasoning': self.ai_reasoning,
                 'ai_quality_grade': self.ai_quality_grade,
                 'ai_sales_grade': self.ai_sales_grade,
                 'ai_analysis_status': 'completed',
@@ -698,14 +977,26 @@ Return only the JSON object, no additional text."""
             })
             
             _logger.info(
-                f"Updated contact {self.id} with AI results: status={self.ai_status}, summary={self.ai_summary[:100]}..., quality={self.ai_quality_grade}, sales={self.ai_sales_grade}")
+                f"Updated contact {self.id} with AI results: status={self.ai_status}, quality={self.ai_quality_grade}, sales={self.ai_sales_grade}")
              
         except Exception as e:
             _logger.error(f"Error updating contact {self.id} with AI results: {str(e)}")
             # Set default values on error and save to database
             error_values = {
-                'ai_status': 'not_contacted',
-                'ai_summary': f"Contact {self.name or self.external_id} has been analyzed. Error occurred during AI analysis.",
+                'ai_status': '<span style="color: #dc2626;">❌ Analysis Failed</span>',
+                'ai_summary': f"""
+                <div style="color: #dc2626;">
+                    <h4>Analysis Error</h4>
+                    <p>Contact {self.name or self.external_id} has been analyzed. Error occurred during AI analysis.</p>
+                    <p><strong>Error:</strong> {str(e)}</p>
+                </div>
+                """,
+                'ai_reasoning': f"""
+                <div style="color: #dc2626;">
+                    <h4>Analysis Failed</h4>
+                    <p>Unable to generate detailed analysis due to an error.</p>
+                </div>
+                """,
                 'ai_quality_grade': 'no_grade',
                 'ai_sales_grade': 'no_grade',
                 'ai_analysis_status': 'failed',
@@ -1146,3 +1437,188 @@ Return only the JSON object, no additional text."""
         except Exception as e:
             _logger.error(f"Error fetching single contact: {e}")
             return None
+
+    def update_ai_status_based_on_activity(self):
+        """Update AI status based on contact activity and history"""
+        import logging
+        _logger = logging.getLogger(__name__)
+        
+        for contact in self:
+            try:
+                # Get all messages for this contact
+                messages = self.env['ghl.contact.message'].search([
+                    ('contact_id', '=', contact.id)
+                ])
+                
+                # Get conversations
+                conversations = contact.conversation_ids
+                
+                # Get opportunities
+                opportunities = contact.opportunity_ids
+                
+                # Determine AI status based on activity
+                new_ai_status = self._determine_ai_status_from_activity(messages, conversations, opportunities)
+                
+                # Only update if status has changed
+                if new_ai_status != contact.ai_status:
+                    contact.ai_status = new_ai_status
+                    _logger.info(f"Updated contact {contact.id} AI status from '{contact.ai_status}' to '{new_ai_status}' based on activity")
+                
+            except Exception as e:
+                _logger.error(f"Error updating AI status for contact {contact.id}: {str(e)}")
+    
+    def _determine_ai_status_from_activity(self, messages, conversations, opportunities):
+        """Determine AI status based on contact activity"""
+        
+        # If no activity at all, return 'not_contacted'
+        if not messages and not conversations and not opportunities:
+            return 'not_contacted'
+        
+        # Check for recent activity (last 30 days)
+        from datetime import datetime, timedelta
+        thirty_days_ago = datetime.now() - timedelta(days=30)
+        
+        recent_messages = messages.filtered(lambda m: m.create_date and m.create_date >= thirty_days_ago)
+        recent_conversations = conversations.filtered(lambda c: c.create_date and c.create_date >= thirty_days_ago)
+        
+        # Get automation template status options
+        status_options = self._get_available_status_options()
+        
+        # Determine status based on activity level
+        if opportunities:
+            # Has opportunities - likely engaged
+            return self._get_best_status_for_engaged(status_options)
+        elif recent_messages or recent_conversations:
+            # Recent activity - likely contacted
+            return self._get_best_status_for_contacted(status_options)
+        elif messages or conversations:
+            # Has history but no recent activity - likely contacted but not engaged
+            return self._get_best_status_for_contacted_not_engaged(status_options)
+        else:
+            # No activity - not contacted
+            return 'not_contacted'
+    
+    def _get_available_status_options(self):
+        """Get available status options from automation template"""
+        if self.location_id and self.location_id.automation_template_id:
+            contact_status_setting = self.location_id.automation_template_id.contact_status_setting_ids.filtered(lambda s: s.enabled)
+            if contact_status_setting:
+                return [option.name for option in contact_status_setting[0].status_option_ids]
+        return ['not_contacted']
+    
+    def _get_best_status_for_engaged(self, status_options):
+        """Get the best status for engaged contacts"""
+        # Priority order for engaged contacts
+        engaged_statuses = ['engaged', 'qualified', 'hot_lead', 'warm_lead', 'active']
+        for status in engaged_statuses:
+            if status in status_options:
+                return status
+        return 'not_contacted'
+    
+    def _get_best_status_for_contacted(self, status_options):
+        """Get the best status for recently contacted contacts"""
+        # Priority order for contacted contacts
+        contacted_statuses = ['contacted', 'in_progress', 'follow_up', 'warm_lead']
+        for status in contacted_statuses:
+            if status in status_options:
+                return status
+        return 'not_contacted'
+    
+    def _get_best_status_for_contacted_not_engaged(self, status_options):
+        """Get the best status for contacts with history but no recent activity"""
+        # Priority order for contacted but not engaged
+        inactive_statuses = ['contacted', 'cold_lead', 'follow_up_needed', 'no_response']
+        for status in inactive_statuses:
+            if status in status_options:
+                return status
+        return 'not_contacted'
+
+    @api.model
+    def update_all_contacts_ai_status(self):
+        """Update AI status for all contacts based on their activity"""
+        import logging
+        _logger = logging.getLogger(__name__)
+        
+        all_contacts = self.search([])
+        _logger.info(f"Updating AI status for {len(all_contacts)} contacts")
+        
+        updated_count = 0
+        for contact in all_contacts:
+            try:
+                old_status = contact.ai_status
+                contact.update_ai_status_based_on_activity()
+                if contact.ai_status != old_status:
+                    updated_count += 1
+            except Exception as e:
+                _logger.error(f"Error updating AI status for contact {contact.id}: {str(e)}")
+        
+        _logger.info(f"Updated AI status for {updated_count} contacts")
+        return {
+            'success': True,
+            'contacts_updated': updated_count,
+            'total_contacts': len(all_contacts)
+        }
+
+    def update_touch_information(self):
+        """Update touch information and AI status for this contact"""
+        import logging
+        _logger = logging.getLogger(__name__)
+        
+        try:
+            # Update existing touch information
+            self._compute_touch_summary()
+            self._compute_last_touch_date()
+            self._compute_last_message_content()
+            
+            # Also update AI status based on activity
+            self.update_ai_status_based_on_activity()
+            
+            _logger.info(f"Updated touch information and AI status for contact {self.id}")
+            
+        except Exception as e:
+            _logger.error(f"Error updating touch information for contact {self.id}: {str(e)}")
+
+    def _is_current_ai_status_accurate(self):
+        """Check if the current AI status is still accurate based on recent activity"""
+        import logging
+        _logger = logging.getLogger(__name__)
+        
+        try:
+            # Get recent activity (last 7 days)
+            from datetime import datetime, timedelta
+            seven_days_ago = datetime.now() - timedelta(days=7)
+            
+            recent_messages = self.env['ghl.contact.message'].search([
+                ('contact_id', '=', self.id),
+                ('create_date', '>=', seven_days_ago)
+            ])
+            
+            recent_conversations = self.conversation_ids.filtered(
+                lambda c: c.create_date and c.create_date >= seven_days_ago
+            )
+            
+            recent_opportunities = self.opportunity_ids.filtered(
+                lambda o: o.date_created and o.date_created >= seven_days_ago
+            )
+            
+            # If there's recent activity, the status might need updating
+            if recent_messages or recent_conversations or recent_opportunities:
+                _logger.info(f"Contact {self.id} has recent activity - AI status may need updating")
+                return False
+            
+            # If no recent activity and current status is appropriate for inactive contacts
+            inactive_statuses = ['not_contacted', 'cold_lead', 'no_response', 'follow_up_needed']
+            if self.ai_status in inactive_statuses:
+                _logger.info(f"Contact {self.id} has no recent activity and current status '{self.ai_status}' is appropriate")
+                return True
+            
+            # If current status suggests engagement but no recent activity, it might be outdated
+            if self.ai_status not in inactive_statuses:
+                _logger.info(f"Contact {self.id} has no recent activity but current status '{self.ai_status}' suggests engagement - may need updating")
+                return False
+            
+            return True
+            
+        except Exception as e:
+            _logger.error(f"Error checking AI status accuracy for contact {self.id}: {str(e)}")
+            return False  # Default to needing update if there's an error

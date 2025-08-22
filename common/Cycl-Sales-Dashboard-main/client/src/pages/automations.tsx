@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { CYCLSALES_APP_ID } from "@/lib/constants";
 import { Eye, EyeOff, Info, Plus, Redo2, Save, Trash2, Undo2, XCircle } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { useSubAccount } from "@/contexts/SubAccountContext";
 
 // Add this type for template options
 interface TemplateOption {
@@ -108,9 +109,10 @@ interface TaskGenerationSetting {
 }
 
 export default function Automations() {
+  const { locationId: contextLocationId, isSubAccount } = useSubAccount();
   
-  // Parse location_id from query string
-  const locationId = (() => {
+  // Parse location_id from query string or use context
+  const locationId = isSubAccount ? contextLocationId : (() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       return params.get('location_id') || '';
@@ -654,7 +656,31 @@ export default function Automations() {
     newDetails[idx] = { ...newDetails[idx], question: value };
     setCallSummarySettings([{ ...summary, extract_detail_ids: newDetails }]);
   };
-  // Repeat similar for salesRules, statuses, valueExamples, taskRules, etc.
+  
+  // Status Options handlers
+  const statusSummary = contactStatusSettings[0] || { status_option_ids: [] };
+  const handleAddStatusOption = () => {
+    const newOptions = [...(statusSummary.status_option_ids || []), { 
+      id: Date.now(), 
+      name: '', 
+      description: '', 
+      icon: 'user', 
+      color: 'blue' 
+    }];
+    setContactStatusSettings([{ ...statusSummary, status_option_ids: newOptions }]);
+  };
+  const handleRemoveStatusOption = (idx: number) => {
+    const newOptions = [...(statusSummary.status_option_ids || [])];
+    newOptions.splice(idx, 1);
+    setContactStatusSettings([{ ...statusSummary, status_option_ids: newOptions }]);
+  };
+  const handleChangeStatusOption = (idx: number, field: 'name' | 'description', value: string) => {
+    const newOptions = [...(statusSummary.status_option_ids || [])];
+    newOptions[idx] = { ...newOptions[idx], [field]: value };
+    setContactStatusSettings([{ ...statusSummary, status_option_ids: newOptions }]);
+  };
+  
+  // Repeat similar for salesRules, valueExamples, taskRules, etc.
   // In the UI, render and update using the nested state only
 
   // Function to clean up template name for display
@@ -743,7 +769,7 @@ export default function Automations() {
 
   return (
     <div className="min-h-screen w-full bg-slate-950 text-slate-50 overflow-x-hidden">
-      <TopNavigation />
+      {!isSubAccount && <TopNavigation />}
       <main className="p-8 max-w-full">
         {/* Template Header */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
@@ -808,29 +834,54 @@ export default function Automations() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           {/* Left Column */}
           <div className="space-y-6 lg:col-span-4">
-            {/* Select Locations */}
-            <Card className="bg-slate-900 border-slate-800">
-              <CardHeader>
-                <CardTitle>Select Locations</CardTitle>
-                <CardDescription>Select the locations you want to have included in this automation group.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <Select value={selectedLocation} onValueChange={handleLocationChange}>
-                  <SelectTrigger className="w-64 bg-slate-800 border-slate-700">
-                    <SelectValue placeholder="Select a location" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-slate-800 border-slate-700">
-                    {locations.map(loc => (
-                      <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <div className="flex items-center gap-2">
-                  <Switch checked={isDefaultConfig} onCheckedChange={setIsDefaultConfig} />
-                  <Label className="text-slate-300">Make this the default configuration</Label>
-                </div>
-              </CardContent>
-            </Card>
+                {/* Select Locations - Hidden for sub-accounts */}
+            {!isSubAccount && (
+              <Card className="bg-slate-900 border-slate-800">
+                <CardHeader>
+                  <CardTitle>Select Locations</CardTitle>
+                  <CardDescription>Select the locations you want to have included in this automation group.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <Select value={selectedLocation} onValueChange={handleLocationChange}>
+                    <SelectTrigger className="w-64 bg-slate-800 border-slate-700">
+                      <SelectValue placeholder="Select a location" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-slate-800 border-slate-700">
+                      {locations.map(loc => (
+                        <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <div className="flex items-center gap-2">
+                    <Switch checked={isDefaultConfig} onCheckedChange={setIsDefaultConfig} />
+                    <Label className="text-slate-300">Make this the default configuration</Label>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+            
+            {/* Current Location Display - For sub-accounts */}
+            {isSubAccount && (
+              <Card className="bg-slate-900 border-slate-800">
+                <CardHeader>
+                  <CardTitle>Current Location</CardTitle>
+                  <CardDescription>Your account is configured for this specific location.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex items-center gap-3 p-3 bg-slate-800 rounded-lg border border-slate-700">
+                    <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+                    <div>
+                      <div className="text-white font-medium">{singleLocationName || locationId}</div>
+                      <div className="text-slate-400 text-sm">Location ID: {locationId}</div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Switch checked={isDefaultConfig} onCheckedChange={setIsDefaultConfig} />
+                    <Label className="text-slate-300">Make this the default configuration</Label>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
             {/* Business Context */}
             <Card className="bg-slate-900 border-slate-800">
               <CardHeader>
@@ -1081,21 +1132,25 @@ export default function Automations() {
                 </div>
                 <Separator />
                 <Label className="font-semibold text-slate-300">Choose from these statuses...</Label>
-                <div className="space-y-4">
-                  {/* statuses state is removed, so this section will not render dynamic statuses */}
-                  <Textarea 
-                    value={contactStatusSettings[0]?.status_option_ids?.[0]?.description || "An A-grade contact is fully committed — they have signed the agreement or scheduled a notary, respond quickly, follow instructions, and clearly want to stop the foreclosure or proceed with a sale. They show urgency and cooperation without needing to be chased.\n\nA B-grade contact is interested but slightly delayed — they may have received the agreement but haven't signed yet, are responsive but waiting on a spouse, or seem open but are processing the decision. They ask questions and show intent, but still require active follow-up.\n\nA C-grade contact is lukewarm — they respond inconsistently, give short or unclear answers, and haven't shown strong urgency. They may say they're interested but haven't taken action or confirmed they're ready to move forward.\n\nA D-grade contact is non-committal — they reply slowly, avoid key questions, deflect with vague excuses, or say things like 'I'll think about it' with no clear follow-through. They're in foreclosure but not showing interest in help yet.\n\nAn F-grade contact does not engage at all — they ignore calls and texts, respond negatively, or have clearly said they are not interested or no longer need assistance."} 
-                    onChange={e => {
-                      const updatedOptions = [...(contactStatusSettings[0]?.status_option_ids || [])];
-                      if (updatedOptions.length > 0) {
-                        updatedOptions[0] = { ...updatedOptions[0], description: e.target.value };
-                      } else {
-                        updatedOptions.push({ id: Date.now(), name: 'Default', description: e.target.value, icon: 'user', color: 'blue' });
-                      }
-                      setContactStatusSettings([{ ...contactStatusSettings[0], status_option_ids: updatedOptions }]);
-                    }}
-                    className="bg-slate-800 border-slate-700 min-h-[120px]" 
-                  />
+                <div className="space-y-2">
+                  {contactStatusSettings[0]?.status_option_ids?.map((status, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      <Input 
+                        value={status.name} 
+                        onChange={e => handleChangeStatusOption(idx, 'name', e.target.value)} 
+                        placeholder="Status name"
+                        className="bg-slate-800 border-slate-700 w-1/3" 
+                      />
+                      <Textarea 
+                        value={status.description} 
+                        onChange={e => handleChangeStatusOption(idx, 'description', e.target.value)} 
+                        placeholder="Status description"
+                        className="bg-slate-800 border-slate-700 flex-1 min-h-[60px]" 
+                      />
+                      <Button variant="ghost" size="icon" onClick={() => handleRemoveStatusOption(idx)}><Trash2 className="w-4 h-4 text-slate-400" /></Button>
+                    </div>
+                  )) || []}
+                  <Button variant="ghost" className="flex items-center gap-2 text-blue-400" onClick={handleAddStatusOption}><Plus className="w-4 h-4" />Add a status</Button>
                 </div>
               </CardContent>
             </Card>

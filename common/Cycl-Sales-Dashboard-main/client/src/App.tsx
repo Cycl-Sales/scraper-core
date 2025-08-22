@@ -14,9 +14,46 @@ import Analytics from "@/pages/analytics";
 import CallDetails from "@/pages/call-details";
 import Settings from "@/pages/settings";
 import Automations from "@/pages/automations";
+import SubAccountTest from "@/pages/sub-account-test";
 import { ThemeProvider } from "./theme-context";
+import { SubAccountProvider, useSubAccount } from "./contexts/SubAccountContext";
+import SubAccountAuth from "./components/SubAccountAuth";
+import SubAccountLayout from "./components/SubAccountLayout";
 
 function Router() {
+  const { isSubAccount, isAuthenticated, isLoading } = useSubAccount();
+
+  // Show loading state
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+        <div className="text-white">Loading...</div>
+      </div>
+    );
+  }
+
+  // Show authentication for sub-accounts
+  if (isSubAccount && !isAuthenticated) {
+    return <SubAccountAuth />;
+  }
+
+  // Sub-account routes (limited access)
+  if (isSubAccount && isAuthenticated) {
+    return (
+      <SubAccountLayout>
+        <Switch>
+          <Route path="/analytics" component={Analytics} />
+          <Route path="/automations" component={Automations} />
+          <Route path="/call-details" component={CallDetails} />
+          <Route path="/sub-account-test" component={SubAccountTest} />
+          <Route path="/" component={() => <Redirect to="/analytics" />} />
+          <Route component={NotFound} />
+        </Switch>
+      </SubAccountLayout>
+    );
+  }
+
+  // Agency routes (full access)
   return (
     <Switch>
       <Route path="/" component={() => <Redirect to="/overview" />} />
@@ -32,6 +69,7 @@ function Router() {
       <Route path="/call-details" component={CallDetails} />
       <Route path="/settings" component={Settings} />
       <Route path="/automations" component={Automations} />
+      <Route path="/sub-account-test" component={SubAccountTest} />
       <Route component={NotFound} />
     </Switch>
   );
@@ -40,12 +78,14 @@ function Router() {
 function App() {
   return (
     <ThemeProvider>
-      <TooltipProvider>
-        <div className="dark">
-          <Toaster />
-          <Router />
-        </div>
-      </TooltipProvider>
+      <SubAccountProvider>
+        <TooltipProvider>
+          <div className="dark">
+            <Toaster />
+            <Router />
+          </div>
+        </TooltipProvider>
+      </SubAccountProvider>
     </ThemeProvider>
   );
 }

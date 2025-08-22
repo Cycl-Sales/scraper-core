@@ -123,7 +123,12 @@ export default function CallSummaryDialog({
                 <div className="flex flex-col gap-1 min-w-[120px]">
                   <span className="text-xs text-slate-400">Lead Grade</span>
                   <Badge className={`border-0 ${getGradeColor(callGrade || 'N/A')}`}>
-                    {callGrade ? `Lead Grade ${callGrade}` : 'N/A'}
+                    {callGrade === 'A' ? 'A - Excellent' :
+                     callGrade === 'B' ? 'B - Good' :
+                     callGrade === 'C' ? 'C - Average' :
+                     callGrade === 'D' ? 'D - Below Average' :
+                     callGrade === 'F' ? 'F - Poor' :
+                     'N/A'}
                   </Badge>
                 </div>
                 <div className="flex flex-col gap-1 min-w-[180px]">
@@ -180,8 +185,8 @@ export default function CallSummaryDialog({
                 </>
               )}
 
-              {/* AI Analysis */}
-              {aiAnalysis && (
+              {/* AI Analysis - Only show when summary exists */}
+              {hasSummary && aiAnalysis && (
                 <>
                   <div>
                     <span className="text-base font-semibold text-white flex items-center gap-2">

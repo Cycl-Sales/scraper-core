@@ -261,11 +261,19 @@ Call Transcript:
         # Handle response - try to parse as JSON for both custom and standard prompts
         try:
             import re
-            json_match = re.search(r'\{.*\}', ai_response_text, re.DOTALL)
-            if json_match:
-                ai_summary = json.loads(json_match.group())
+            
+            # First, try to extract JSON from markdown code blocks
+            markdown_json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', ai_response_text, re.DOTALL)
+            if markdown_json_match:
+                json_text = markdown_json_match.group(1)
+                ai_summary = json.loads(json_text)
             else:
-                ai_summary = json.loads(ai_response_text)
+                # Fallback: try to find JSON object in the response
+                json_match = re.search(r'\{.*\}', ai_response_text, re.DOTALL)
+                if json_match:
+                    ai_summary = json.loads(json_match.group())
+                else:
+                    ai_summary = json.loads(ai_response_text)
 
             _logger.info(f"[AI Service] Parsed AI summary: {ai_summary}")
 

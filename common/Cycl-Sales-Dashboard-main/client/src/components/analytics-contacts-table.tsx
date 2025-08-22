@@ -182,7 +182,14 @@ const aiStatusOptions = [
   { label: "Valid Lead", color: "bg-blue-900 text-blue-300", icon: "👤" },
   { label: "Wants to Stay - Retention Path", color: "bg-green-900 text-green-300", icon: "🟢" },
   { label: "Unqualified", color: "bg-slate-800 text-slate-400", icon: "👤" },
-  { label: "Not Contacted", color: "bg-slate-800 text-slate-400", icon: "👤" }
+  { label: "Not Contacted", color: "bg-slate-800 text-slate-400", icon: "👤" },
+  { label: "❄️ Cold Lead - No Recent Activity", color: "bg-red-900 text-red-300", icon: "❄️" },
+  { label: "🔥 Hot Lead - Highly Engaged", color: "bg-green-900 text-green-300", icon: "🔥" },
+  { label: "❌ API Error", color: "bg-red-900 text-red-300", icon: "❌" },
+  { label: "❌ Analysis Failed", color: "bg-red-900 text-red-300", icon: "❌" },
+  { label: "❌ No API Key", color: "bg-red-900 text-red-300", icon: "❌" },
+  { label: "❌ Invalid API Key", color: "bg-red-900 text-red-300", icon: "❌" },
+  { label: "❌ Data Too Large", color: "bg-red-900 text-red-300", icon: "❌" }
 ];
 const aiSummaryOptions = ["Read"];
 const aiQualityOptions = [
@@ -248,6 +255,9 @@ function getChipProps(type: string, value: string) {
     case 'aiStatus':
       if (value === 'Valid Lead') return { border: 'border-blue-500', text: 'text-blue-300', iconColor: 'text-blue-300', icon: <User className="w-4 h-4" /> };
       if (value === 'Wants to Stay - Retention Path') return { border: 'border-green-500', text: 'text-green-300', iconColor: 'text-green-300', icon: <User className="w-4 h-4" /> };
+      if (value.includes('❄️ Cold Lead')) return { border: 'border-red-500', text: 'text-red-300', iconColor: 'text-red-300', icon: <User className="w-4 h-4" /> };
+      if (value.includes('🔥 Hot Lead')) return { border: 'border-green-500', text: 'text-green-300', iconColor: 'text-green-300', icon: <User className="w-4 h-4" /> };
+      if (value.includes('❌')) return { border: 'border-red-500', text: 'text-red-300', iconColor: 'text-red-300', icon: <User className="w-4 h-4" /> };
       return { border: 'border-slate-600', text: 'text-slate-300', iconColor: 'text-slate-300', icon: <User className="w-4 h-4" /> };
     case 'aiSummary':
       return { border: 'border-slate-600', text: 'text-slate-300', iconColor: 'text-slate-300', icon: <ClipboardList className="w-4 h-4" /> };
@@ -326,9 +336,24 @@ function getChipProps(type: string, value: string) {
 interface AnalyticsContactsTableProps {
   loading?: boolean;
   locationId: string;
+  selectedUser?: string;
 }
 
-export default function AnalyticsContactsTable({ loading = false, locationId }: AnalyticsContactsTableProps) {
+/**
+ * Analytics Contacts Table Component
+ * 
+ * Displays a table of contacts with filtering capabilities including:
+ * - User filtering: Filter contacts by assigned user (selectedUser prop)
+ * - Search functionality: Search contacts by name
+ * - Column filtering: Filter by various contact attributes
+ * - Pagination: Lazy loading with configurable page size
+ * 
+ * Props:
+ * - loading: Boolean to show loading state
+ * - locationId: String identifier for the location
+ * - selectedUser: Optional string to filter contacts by assigned user
+ */
+export default function AnalyticsContactsTable({ loading = false, locationId, selectedUser }: AnalyticsContactsTableProps) {
   const { toast } = useToast();
 
   // --- New state for lazy loading ---
@@ -400,26 +425,43 @@ export default function AnalyticsContactsTable({ loading = false, locationId }: 
   // Fetch contacts for current page
   useEffect(() => {
     if (!locationId || isSearching) {
+      console.log('Skipping contact fetch: locationId=', locationId, 'isSearching=', isSearching);
       return; // Don't fetch if we're searching
     }
+    
+    console.log('Fetching contacts for locationId:', locationId, 'page:', page, 'limit:', rowsPerPage, 'selectedUser:', selectedUser);
     setContactsLoading(true);
 
     // Use the new optimized endpoint
-    fetch(`/api/location-contacts-optimized?location_id=${locationId}&page=${page}&limit=${rowsPerPage}&appId=${CYCLSALES_APP_ID}`)
-      .then(res => res.json())
+    const url = `/api/location-contacts-optimized?location_id=${locationId}&page=${page}&limit=${rowsPerPage}&appId=${CYCLSALES_APP_ID}${selectedUser ? `&selected_user=${encodeURIComponent(selectedUser)}` : ''}`;
+    console.log('Fetching from URL:', url);
+    
+    fetch(url)
+      .then(res => {
+        console.log('Response status:', res.status);
+        return res.json();
+      })
       .then(data => {
+        console.log('Contacts API response:', data);
         if (data.success) {
+          console.log('Setting contacts data:', data.contacts);
           setContactsData(data.contacts || []);
           setHasMore(data.has_more || false);
-                      // Don't automatically fetch details - let frontend request them on-demand
-            // Details will be fetched when user interacts with specific contacts
+          // Don't automatically fetch details - let frontend request them on-demand
+          // Details will be fetched when user interacts with specific contacts
         } else {
+          console.error('Contacts API failed:', data.error);
           setContactsData([]);
           setHasMore(false);
         }
       })
+      .catch(error => {
+        console.error('Error fetching contacts:', error);
+        setContactsData([]);
+        setHasMore(false);
+      })
       .finally(() => setContactsLoading(false));
-  }, [locationId, page, rowsPerPage]);
+  }, [locationId, page, rowsPerPage, selectedUser]);
 
   // Cleanup polling intervals when component unmounts or locationId changes - DISABLED
   // useEffect(() => {
@@ -504,7 +546,7 @@ export default function AnalyticsContactsTable({ loading = false, locationId }: 
     setIsSearching(true);
     
     try {
-      const url = `/api/location-contacts-search?location_id=${locationId}&search=${encodeURIComponent(searchTerm)}&appId=${CYCLSALES_APP_ID}`;
+      const url = `/api/location-contacts-search?location_id=${locationId}&search=${encodeURIComponent(searchTerm)}&appId=${CYCLSALES_APP_ID}${selectedUser ? `&selected_user=${encodeURIComponent(selectedUser)}` : ''}`;
       
       const response = await fetch(url);
       const data = await response.json();
@@ -535,7 +577,7 @@ export default function AnalyticsContactsTable({ loading = false, locationId }: 
     setContactsLoading(true);
     setIsSearching(false);
     try {
-      const response = await fetch(`/api/location-contacts-optimized?location_id=${locationId}&page=${page}&limit=${rowsPerPage}&appId=${CYCLSALES_APP_ID}`);
+      const response = await fetch(`/api/location-contacts-optimized?location_id=${locationId}&page=${page}&limit=${rowsPerPage}&appId=${CYCLSALES_APP_ID}${selectedUser ? `&selected_user=${encodeURIComponent(selectedUser)}` : ''}`);
       const data = await response.json();
       
       if (data.success) {
@@ -622,13 +664,20 @@ export default function AnalyticsContactsTable({ loading = false, locationId }: 
           title: "AI Analysis Complete",
           description: result.message || "AI analysis has been completed successfully.",
         });
+        
+        // Add a small delay to ensure the backend has processed the changes
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
         // Refresh the contacts data to show updated AI analysis
         // Trigger a re-fetch of the current page
-        const response = await fetch(`/api/location-contacts-optimized?location_id=${locationId}&page=${page}&limit=${rowsPerPage}&appId=${CYCLSALES_APP_ID}`);
+        const response = await fetch(`/api/location-contacts-optimized?location_id=${locationId}&page=${page}&limit=${rowsPerPage}&appId=${CYCLSALES_APP_ID}${selectedUser ? `&selected_user=${encodeURIComponent(selectedUser)}` : ''}&_t=${Date.now()}`);
         const refreshData = await response.json();
 
         if (refreshData.success) {
+          console.log('Refreshed contacts data:', refreshData.contacts);
           setContactsData(refreshData.contacts || []);
+        } else {
+          console.error('Failed to refresh contacts data:', refreshData);
         }
       } else {
         toast({
@@ -676,15 +725,39 @@ export default function AnalyticsContactsTable({ loading = false, locationId }: 
   });
 
   // Transform contacts data to match the expected format
+  console.log('Transforming contacts data:', contactsData);
   const transformedContacts = contactsData.map((contact: any) => {
 
 
-    // Map AI status
-    const aiStatusMap: { [key: string]: any } = {
-      'valid_lead': { label: 'Valid Lead', color: 'bg-blue-900 text-blue-300', icon: '👤' },
-      'retention_path': { label: 'Wants to Stay - Retention Path', color: 'bg-green-900 text-green-300', icon: '🟢' },
-      'unqualified': { label: 'Unqualified', color: 'bg-slate-800 text-slate-400', icon: '👤' },
-      'not_contacted': { label: 'Not Contacted', color: 'bg-slate-800 text-slate-400', icon: '👤' }
+    // Map AI status - handle both HTML content and simple strings
+    const getAiStatusInfo = (aiStatus: string) => {
+      // If it's HTML content, extract the text and determine color
+      if (aiStatus && aiStatus.includes('<span')) {
+        // Extract text content from HTML
+        const textMatch = aiStatus.match(/>([^<]+)</);
+        const text = textMatch ? textMatch[1] : 'Unknown';
+        
+        // Determine color based on content
+        if (aiStatus.includes('color: #dc2626')) {
+          return { label: text, color: 'bg-red-900 text-red-300', icon: '❄️', html: aiStatus };
+        } else if (aiStatus.includes('color: #059669')) {
+          return { label: text, color: 'bg-green-900 text-green-300', icon: '🔥', html: aiStatus };
+        } else if (aiStatus.includes('color: #6b7280')) {
+          return { label: text, color: 'bg-slate-800 text-slate-400', icon: '👤', html: aiStatus };
+        } else {
+          return { label: text, color: 'bg-blue-900 text-blue-300', icon: '👤', html: aiStatus };
+        }
+      }
+      
+      // Fallback to simple string mapping
+      const aiStatusMap: { [key: string]: any } = {
+        'valid_lead': { label: 'Valid Lead', color: 'bg-blue-900 text-blue-300', icon: '👤' },
+        'retention_path': { label: 'Wants to Stay - Retention Path', color: 'bg-green-900 text-green-300', icon: '🟢' },
+        'unqualified': { label: 'Unqualified', color: 'bg-slate-800 text-slate-400', icon: '👤' },
+        'not_contacted': { label: 'Not Contacted', color: 'bg-slate-800 text-slate-400', icon: '👤' }
+      };
+      
+      return aiStatusMap[aiStatus] || aiStatusMap.not_contacted;
     };
 
     // Map AI quality grades
@@ -715,7 +788,7 @@ export default function AnalyticsContactsTable({ loading = false, locationId }: 
     return {
       id: contact.id, // Add the contact ID
       name: contact.name || '',
-      aiStatus: aiStatusMap[contact.ai_status] || aiStatusMap.not_contacted,
+      aiStatus: getAiStatusInfo(contact.ai_status),
       aiSummary: contact.ai_summary || 'Read',
       aiQuality: aiQualityMap[contact.ai_quality_grade] || aiQualityMap.no_grade,
       aiSales: aiSalesMap[contact.ai_sales_grade] || aiSalesMap.no_grade,
@@ -782,10 +855,10 @@ export default function AnalyticsContactsTable({ loading = false, locationId }: 
     };
   });
 
-  // Filtering logic for all columns
+  // Filtering logic for all columns (excluding user filtering which is now done server-side)
   const filteredRows = transformedContacts.filter(row => {
     if (filters.contactName && !row.name.toLowerCase().includes(filters.contactName.toLowerCase())) return false;
-    if (filters.aiStatus.length && !filters.aiStatus.includes(row.aiStatus.label)) return false;
+    if (filters.aiStatus.length && !filters.aiStatus.includes(row.aiStatus?.label || row.aiStatus?.text || '')) return false;
     if (filters.aiSummary.length && !filters.aiSummary.includes(row.aiSummary)) return false;
     if (filters.aiQuality.length && !filters.aiQuality.includes(row.aiQuality.label)) return false;
     if (filters.aiSales.length && !filters.aiSales.includes(row.aiSales.label)) return false;
@@ -817,13 +890,23 @@ export default function AnalyticsContactsTable({ loading = false, locationId }: 
   // Pagination logic
   const totalRows = totalContacts;
   const totalPages = Math.ceil(totalRows / rowsPerPage);
-  // No need to slice, backend already paginates
+  // No need to slice, backend already paginates and handles user filtering
   const paginatedRows = filteredRows;
 
   const [, setLocation] = useLocation();
 
   // Debug: log the fetched contacts
-  
+  console.log('Debug info:', {
+    contactsDataLength: contactsData.length,
+    transformedContactsLength: transformedContacts.length,
+    filteredRowsLength: filteredRows.length,
+    paginatedRowsLength: paginatedRows.length,
+    totalContacts,
+    page,
+    rowsPerPage,
+    selectedUser: selectedUser || 'None',
+    userFilterActive: selectedUser && selectedUser.trim() !== ""
+  });
 
   return (
     <div className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-900 p-0">
@@ -1100,13 +1183,29 @@ export default function AnalyticsContactsTable({ loading = false, locationId }: 
       {/* Polling Status Indicator - Removed since background sync is disabled */}
 
       {/* Active Filters Display */}
-      {Object.entries(filters).some(([key, value]) => {
+      {(Object.entries(filters).some(([key, value]) => {
         if (key === 'opportunities') {
           return value.min || value.max;
         }
         return Array.isArray(value) ? value.length > 0 : value;
-      }) && (
+      }) || (selectedUser && selectedUser.trim() !== "")) && (
           <div className="flex flex-wrap gap-2 px-4 py-2 border-b border-slate-800">
+            {/* Selected User Filter */}
+            {selectedUser && selectedUser.trim() !== "" && (
+              <div className="flex items-center gap-1 px-2 py-1 bg-blue-900/50 border border-blue-700 rounded text-blue-300 text-xs">
+                <span>User: {selectedUser}</span>
+                <button
+                  onClick={() => {
+                    // This will be handled by the parent component
+                    // For now, we'll just show the filter
+                  }}
+                  className="ml-1 text-blue-400 hover:text-blue-200"
+                  title="Clear user filter (use the user dropdown above)"
+                >
+                  ×
+                </button>
+              </div>
+            )}
             {filters.contactName && (
               <div className="flex items-center gap-1 px-2 py-1 bg-slate-800 border border-slate-700 rounded text-slate-200 text-xs">
                 <span>Contact Name: {filters.contactName}</span>
@@ -1295,7 +1394,23 @@ export default function AnalyticsContactsTable({ loading = false, locationId }: 
             {contactsLoading ? (
               <TableRow><TableCell colSpan={columns.length}><div className="text-center text-slate-400 py-8">Loading contacts...</div></TableCell></TableRow>
             ) : paginatedRows.length === 0 ? (
-              <TableRow><TableCell colSpan={columns.length}><div className="text-center text-slate-400 py-8">No contacts found.</div></TableCell></TableRow>
+              <TableRow>
+                <TableCell colSpan={columns.length}>
+                  <div className="text-center text-slate-400 py-8">
+                    <div>
+                      {selectedUser && selectedUser.trim() !== "" 
+                        ? `No contacts found assigned to "${selectedUser}".` 
+                        : "No contacts found."}
+                    </div>
+                    <div className="text-slate-500 text-sm mt-2">
+                      Debug info: contactsData.length={contactsData.length}, 
+                      transformedContacts.length={transformedContacts.length}, 
+                      paginatedRows.length={paginatedRows.length}
+                      {selectedUser && selectedUser.trim() !== "" && `, userFilter="${selectedUser}"`}
+                    </div>
+                  </div>
+                </TableCell>
+              </TableRow>
             ) : (
               paginatedRows.map((row, i) => (
                 <TableRow key={i} className="border-b border-slate-800 hover:bg-slate-800/50 h-10">
@@ -1315,7 +1430,25 @@ export default function AnalyticsContactsTable({ loading = false, locationId }: 
                         case "Contact Name":
                           return <TableCell key={col} className="text-white font-semibold whitespace-nowrap px-3 py-2">{row.name}</TableCell>;
                         case "AI Status":
-                          return <TableCell key={col} className="whitespace-nowrap px-3 py-2">{(() => { const aiStatusLabel = row.aiStatus?.label ?? ''; const p = getChipProps('aiStatus', aiStatusLabel); return (<span className={`inline-flex items-center gap-2 px-2 py-0.5 rounded-md border ${p.border} ${p.text} font-medium tracking-tight h-7 text-[11px]`} style={{ borderWidth: 1 }}><span className={p.iconColor}>{p.icon}</span>{aiStatusLabel}</span>); })()}</TableCell>;
+                          return <TableCell key={col} className="whitespace-nowrap px-3 py-2">
+                            {row.aiStatus?.html ? (
+                              <div 
+                                className="inline-flex items-center gap-2 px-2 py-0.5 rounded-md border font-medium tracking-tight h-7 text-[11px]"
+                                style={{ borderWidth: 1 }}
+                                dangerouslySetInnerHTML={{ __html: row.aiStatus.html }}
+                              />
+                            ) : (
+                              (() => { 
+                                const aiStatusLabel = row.aiStatus?.label ?? ''; 
+                                const p = getChipProps('aiStatus', aiStatusLabel); 
+                                return (
+                                  <span className={`inline-flex items-center gap-2 px-2 py-0.5 rounded-md border ${p.border} ${p.text} font-medium tracking-tight h-7 text-[11px]`} style={{ borderWidth: 1 }}>
+                                    <span className={p.iconColor}>{p.icon}</span>{aiStatusLabel}
+                                  </span>
+                                ); 
+                              })()
+                            )}
+                          </TableCell>;
                         case "AI Summary":
                           return <TableCell key={col} className="whitespace-nowrap px-3 py-2">
                             <Button
@@ -1684,14 +1817,14 @@ export default function AnalyticsContactsTable({ loading = false, locationId }: 
 
       {/* AI Summary Dialog */}
       <Dialog open={aiSummaryDialog.open} onOpenChange={(open) => setAiSummaryDialog(prev => ({ ...prev, open }))}>
-        <DialogContent className="max-w-2xl bg-slate-900 border-slate-800 text-slate-50">
-          <DialogHeader>
+        <DialogContent className="max-w-4xl max-h-[90vh] bg-slate-900 border-slate-800 text-slate-50 overflow-hidden">
+          <DialogHeader className="flex-shrink-0">
             <DialogTitle className="text-xl font-bold text-white flex items-center gap-2">
               <Eye className="w-5 h-5 text-blue-400" />
               AI Analysis Summary
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-6">
+          <div className="space-y-6 overflow-y-auto max-h-[calc(90vh-120px)] pr-2">
             {/* Contact Name */}
             <div>
               <h3 className="text-lg font-semibold text-white mb-2">{aiSummaryDialog.contactName}</h3>
@@ -1704,9 +1837,13 @@ export default function AnalyticsContactsTable({ loading = false, locationId }: 
                 AI Summary
               </h4>
               <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
-                <p className="text-slate-200 leading-relaxed whitespace-pre-wrap">
-                  {aiSummaryDialog.aiSummary}
-                </p>
+                <div 
+                  className="text-slate-200 leading-relaxed ai-summary-html"
+                  dangerouslySetInnerHTML={{ __html: aiSummaryDialog.aiSummary }}
+                  style={{
+                    lineHeight: '1.6',
+                  }}
+                />
               </div>
             </div>
 
@@ -1714,7 +1851,10 @@ export default function AnalyticsContactsTable({ loading = false, locationId }: 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
                 <h5 className="text-sm font-medium text-slate-400 mb-2">AI Status</h5>
-                <p className="text-white font-semibold">{aiSummaryDialog.aiStatus}</p>
+                <div 
+                  className="text-white font-semibold"
+                  dangerouslySetInnerHTML={{ __html: aiSummaryDialog.aiStatus }}
+                />
               </div>
               <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
                 <h5 className="text-sm font-medium text-slate-400 mb-2">Quality Grade</h5>

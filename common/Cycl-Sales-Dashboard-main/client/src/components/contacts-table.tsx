@@ -687,14 +687,14 @@ export default function ContactsTable() {
 
       {/* AI Summary Dialog */}
       <Dialog open={aiSummaryDialog.open} onOpenChange={(open) => setAiSummaryDialog(prev => ({ ...prev, open }))}>
-        <DialogContent className="max-w-2xl bg-slate-900 border-slate-800 text-slate-50">
-          <DialogHeader>
+        <DialogContent className="max-w-4xl max-h-[90vh] bg-slate-900 border-slate-800 text-slate-50 overflow-hidden">
+          <DialogHeader className="flex-shrink-0">
             <DialogTitle className="text-xl font-bold text-white flex items-center gap-2">
               <Eye className="w-5 h-5 text-blue-400" />
               AI Analysis Summary
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-6">
+          <div className="space-y-6 overflow-y-auto max-h-[calc(90vh-120px)] pr-2">
             {/* Contact Name */}
             <div>
               <h3 className="text-lg font-semibold text-white mb-2">{aiSummaryDialog.contactName}</h3>
@@ -707,9 +707,13 @@ export default function ContactsTable() {
                 AI Summary
               </h4>
               <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
-                <p className="text-slate-200 leading-relaxed whitespace-pre-wrap">
-                  {aiSummaryDialog.aiSummary}
-                </p>
+                <div 
+                  className="text-slate-200 leading-relaxed ai-summary-html"
+                  dangerouslySetInnerHTML={{ __html: aiSummaryDialog.aiSummary }}
+                  style={{
+                    lineHeight: '1.6',
+                  }}
+                />
               </div>
             </div>
 
@@ -717,7 +721,10 @@ export default function ContactsTable() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
                 <h5 className="text-sm font-medium text-slate-400 mb-2">AI Status</h5>
-                <p className="text-white font-semibold">{aiSummaryDialog.aiStatus}</p>
+                <div 
+                  className="text-white font-semibold"
+                  dangerouslySetInnerHTML={{ __html: aiSummaryDialog.aiStatus }}
+                />
               </div>
               <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
                 <h5 className="text-sm font-medium text-slate-400 mb-2">Quality Grade</h5>

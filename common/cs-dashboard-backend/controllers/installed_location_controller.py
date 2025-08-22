@@ -1069,10 +1069,10 @@ class InstalledLocationController(http.Controller):
                     'tag_list': contact.tag_list or '',
                     'custom_fields_count': len(contact.custom_field_ids),
                     'attributions_count': len(contact.attribution_ids),
-                    'ai_status': contact.ai_status or 'not_contacted',
-                    'ai_summary': contact.ai_summary or 'Read',
-                    'ai_quality_grade': contact.ai_quality_grade or 'no_grade',
-                    'ai_sales_grade': contact.ai_sales_grade or 'no_grade',
+                    'ai_status': contact.ai_status if contact.ai_status else '<span style="color: #6b7280;">Not Contacted</span>',
+                    'ai_summary': contact.ai_summary if contact.ai_summary else 'Read',
+                    'ai_quality_grade': contact.ai_quality_grade if contact.ai_quality_grade else 'no_grade',
+                    'ai_sales_grade': contact.ai_sales_grade if contact.ai_sales_grade else 'no_grade',
                     'crm_tasks': contact.crm_tasks or 'no_tasks',
                     'category': contact.category or 'manual',
                     'channel': contact.channel or 'manual',
@@ -1408,10 +1408,10 @@ class InstalledLocationController(http.Controller):
                 'custom_fields_count': len(contact.custom_field_ids),
                 'attributions_count': len(contact.attribution_ids),
                 # AI and analytics fields for frontend table
-                'ai_status': contact.ai_status or 'not_contacted',
-                'ai_summary': contact.ai_summary or 'Read',
-                'ai_quality_grade': contact.ai_quality_grade or 'no_grade',
-                'ai_sales_grade': contact.ai_sales_grade or 'no_grade',
+                'ai_status': contact.ai_status if contact.ai_status else '<span style="color: #6b7280;">Not Contacted</span>',
+                'ai_summary': contact.ai_summary if contact.ai_summary else 'Read',
+                'ai_quality_grade': contact.ai_quality_grade if contact.ai_quality_grade else 'no_grade',
+                'ai_sales_grade': contact.ai_sales_grade if contact.ai_sales_grade else 'no_grade',
                 'crm_tasks': contact.crm_tasks or 'no_tasks',
                 'category': contact.category or 'manual',
                 'channel': contact.channel or 'manual',
@@ -1812,10 +1812,10 @@ class InstalledLocationController(http.Controller):
                         'tag_list': contact.tag_list or '',
                         'custom_fields_count': len(contact.custom_field_ids),
                         'attributions_count': len(contact.attribution_ids),
-                        'ai_status': contact.ai_status or 'not_contacted',
-                        'ai_summary': contact.ai_summary or 'Read',
-                        'ai_quality_grade': contact.ai_quality_grade or 'no_grade',
-                        'ai_sales_grade': contact.ai_sales_grade or 'no_grade',
+                        'ai_status': contact.ai_status if contact.ai_status else '<span style="color: #6b7280;">Not Contacted</span>',
+                        'ai_summary': contact.ai_summary if contact.ai_summary else 'Read',
+                        'ai_quality_grade': contact.ai_quality_grade if contact.ai_quality_grade else 'no_grade',
+                        'ai_sales_grade': contact.ai_sales_grade if contact.ai_sales_grade else 'no_grade',
                         'crm_tasks': contact.crm_tasks or 'no_tasks',
                         'category': contact.category or 'manual',
                         'channel': contact.channel or 'manual',
@@ -2607,6 +2607,104 @@ class InstalledLocationController(http.Controller):
             return last_message.date_added.isoformat()
         
         # If no messages, try to fetch them (this will be handled by _compute_touch_summary_for_contact)
+        return ''
+
+    def _compute_last_message_content_for_contact(self, contact):
+        """Compute last message content for a contact on-the-fly"""
+        # Get the most recent message for this contact
+        last_message = request.env['ghl.contact.message'].sudo().search([
+            ('contact_id', '=', contact.id)
+        ], order='create_date desc', limit=1)
+
+        if last_message and last_message.body:
+            # Return a summary of the message
+            message_preview = last_message.body[:100] + "..." if len(last_message.body) > 100 else last_message.body
+            return {
+                'body': message_preview,
+                'type': last_message.message_type,
+                'date': last_message.create_date.isoformat() if last_message.create_date else '',
+                'direction': last_message.direction
+            }
+        
+        return ''
+
+    def _compute_engagement_summary_for_contact(self, contact):
+        """Compute engagement summary for a contact on-the-fly"""
+        # Get all messages for this contact
+        messages = request.env['ghl.contact.message'].sudo().search([
+            ('contact_id', '=', contact.id)
+        ])
+
+        if not messages:
+            return []
+
+        # Group messages by type and count them
+        engagement_data = []
+        message_counts = {}
+        
+        for message in messages:
+            message_type = message.message_type or 'UNKNOWN'
+            message_counts[message_type] = message_counts.get(message_type, 0) + 1
+
+        # Convert to the format expected by frontend
+        for msg_type, count in message_counts.items():
+            engagement_data.append({
+                'type': msg_type,
+                'count': count,
+                'icon': self._get_engagement_icon(msg_type)
+            })
+
+        return engagement_data
+
+    def _compute_speed_to_lead_for_contact(self, contact):
+        """Compute speed to lead for a contact on-the-fly"""
+        # Calculate time between contact creation and first interaction
+        if not contact.date_added:
+            return ''
+        
+        # Get the first message/interaction
+        first_message = request.env['ghl.contact.message'].sudo().search([
+            ('contact_id', '=', contact.id)
+        ], order='create_date asc', limit=1)
+
+        if first_message and first_message.create_date:
+            # Calculate time difference
+            from datetime import datetime
+            contact_date = contact.date_added
+            first_interaction_date = first_message.create_date
+            
+            if isinstance(contact_date, str):
+                contact_date = datetime.fromisoformat(contact_date.replace('Z', '+00:00'))
+            if isinstance(first_interaction_date, str):
+                first_interaction_date = datetime.fromisoformat(first_interaction_date.replace('Z', '+00:00'))
+            
+            time_diff = first_interaction_date - contact_date
+            hours = time_diff.total_seconds() / 3600
+            
+            if hours < 1:
+                return f"{int(time_diff.total_seconds() / 60)} minutes"
+            elif hours < 24:
+                return f"{int(hours)} hours"
+            else:
+                days = hours / 24
+                return f"{int(days)} days"
+        
+        return 'No response'
+
+    def _get_engagement_icon(self, message_type):
+        """Get icon for engagement type"""
+        icon_mapping = {
+            'TYPE_SMS': '📱',
+            'TYPE_CALL': '📞',
+            'TYPE_EMAIL': '📧',
+            'TYPE_WEBCHAT': '💬',
+            'TYPE_FACEBOOK': '📘',
+            'TYPE_WHATSAPP': '📱',
+            'TYPE_REVIEW': '⭐',
+            'TYPE_APPOINTMENT': '📅',
+            'TYPE_OPPORTUNITY': '💰',
+        }
+        return icon_mapping.get(message_type, '📄')
         # For now, return empty string
         return ''
 
@@ -2645,7 +2743,8 @@ class InstalledLocationController(http.Controller):
         location_id = kwargs.get('location_id')
         page = int(kwargs.get('page', 1))
         limit = int(kwargs.get('limit', 10))
-        _logger.info(f"location_id param: {location_id}, page: {page}, limit: {limit}")
+        selected_user = kwargs.get('selected_user', '')  # New parameter for user filtering
+        _logger.info(f"location_id param: {location_id}, page: {page}, limit: {limit}, selected_user: {selected_user}")
 
         if not location_id:
             _logger.error("Missing location_id param")
@@ -2773,21 +2872,53 @@ class InstalledLocationController(http.Controller):
             # Now that we've ensured we have enough contacts, we can properly paginate
             _logger.info(f"Querying database for page {page} with limit={limit}, offset={(page - 1) * limit}")
             
-            # First, let's see what contacts we have in total
-            all_contacts = request.env['ghl.location.contact'].sudo().search([
-                ('location_id.location_id', '=', location_id)
-            ], order='date_added desc')
+            # Build the domain for filtering contacts
+            domain = [('location_id.location_id', '=', location_id)]
             
-            _logger.info(f"Total contacts in database: {len(all_contacts)}")
+            # Add user filtering if selected_user is provided
+            if selected_user and selected_user.strip():
+                _logger.info(f"Filtering contacts by selected user: {selected_user}")
+                # First, find the user by name to get their external_id
+                user_record = request.env['ghl.location.user'].sudo().search([
+                    ('location_id', '=', location_id),
+                    '|',
+                    ('name', '=', selected_user),
+                    '&', ('first_name', '!=', False), ('last_name', '!=', False),
+                    ('first_name', 'ilike', selected_user.split()[0] if selected_user.split() else ''),
+                    ('last_name', 'ilike', selected_user.split()[-1] if len(selected_user.split()) > 1 else '')
+                ], limit=1)
+                
+                if user_record:
+                    _logger.info(f"Found user record: {user_record.name} with external_id: {user_record.external_id}")
+                    domain.append(('assigned_to', '=', user_record.external_id))
+                else:
+                    _logger.warning(f"No user found with name: {selected_user}")
+                    # If no user found, return empty result
+                    return Response(
+                        json.dumps({
+                            'success': True,
+                            'contacts': [],
+                            'total_contacts': 0,
+                            'has_more': False,
+                            'page': page,
+                            'limit': limit
+                        }),
+                        content_type='application/json',
+                        headers=get_cors_headers(request)
+                    )
+            
+            # First, let's see what contacts we have in total (with user filter if applicable)
+            all_contacts = request.env['ghl.location.contact'].sudo().search(domain, order='date_added desc')
+            
+            _logger.info(f"Total contacts in database (with user filter): {len(all_contacts)}")
             
             # Log some sample contacts to see what we have
             for i, contact in enumerate(all_contacts[:10]):
-                _logger.info(f"Contact {i+1}: ID={contact.id}, Name='{contact.name}', External_ID='{contact.external_id}', Date_Added='{contact.date_added}'")
+                _logger.info(f"Contact {i+1}: ID={contact.id}, Name='{contact.name}', External_ID='{contact.external_id}', Date_Added='{contact.date_added}', Assigned_To='{contact.assigned_to}'")
             
             # Now get the paginated contacts
-            contacts = request.env['ghl.location.contact'].sudo().search([
-                ('location_id.location_id', '=', location_id)
-            ], order='date_added desc', limit=limit, offset=(page - 1) * limit)
+            _logger.info(f"Querying contacts with location_id: {location_id} and user filter: {selected_user if selected_user else 'None'}")
+            contacts = request.env['ghl.location.contact'].sudo().search(domain, order='date_added desc', limit=limit, offset=(page - 1) * limit)
             
             _logger.info(f"Retrieved {len(contacts)} contacts from database for location {location_id}, page {page}")
             _logger.info(f"Pagination: page={page}, limit={limit}, offset={(page - 1) * limit}")
@@ -2795,6 +2926,22 @@ class InstalledLocationController(http.Controller):
             # Log the first few contacts to help debug pagination
             for i, contact in enumerate(contacts[:3]):  # Log first 3 contacts
                 _logger.info(f"Contact {i+1} on page {page}: {contact.id} (external_id: {contact.external_id}) - Name: {contact.name}")
+            
+            # Debug: Check if we have any contacts at all for this location
+            if len(contacts) == 0:
+                _logger.warning(f"No contacts found for location {location_id}. Checking if location exists...")
+                location_check = request.env['installed.location'].sudo().search([
+                    ('location_id', '=', location_id)
+                ], limit=1)
+                if location_check:
+                    _logger.info(f"Location {location_id} exists in installed.location table")
+                    # Check if there are any contacts at all for this location
+                    all_contacts_for_location = request.env['ghl.location.contact'].sudo().search([
+                        ('location_id.location_id', '=', location_id)
+                    ])
+                    _logger.info(f"Total contacts for location {location_id}: {len(all_contacts_for_location)}")
+                else:
+                    _logger.error(f"Location {location_id} not found in installed.location table")
             
             for contact in contacts:
                 _logger.info(f"Contact {contact.id} (external_id: {contact.external_id}) - AI fields in DB: status='{contact.ai_status}', summary='{contact.ai_summary}', quality='{contact.ai_quality_grade}', sales='{contact.ai_sales_grade}'")
@@ -2837,11 +2984,29 @@ class InstalledLocationController(http.Controller):
                     if assigned_user:
                         assigned_user_name = assigned_user.name or f"{assigned_user.first_name or ''} {assigned_user.last_name or ''}".strip()
 
-                # Get basic touch information (from existing data only - no API calls here)
-                # Use existing data from database without making API calls
-                touch_summary = contact.touch_summary or 'no_touches'
-                last_touch_date = contact.last_touch_date.isoformat() if contact.last_touch_date else ''
-                last_message_data = contact.last_message or ''
+                # Get basic touch information using compute methods to ensure we have actual data
+                # Compute touch summary on-the-fly
+                touch_summary = self._compute_touch_summary_for_contact(contact)
+                
+                # Compute last touch date on-the-fly
+                last_touch_date = self._compute_last_touch_date_for_contact(contact)
+                
+                # Compute last message content on-the-fly
+                last_message_data = self._compute_last_message_content_for_contact(contact)
+                
+                # Compute engagement summary on-the-fly
+                engagement_summary = self._compute_engagement_summary_for_contact(contact)
+                
+                # Compute speed to lead on-the-fly
+                speed_to_lead = self._compute_speed_to_lead_for_contact(contact)
+
+                # Debug: Log the computed field values
+                _logger.info(f"Contact {contact.id} computed field values:")
+                _logger.info(f"  touch_summary: '{touch_summary}'")
+                _logger.info(f"  last_touch_date: '{last_touch_date}'")
+                _logger.info(f"  last_message_data: '{last_message_data}'")
+                _logger.info(f"  speed_to_lead: '{speed_to_lead}'")
+                _logger.info(f"  engagement_summary: '{engagement_summary}'")
 
                 # Get basic counts (from existing data)
                 tasks_count = request.env['ghl.contact.task'].sudo().search_count([
@@ -2866,17 +3031,17 @@ class InstalledLocationController(http.Controller):
                     'tag_list': contact.tag_list or '',
                     'custom_fields_count': len(contact.custom_field_ids),
                     'attributions_count': len(contact.attribution_ids),
-                    'ai_status': contact.ai_status or 'not_contacted',
-                    'ai_summary': contact.ai_summary or 'AI analysis pending',
-                    'ai_quality_grade': contact.ai_quality_grade or 'no_grade',
-                    'ai_sales_grade': contact.ai_sales_grade or 'no_grade',
+                    'ai_status': contact.ai_status if contact.ai_status else '<span style="color: #6b7280;">Not Contacted</span>',
+                    'ai_summary': contact.ai_summary if contact.ai_summary else 'AI analysis pending',
+                    'ai_quality_grade': contact.ai_quality_grade if contact.ai_quality_grade else 'no_grade',
+                    'ai_sales_grade': contact.ai_sales_grade if contact.ai_sales_grade else 'no_grade',
                     'crm_tasks': contact.crm_tasks or 'no_tasks',
                     'category': contact.category or 'manual',
                     'channel': contact.channel or 'manual',
                     'created_by': contact.created_by or '',
                     'attribution': contact.attribution or '',
                     'assigned_to': assigned_user_name,
-                    'speed_to_lead': contact.speed_to_lead or '',
+                    'speed_to_lead': speed_to_lead,
                     'touch_summary': touch_summary,
                     'engagement_summary': engagement_summary,
                     'last_touch_date': last_touch_date,
@@ -3124,6 +3289,13 @@ class InstalledLocationController(http.Controller):
             # Calculate if there are more pages
             has_more_pages = (page * limit) < total_contacts_in_db
             
+            # Debug logging
+            _logger.info(f"Returning contacts data for location {location_id}:")
+            _logger.info(f"  Total contacts in DB: {total_contacts_in_db}")
+            _logger.info(f"  Contact data length: {len(contact_data)}")
+            _logger.info(f"  Page: {page}, Limit: {limit}, Has more: {has_more_pages}")
+            _logger.info(f"  First few contacts: {contact_data[:2] if contact_data else 'No contacts'}")
+            
             return Response(
                 json.dumps({
                     'success': True,
@@ -3165,8 +3337,9 @@ class InstalledLocationController(http.Controller):
 
         location_id = kwargs.get('location_id')
         search_term = kwargs.get('search', '').strip()
+        selected_user = kwargs.get('selected_user', '')  # New parameter for user filtering
         
-        _logger.info(f"Search request - location_id: {location_id}, search_term: '{search_term}'")
+        _logger.info(f"Search request - location_id: {location_id}, search_term: '{search_term}', selected_user: '{selected_user}'")
         
         if not location_id:
             return Response(
@@ -3233,26 +3406,56 @@ class InstalledLocationController(http.Controller):
             ]
             _logger.info(f"Search conditions: {search_conditions}")
             
+            # Build user filter domain if selected_user is provided
+            user_filter_domain = []
+            if selected_user and selected_user.strip():
+                _logger.info(f"Adding user filter to search: {selected_user}")
+                # Find the user by name to get their external_id
+                user_record = request.env['ghl.location.user'].sudo().search([
+                    ('location_id', '=', location_id),
+                    '|',
+                    ('name', '=', selected_user),
+                    '&', ('first_name', '!=', False), ('last_name', '!=', False),
+                    ('first_name', 'ilike', selected_user.split()[0] if selected_user.split() else ''),
+                    ('last_name', 'ilike', selected_user.split()[-1] if len(selected_user.split()) > 1 else '')
+                ], limit=1)
+                
+                if user_record:
+                    _logger.info(f"Found user record for search: {user_record.name} with external_id: {user_record.external_id}")
+                    user_filter_domain = [('assigned_to', '=', user_record.external_id)]
+                else:
+                    _logger.warning(f"No user found with name: {selected_user} for search")
+                    # If no user found, return empty result
+                    return Response(
+                        json.dumps({
+                            'success': True,
+                            'contacts': [],
+                            'total_contacts': 0
+                        }),
+                        content_type='application/json',
+                        headers=get_cors_headers(request)
+                    )
+            
             # Use direct searches for each field to avoid database corruption issues
             name_contacts = request.env['ghl.location.contact'].sudo().search([
                 ('location_id', '=', installed_location.id),
                 ('name', 'ilike', f'%{search_term}%')
-            ])
+            ] + user_filter_domain)
             
             first_name_contacts = request.env['ghl.location.contact'].sudo().search([
                 ('location_id', '=', installed_location.id),
                 ('first_name', 'ilike', f'%{search_term}%')
-            ])
+            ] + user_filter_domain)
             
             last_name_contacts = request.env['ghl.location.contact'].sudo().search([
                 ('location_id', '=', installed_location.id),
                 ('last_name', 'ilike', f'%{search_term}%')
-            ])
+            ] + user_filter_domain)
             
             email_contacts = request.env['ghl.location.contact'].sudo().search([
                 ('location_id', '=', installed_location.id),
                 ('email', 'ilike', f'%{search_term}%')
-            ])
+            ] + user_filter_domain)
             
             # Combine all results and remove duplicates
             all_contact_ids = set()
@@ -3280,13 +3483,17 @@ class InstalledLocationController(http.Controller):
             # If no results in current location, search across all locations
             if not contacts:
                 _logger.info(f"No results found in location {location_id}, searching across all locations")
-                contacts = request.env['ghl.location.contact'].sudo().search([
+                search_domain = [
                     '|',
                     ('name', 'ilike', f'%{search_term}%'),
                     ('first_name', 'ilike', f'%{search_term}%'),
                     ('last_name', 'ilike', f'%{search_term}%'),
                     ('email', 'ilike', f'%{search_term}%')
-                ], order='date_added desc', limit=50)
+                ]
+                # Add user filter if provided
+                if user_filter_domain:
+                    search_domain.extend(user_filter_domain)
+                contacts = request.env['ghl.location.contact'].sudo().search(search_domain, order='date_added desc', limit=50)
             
             _logger.info(f"Search found {len(contacts)} contacts matching '{search_term}'")
 
@@ -3346,10 +3553,10 @@ class InstalledLocationController(http.Controller):
                     'tag_list': contact.tag_list or '',
                     'custom_fields_count': len(contact.custom_field_ids),
                     'attributions_count': len(contact.attribution_ids),
-                    'ai_status': contact.ai_status or 'not_contacted',
-                    'ai_summary': contact.ai_summary or 'AI analysis pending',
-                    'ai_quality_grade': contact.ai_quality_grade or 'no_grade',
-                    'ai_sales_grade': contact.ai_sales_grade or 'no_grade',
+                    'ai_status': contact.ai_status if contact.ai_status else '<span style="color: #6b7280;">Not Contacted</span>',
+                    'ai_summary': contact.ai_summary if contact.ai_summary else 'AI analysis pending',
+                    'ai_quality_grade': contact.ai_quality_grade if contact.ai_quality_grade else 'no_grade',
+                    'ai_sales_grade': contact.ai_sales_grade if contact.ai_sales_grade else 'no_grade',
                     'crm_tasks': contact.crm_tasks or 'no_tasks',
                     'category': contact.category or 'manual',
                     'channel': contact.channel or 'manual',
@@ -4046,16 +4253,6 @@ class InstalledLocationController(http.Controller):
             return Response(status=200, headers=get_cors_headers(request))
 
         try:
-            # Get API key from request body or parameters
-            request_data = {}
-            if request.httprequest.data:
-                try:
-                    request_data = json.loads(request.httprequest.data)
-                except:
-                    pass
-            
-            api_key = request_data.get('api_key') or kwargs.get('api_key')
-            
             # Find the contact
             contact = request.env['ghl.location.contact'].sudo().browse(contact_id)
             if not contact.exists():
@@ -4069,8 +4266,8 @@ class InstalledLocationController(http.Controller):
 
             _logger.info(f"Running AI analysis for contact {contact_id} (name: {contact.name})")
             
-            # Run AI analysis with API key
-            result = contact.run_ai_analysis(api_key=api_key)
+            # Run AI analysis
+            result = contact.run_ai_analysis()
             
             _logger.info(f"AI analysis result for contact {contact_id}: {result}")
             
@@ -4439,6 +4636,36 @@ class InstalledLocationController(http.Controller):
             _logger.error(f"Error in validate_location_openai_key: {str(e)}")
             return Response(
                 json.dumps({'error': str(e)}),
+                content_type='application/json',
+                status=500,
+                headers=get_cors_headers(request)
+            )
+
+    @http.route('/api/update-all-contacts-ai-status', type='http', auth='none', methods=['POST', 'OPTIONS'], csrf=False)
+    def update_all_contacts_ai_status(self, **kwargs):
+        """Update AI status for all contacts based on their activity"""
+        _logger.info("update_all_contacts_ai_status called")
+        
+        if request.httprequest.method == 'OPTIONS':
+            return Response(status=200, headers=get_cors_headers(request))
+
+        try:
+            # Update AI status for all contacts
+            result = request.env['ghl.location.contact'].sudo().update_all_contacts_ai_status()
+            
+            _logger.info(f"AI status update completed: {result}")
+            
+            return Response(
+                json.dumps(result),
+                content_type='application/json',
+                status=200,
+                headers=get_cors_headers(request)
+            )
+            
+        except Exception as e:
+            _logger.error(f"Error updating AI status for all contacts: {str(e)}")
+            return Response(
+                json.dumps({'success': False, 'error': str(e)}),
                 content_type='application/json',
                 status=500,
                 headers=get_cors_headers(request)

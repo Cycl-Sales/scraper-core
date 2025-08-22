@@ -8,6 +8,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { format } from "date-fns";
 import type { DateRange } from "react-day-picker";
 import { CYCLSALES_APP_ID } from "@/lib/constants";
+import { useSubAccount } from "@/contexts/SubAccountContext";
 
 // Removed unused useQuery helper
 
@@ -56,7 +57,8 @@ function DateRangePicker({ from, to, setRange }: { from: Date | undefined, to: D
 
 export default function Analytics() {
   const query = new URLSearchParams(window.location.search);
-  const locationId = query.get("location_id") || "";
+  const { locationId: contextLocationId, isSubAccount } = useSubAccount();
+  const locationId = isSubAccount ? contextLocationId : (query.get("location_id") || "");
   const [locationName, setLocationName] = useState<string>("");
   const [locationNameLoading, setLocationNameLoading] = useState(false);
   const [dateRange, setDateRange] = useState<DateRange>({ from: new Date("2025-05-12"), to: new Date("2025-05-18") });
@@ -138,7 +140,7 @@ export default function Analytics() {
 
   return (
     <div className="min-h-screen w-full bg-slate-950 text-slate-50 overflow-x-hidden">
-      <TopNavigation />
+      {!isSubAccount && <TopNavigation />}
       <main className="p-8 max-w-full">
         {/* Top Filters Bar */}
         <div className="flex flex-wrap items-center justify-between gap-4 bg-slate-900 rounded-2xl p-6 shadow-lg mb-6">
@@ -265,7 +267,7 @@ export default function Analytics() {
               </Button>
             </div>
           </div>
-          <AnalyticsContactsTable loading={contactsLoading} locationId={locationId} />
+          <AnalyticsContactsTable loading={contactsLoading} locationId={locationId} selectedUser={selectedUser} />
         </div>
       </main>
     </div>

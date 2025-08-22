@@ -9,6 +9,7 @@ import EngagementChart from "@/components/charts/engagement-chart";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { CYCLSALES_APP_ID } from "@/lib/constants";
+import { useSubAccount } from "@/contexts/SubAccountContext";
 
 function useQuery() {
   return new URLSearchParams(window.location.search);
@@ -81,6 +82,7 @@ const lastMessageDirectionOptions = [
 ];
 
 export default function CallDetails() {
+  const { isSubAccount } = useSubAccount();
   const query = useQuery();
   const contactId = query.get("contact_id");
   const contact = query.get("contact") || "";
@@ -266,7 +268,7 @@ export default function CallDetails() {
 
   return (
     <div className="min-h-screen w-full bg-slate-950 text-slate-50 overflow-x-hidden">
-      <TopNavigation />
+      {!isSubAccount && <TopNavigation />}
       <main className="p-8 max-w-full">
         {/* Filter Bar - matches Analytics */}
         <div className="flex flex-wrap items-center justify-between gap-4 bg-slate-900 rounded-2xl p-6 shadow-lg mb-6">
@@ -607,7 +609,12 @@ export default function CallDetails() {
                               message.ai_call_grade === 'F' ? 'border-red-500 text-red-300' :
                               'border-slate-500 text-slate-400'
                             }`}>
-                              {message.ai_call_grade || 'N/A'}
+                              {message.ai_call_grade === 'A' ? 'A - Excellent' :
+                               message.ai_call_grade === 'B' ? 'B - Good' :
+                               message.ai_call_grade === 'C' ? 'C - Average' :
+                               message.ai_call_grade === 'D' ? 'D - Below Average' :
+                               message.ai_call_grade === 'F' ? 'F - Poor' :
+                               'N/A'}
                             </span>
                           </td>
                           <td className="py-3 px-4 whitespace-nowrap">

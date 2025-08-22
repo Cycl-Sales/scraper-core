@@ -136,20 +136,26 @@ class GhlContactMessage(models.Model):
 
     @api.model_create_multi
     def create(self, vals_list):
-        """Override create to automatically fetch recordings for call messages"""
-        records = super().create(vals_list)
-
+        """Override create to trigger contact AI status update"""
+        messages = super().create(vals_list)
+        
         # Link user relationship for new records
-        for record in records:
-            if record.user_id and not record.user_id_rel:
-                self._link_user_relationship(record)
-
-        # For now, let's not auto-fetch on create to avoid cursor issues
-        # Users can manually fetch recordings and transcripts using the buttons
-        _logger.info(
-            f"Created {len(records)} messages. Use 'Fetch Recording' and 'Fetch Transcript' buttons to get data.")
-
-        return records
+        for message in messages:
+            if message.user_id and not message.user_id_rel:
+                self._link_user_relationship(message)
+        
+        # Update AI status for contacts that received new messages
+        contact_ids = set()
+        for message in messages:
+            if message.contact_id:
+                contact_ids.add(message.contact_id.id)
+        
+        # Update AI status for affected contacts
+        if contact_ids:
+            contacts = self.env['ghl.location.contact'].browse(list(contact_ids))
+            contacts.update_ai_status_based_on_activity()
+        
+        return messages
 
     def write(self, vals):
         """Override write to automatically fetch recordings for call messages"""
@@ -948,8 +954,20 @@ class GhlContactMessage(models.Model):
                 continue
                 
             if not record.transcript_ids:
-                _logger.warning(f"Message {record.id} has no transcript. Skipping AI summary generation.")
-                continue
+                _logger.info(f"Message {record.id} has no transcript. Attempting to fetch transcript first.")
+                
+                # Call the existing fetch_transcript method
+                try:
+                    record.fetch_transcript()
+                    _logger.info(f"Successfully called fetch_transcript for message {record.id}")
+                except Exception as fetch_error:
+                    _logger.error(f"Error calling fetch_transcript for message {record.id}: {str(fetch_error)}")
+                    raise Exception(f"Failed to fetch transcript: {str(fetch_error)}")
+                
+                # Check again if transcript was fetched successfully
+                if not record.transcript_ids:
+                    _logger.error(f"Still no transcript available for message {record.id} after fetch attempt")
+                    raise Exception("No transcript available for AI analysis. Please ensure the call has a recording and try again.")
             
             try:
                 # Get OpenAI API key - use provided key or fall back to location's API key
@@ -968,18 +986,44 @@ class GhlContactMessage(models.Model):
                 if not transcript_text.strip():
                     raise Exception("No transcript content available for AI analysis.")
                 
+                # Get user-defined extraction details from automation template
+                extraction_sections = []
+                if record.location_id and record.location_id.automation_template_id:
+                    call_summary_settings = record.location_id.automation_template_id.call_summary_setting_ids.filtered(lambda s: s.enabled)
+                    if call_summary_settings: 
+                        # Get the first enabled call summary setting
+                        summary_setting = call_summary_settings[0]
+                        if summary_setting.extract_detail_ids: 
+                            extraction_sections = [detail.question for detail in summary_setting.extract_detail_ids if detail.question.strip()]
+                
+                # If no user-defined sections, use default sections
+                if not extraction_sections:
+                    extraction_sections = [
+                        "Call Summary - A brief overview of the call",
+                        "Inquiry Details - Key points discussed during the call", 
+                        "Financial Details - Any financial information mentioned (payments, income, mortgage details, etc.)",
+                        "Property & Occupancy Details - Property type, location, occupancy status, etc.",
+                        "Next Steps - Action items and follow-up tasks"
+                    ]
+                
+                # Build the dynamic sections for the prompt
+                sections_text = ""
+                for i, section in enumerate(extraction_sections, 1):
+                    sections_text += f"{i}. **{section}**\n"
+                
+                # Get location name for context
+                location_name = record.location_id.name if record.location_id else "Cycl Sales"
+                
                 # Create the AI prompt for comprehensive analysis
                 prompt = f"""Analyze the following call transcript and provide a comprehensive analysis in JSON format.
+
+Name of the company: {location_name}
 
 You need to provide two parts:
 
 PART 1 - HTML Summary:
 Generate an HTML summary with these sections:
-1. **Call Summary** - A brief overview of the call
-2. **Inquiry Details** - Key points discussed during the call
-3. **Financial Details** - Any financial information mentioned (payments, income, mortgage details, etc.)
-4. **Property & Occupancy Details** - Property type, location, occupancy status, etc.
-5. **Next Steps** - Action items and follow-up tasks
+{sections_text}
 
 PART 2 - Analysis Data:
 Provide structured analysis data including:
@@ -1034,6 +1078,8 @@ Return ONLY the JSON object, no markdown formatting or code blocks."""
                     'Content-Type': 'application/json'
                 }
                 
+                _logger.info(f"Making OpenAI API call for message {record.id} with {len(transcript_text)} characters of transcript")
+                
                 payload = {
                     'model': 'gpt-4o',
                     'messages': [
@@ -1050,7 +1096,7 @@ Return ONLY the JSON object, no markdown formatting or code blocks."""
                     'https://api.openai.com/v1/chat/completions',
                     headers=headers,
                     json=payload,
-                    timeout=30
+                    timeout=120
                 )
                 
                 if response.status_code == 200:
@@ -1121,6 +1167,12 @@ Return ONLY the JSON object, no markdown formatting or code blocks."""
                     _logger.error(error_msg)
                     raise Exception(error_msg)
                     
+            except requests.exceptions.Timeout as e:
+                _logger.error(f"OpenAI API timeout for message {record.id}: {str(e)}")
+                raise Exception(f"OpenAI API request timed out after 120 seconds. Please try again or check your internet connection.")
+            except requests.exceptions.RequestException as e:
+                _logger.error(f"OpenAI API request error for message {record.id}: {str(e)}")
+                raise Exception(f"OpenAI API request failed: {str(e)}")
             except Exception as e:
                 _logger.error(f"Error generating AI call summary for message {record.id}: {str(e)}")
                 raise Exception(f"Failed to generate AI call summary: {str(e)}")
