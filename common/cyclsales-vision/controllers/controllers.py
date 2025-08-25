@@ -1155,12 +1155,12 @@ Return ONLY the JSON object, no additional text or explanations."""
                 
         except Exception as e:
             _logger.error(f"[AI Call Summary] Error in endpoint: {str(e)}", exc_info=True)
-                            return Response(
-                    json.dumps({'error': str(e)}),
-                    content_type='application/json',
-                    status=500,
-                    headers={'Access-Control-Allow-Origin': '*'}
-                )
+            return Response(
+                json.dumps({'error': str(e)}),
+                content_type='application/json',
+                status=500,
+                headers={'Access-Control-Allow-Origin': '*'}
+            )
 
     def _generate_formatted_transcript(self, transcript_records):
         """
