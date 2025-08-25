@@ -709,6 +709,19 @@ Return ONLY the JSON object, no additional text or explanations."""
                     payload.get('cs_vision_summary_prompt') 
                 )
                 message_id = payload.get('cs_vision_ai_message_id')
+                
+                # New call_variables_returned parameter - multiselect array
+                call_variables_returned = payload.get('call_variables_returned', [])
+                if isinstance(call_variables_returned, str):
+                    # Handle case where it might be a comma-separated string
+                    call_variables_returned = [int(x.strip()) for x in call_variables_returned.split(',') if x.strip().isdigit()]
+                elif isinstance(call_variables_returned, list):
+                    # Ensure all values are integers
+                    call_variables_returned = [int(x) for x in call_variables_returned if str(x).isdigit()]
+                else:
+                    call_variables_returned = []
+                
+                _logger.info(f"[Call Transcription] call_variables_returned: {call_variables_returned}")
 
                 missing_fields = []
                 if not summary_prompt:
@@ -882,6 +895,21 @@ Return ONLY the JSON object, no additional text or explanations."""
                     'call_duration': call_duration_seconds,
                     'speakers_detected': speakers_detected
                 }
+                
+                # Handle additional variables based on call_variables_returned
+                additional_data = {}
+                
+                # Generate formatted transcript if requested (value 5)
+                if 5 in call_variables_returned:
+                    formatted_transcript = self._generate_formatted_transcript(transcript_records)
+                    additional_data['formatted_transcript'] = formatted_transcript
+                    _logger.info(f"[Call Transcription] Generated formatted transcript: {len(formatted_transcript)} characters")
+                
+                # Get call URL if requested (value 6)
+                if 6 in call_variables_returned:
+                    call_url = self._get_call_url(message_record)
+                    additional_data['call_url'] = call_url
+                    _logger.info(f"[Call Transcription] Call URL: {call_url}")
 
                 # Generate AI summary using the AI service
                 ai_service = request.env['cyclsales.vision.ai'].sudo()
@@ -892,7 +920,8 @@ Return ONLY the JSON object, no additional text or explanations."""
                     custom_prompt=summary_prompt,
                     custom_api_key=custom_api_key,
                     call_duration=call_duration_seconds,
-                    speakers_detected=speakers_detected
+                    speakers_detected=speakers_detected,
+                    call_variables_returned=call_variables_returned
                 )
 
                 if not ai_result:
@@ -910,9 +939,13 @@ Return ONLY the JSON object, no additional text or explanations."""
                 # Log successful generation
                 _logger.info(f"[Call Transcription] Successfully generated AI summary for message {message_id}")
                 
-                # Return the AI summary
+                # Combine AI result with additional data
+                final_result = ai_result.copy() if ai_result else {}
+                final_result.update(additional_data)
+                
+                # Return the combined result
                 return Response(
-                    json.dumps(ai_result),
+                    json.dumps(final_result),
                     content_type='application/json',
                     status=200
                 )
@@ -1092,7 +1125,8 @@ Return ONLY the JSON object, no additional text or explanations."""
                     custom_api_key=custom_api_key,
                     call_duration=call_duration,
                     speakers_detected=speakers_detected,
-                    location_id=location_id
+                    location_id=location_id,
+                    call_variables_returned=None  # This endpoint doesn't use the new parameter
                 )
                 
                 # Convert transcript records to human-readable format for response
@@ -1121,9 +1155,73 @@ Return ONLY the JSON object, no additional text or explanations."""
                 
         except Exception as e:
             _logger.error(f"[AI Call Summary] Error in endpoint: {str(e)}", exc_info=True)
-            return Response(
-                json.dumps({'error': str(e)}),
-                content_type='application/json',
-                status=500,
-                headers={'Access-Control-Allow-Origin': '*'}
-            )
+                            return Response(
+                    json.dumps({'error': str(e)}),
+                    content_type='application/json',
+                    status=500,
+                    headers={'Access-Control-Allow-Origin': '*'}
+                )
+
+    def _generate_formatted_transcript(self, transcript_records):
+        """
+        Generate a formatted transcript with timestamps and speaker names
+        Args:
+            transcript_records: List of transcript records
+        Returns:
+            str: Formatted transcript text
+        """
+        if not transcript_records:
+            return ""
+        
+        formatted_lines = []
+        for record in transcript_records:
+            if not record.transcript:
+                continue
+                
+            # Format speaker name
+            speaker = "Agent" if record.media_channel == "agent" else "Customer"
+            
+            # Format timestamp
+            start_time = record.start_time_seconds
+            end_time = record.end_time_seconds
+            
+            minutes_start = int(start_time // 60)
+            seconds_start = int(start_time % 60)
+            minutes_end = int(end_time // 60)
+            seconds_end = int(end_time % 60)
+            
+            timestamp = f"[{minutes_start:02d}:{seconds_start:02d} - {minutes_end:02d}:{seconds_end:02d}]"
+            
+            # Create formatted line
+            formatted_line = f"{speaker} {timestamp}: {record.transcript}"
+            formatted_lines.append(formatted_line)
+        
+        return "\n".join(formatted_lines)
+
+    def _get_call_url(self, message_record):
+        """
+        Get the call URL from the message record
+        Args:
+            message_record: The message record
+        Returns:
+            str: Call URL or None if not available
+        """
+        try:
+            # Check if there's a recording URL in attachments
+            if message_record.attachment_ids:
+                for attachment in message_record.attachment_ids:
+                    if attachment.attachment_url and 'recording' in attachment.attachment_url.lower():
+                        return attachment.attachment_url
+            
+            # Check if there's a recording URL in the message record itself
+            if hasattr(message_record, 'recording_url') and message_record.recording_url:
+                return message_record.recording_url
+                
+            # If no specific recording URL, construct a generic one based on message ID
+            if message_record.ghl_id:
+                return f"https://app.gohighlevel.com/messages/{message_record.ghl_id}"
+                
+            return None
+        except Exception as e:
+            _logger.error(f"[Call URL] Error getting call URL: {str(e)}")
+            return None

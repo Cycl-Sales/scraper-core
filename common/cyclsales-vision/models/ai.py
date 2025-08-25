@@ -85,7 +85,7 @@ Return only the JSON object, no additional text.""")
 
     def generate_summary(self, message_id=None, contact_id=None, recording_url=None, transcript=None,
                          custom_prompt=None, location_id=None, custom_api_key=None, call_duration=None,
-                         speakers_detected=None):
+                         speakers_detected=None, call_variables_returned=None):
         """
         Generate AI summary for call data
         """
@@ -160,18 +160,36 @@ Return only the JSON object, no additional text.""")
             if speakers_detected is not None:
                 metadata_info += f"\nSpeakers Detected: {speakers_detected}"
 
+            # Build JSON structure based on call_variables_returned
+            json_fields = []
+            json_fields.append('"summary": "{custom_prompt}"')
+            json_fields.append('"keywords": ["keyword1", "keyword2", "keyword3"]')
+            
+            # Conditionally include sentiment (value 1)
+            if call_variables_returned and 1 in call_variables_returned:
+                json_fields.append('"sentiment": "positive|negative|neutral"')
+            
+            # Conditionally include action_items (value 2)
+            if call_variables_returned and 2 in call_variables_returned:
+                json_fields.append('"action_items": ["action1", "action2", "action3"]')
+            
+            # Conditionally include confidence_score (value 3)
+            if call_variables_returned and 3 in call_variables_returned:
+                json_fields.append('"confidence_score": 0.85')
+            
+            # Conditionally include speakers_detected (value 4)
+            if call_variables_returned and 4 in call_variables_returned:
+                json_fields.append(f'"speakers_detected": {speakers_detected if speakers_detected else 0}')
+            
+            # Always include duration_analyzed
+            json_fields.append(f'"duration_analyzed": "{call_duration} seconds" if call_duration else "Unknown"')
+
+            json_structure = "{\n    " + ",\n    ".join(json_fields) + "\n}"
+
             prompt = f"""{custom_prompt}
 
 Please provide your response in the following JSON format:
-{{
-    "summary": "{custom_prompt}",
-    "keywords": ["keyword1", "keyword2", "keyword3"],
-    "sentiment": "positive|negative|neutral",
-    "action_items": ["action1", "action2", "action3"],
-    "confidence_score": 0.85,
-    "duration_analyzed": "{call_duration} seconds" if call_duration else "Unknown",
-    "speakers_detected": {speakers_detected if speakers_detected else 0}
-}}
+{json_structure}
 
 Call Metadata:{metadata_info}
 
@@ -184,7 +202,63 @@ Call Transcript:
             transcript_for_prompt = transcript or "No transcript available"
             _logger.info(f"[AI Service] Using default prompt template with transcript")
             _logger.info(f"[AI Service] No custom prompt provided")
-            prompt = self.default_prompt_template.replace('{transcript}', transcript_for_prompt)
+            
+            # If call_variables_returned is specified, modify the default template
+            if call_variables_returned:
+                # Create a dynamic template based on the requested fields
+                template_parts = [
+                    "Analyze the following call transcript and return a JSON response with exactly this structure. Set the value of the \"summary\" field to be exactly the same as the custom prompt provided by the caller:"
+                ]
+                
+                json_fields = []
+                json_fields.append('"summary": "<same text as the provided custom prompt>"')
+                json_fields.append('"keywords": ["keyword1", "keyword2", "keyword3"]')
+                
+                # Conditionally include sentiment (value 1)
+                if 1 in call_variables_returned:
+                    json_fields.append('"sentiment": "positive|negative|neutral"')
+                
+                # Conditionally include action_items (value 2)
+                if 2 in call_variables_returned:
+                    json_fields.append('"action_items": ["action1", "action2", "action3"]')
+                
+                # Conditionally include confidence_score (value 3)
+                if 3 in call_variables_returned:
+                    json_fields.append('"confidence_score": 0.85')
+                
+                # Conditionally include speakers_detected (value 4)
+                if 4 in call_variables_returned:
+                    json_fields.append('"speakers_detected": "count from transcript data"')
+                
+                # Always include duration_analyzed
+                json_fields.append('"duration_analyzed": "calculated from transcript timing"')
+                
+                json_structure = "{\n    " + ",\n    ".join(json_fields) + "\n}"
+                
+                template_parts.append(json_structure)
+                template_parts.append("\nRequirements:")
+                template_parts.append("- summary: must mirror the exact custom prompt text provided by the workflow")
+                template_parts.append("- keywords: array of strings, max 10 items, relevant to the conversation")
+                
+                if 1 in call_variables_returned:
+                    template_parts.append("- sentiment: only \"positive\", \"negative\", or \"neutral\"")
+                if 2 in call_variables_returned:
+                    template_parts.append("- action_items: array of strings, max 5 items, specific next steps")
+                if 3 in call_variables_returned:
+                    template_parts.append("- confidence_score: float between 0.0 and 1.0")
+                if 4 in call_variables_returned:
+                    template_parts.append("- speakers_detected: integer >= 0, count unique speakers from transcript")
+                
+                template_parts.append("- duration_analyzed: string describing actual call duration calculated from transcript timing")
+                template_parts.append("\nCall Transcript:")
+                template_parts.append("{transcript}")
+                template_parts.append("\nReturn only the JSON object, no additional text.")
+                
+                dynamic_template = "\n".join(template_parts)
+                prompt = dynamic_template.replace('{transcript}', transcript_for_prompt)
+            else:
+                # Use the original default template
+                prompt = self.default_prompt_template.replace('{transcript}', transcript_for_prompt)
 
         # DEBUG: Log the final prompt being sent to AI
         _logger.info(f"[AI Service] Final prompt length: {len(prompt)}")
