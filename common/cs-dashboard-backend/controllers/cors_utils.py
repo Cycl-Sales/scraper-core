@@ -4,7 +4,8 @@ ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://localhost:5173",
     "https://cs-react.redtechitsolutions.com",
-    "https://866d-161-49-226-50.ngrok-free.app"
+    "https://866d-161-49-226-50.ngrok-free.app",
+    "https://dashboard.cyclsales.com"
 ]
 
 def get_cors_headers(request):

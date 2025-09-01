@@ -8,3 +8,4 @@ common/react-zillow/src/services/zillowService.ts
 __pycache__/
 **/*.pyc
 **/__pycache__/
+common/Cycl-Sales-Dashboard-main/client/src/lib/constants.ts
