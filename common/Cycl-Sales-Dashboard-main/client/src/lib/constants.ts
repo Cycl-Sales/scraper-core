@@ -3,4 +3,5 @@ export const CYCLSALES_APP_ID = import.meta.env.VITE_CYCLSALES_APP_ID || '6867d1
 
 // API Configuration
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8018';
+export const PROD_BASE_URL = 'https://dash.cyclsales.com';
 export const API_TIMEOUT = 10000; // 10 seconds 

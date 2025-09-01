@@ -19,6 +19,7 @@ import {
   VolumeX
 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
+import { PROD_BASE_URL } from "@/lib/constants";
 
 interface CallData {
   id: string;
@@ -241,7 +242,7 @@ export default function CallTranscriptDialog({ open, onOpenChange, callData, onD
     try {
       console.log('Generating AI summary for call:', callData.id);
 
-      const response = await fetch(`/api/generate-call-summary/${callData.id}`, {
+      const response = await fetch(`${PROD_BASE_URL}/api/generate-call-summary/${callData.id}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

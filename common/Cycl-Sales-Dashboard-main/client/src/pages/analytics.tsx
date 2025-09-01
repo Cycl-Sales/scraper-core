@@ -7,7 +7,7 @@ import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { format } from "date-fns";
 import type { DateRange } from "react-day-picker";
-import { CYCLSALES_APP_ID } from "@/lib/constants";
+import { CYCLSALES_APP_ID, PROD_BASE_URL } from "@/lib/constants";
 import { useSubAccount } from "@/contexts/SubAccountContext";
 
 // Filter options
@@ -133,7 +133,7 @@ export default function Analytics() {
   useEffect(() => {
     if (!isSubAccount) {
       setLocationsLoading(true);
-      fetch("/api/installed-locations")
+      fetch(`${PROD_BASE_URL}/api/installed-locations`)
         .then((res) => res.json())
         .then((data) => {
           setAvailableLocations(data.locations || []);
@@ -176,7 +176,7 @@ export default function Analytics() {
   useEffect(() => { 
     if (locationId) {
       setLocationNameLoading(true);
-              fetch(`/api/location-name?location_id=${encodeURIComponent(locationId)}&appId=${CYCLSALES_APP_ID}`)
+              fetch(`${PROD_BASE_URL}/api/location-name?location_id=${encodeURIComponent(locationId)}&appId=${CYCLSALES_APP_ID}`)
         .then(res => res.json())
         .then(data => {
           if (data.success && data.name) {
@@ -190,11 +190,11 @@ export default function Analytics() {
 
       // First, trigger the fetch from GHL API for users
       setLoading(true);
-              fetch(`/api/get-location-users?location_id=${encodeURIComponent(locationId)}&appId=${CYCLSALES_APP_ID}`)
+              fetch(`${PROD_BASE_URL}/api/get-location-users?location_id=${encodeURIComponent(locationId)}&appId=${CYCLSALES_APP_ID}`)
         .then(res => res.json())
         .then(data => { 
           // Then fetch users from our database
-          return fetch(`/api/location-users?location_id=${encodeURIComponent(locationId)}&appId=${CYCLSALES_APP_ID}`);
+          return fetch(`${PROD_BASE_URL}/api/location-users?location_id=${encodeURIComponent(locationId)}&appId=${CYCLSALES_APP_ID}`);
         })
         .then(res => res.json())
         .then(data => {
@@ -222,7 +222,7 @@ export default function Analytics() {
     setRefreshing(true);
     try {
       // Trigger backend refresh; table fetches independently
-      const response = await fetch(`/api/location-contacts-optimized?location_id=${encodeURIComponent(locationId)}&page=1&limit=10&appId=${CYCLSALES_APP_ID}`);
+      const response = await fetch(`${PROD_BASE_URL}/api/location-contacts-optimized?location_id=${encodeURIComponent(locationId)}&page=1&limit=10&appId=${CYCLSALES_APP_ID}`);
       const data = await response.json();
       if (data.success) {
         setSyncStatus("Data refreshed successfully");

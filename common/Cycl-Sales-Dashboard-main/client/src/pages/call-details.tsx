@@ -8,7 +8,7 @@ import CallVolumeChart from "@/components/charts/call-volume-chart";
 import EngagementChart from "@/components/charts/engagement-chart";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
-import { CYCLSALES_APP_ID } from "@/lib/constants";
+import { CYCLSALES_APP_ID, PROD_BASE_URL } from "@/lib/constants";
 import { useSubAccount } from "@/contexts/SubAccountContext";
 
 function useQuery() {
@@ -125,7 +125,7 @@ export default function CallDetails() {
         setLoading(true);
         setError(null);
         
-        const response = await fetch(`/api/contact-call-messages/${contactId}?appId=${CYCLSALES_APP_ID}`);
+        const response = await fetch(`${PROD_BASE_URL}/api/contact-call-messages/${contactId}?appId=${CYCLSALES_APP_ID}`);
         const data = await response.json();
         
         if (data.success) {
@@ -150,7 +150,7 @@ export default function CallDetails() {
     try {
       setTranscriptDialogOpen(true);
       
-      const response = await fetch(`/api/call-details/${messageId}?appId=${CYCLSALES_APP_ID}`);
+      const response = await fetch(`${PROD_BASE_URL}/api/call-details/${messageId}?appId=${CYCLSALES_APP_ID}`);
       const data = await response.json();
       
       if (data.success) {
@@ -171,7 +171,7 @@ export default function CallDetails() {
   const refreshCallDetails = async () => {
     if (selectedCallDetails?.id) {
       try {
-        const response = await fetch(`/api/call-details/${selectedCallDetails.id}?appId=${CYCLSALES_APP_ID}`);
+        const response = await fetch(`${PROD_BASE_URL}/api/call-details/${selectedCallDetails.id}?appId=${CYCLSALES_APP_ID}`);
         const data = await response.json();
         
         if (data.success) {
@@ -186,7 +186,7 @@ export default function CallDetails() {
   // Function to handle viewing call summary
   const handleViewSummary = async (messageId: number) => {
     try {
-      const response = await fetch(`/api/call-details/${messageId}?appId=${CYCLSALES_APP_ID}`);
+      const response = await fetch(`${PROD_BASE_URL}/api/call-details/${messageId}?appId=${CYCLSALES_APP_ID}`);
       const data = await response.json();
       
       if (data.success) {
@@ -238,7 +238,7 @@ export default function CallDetails() {
   // Function to handle generating AI summary
   const handleGenerateSummary = async (messageId: number) => {
     try {
-      const response = await fetch(`/api/generate-call-summary/${messageId}`, {
+      const response = await fetch(`${PROD_BASE_URL}/api/generate-call-summary/${messageId}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

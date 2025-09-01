@@ -17,7 +17,7 @@ import { ArrowUpRight, Calendar, CheckSquare, ClipboardList, Filter, Info, Mail,
 import AIQualityGradeModal from "./ai-quality-grade-modal";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
-import { CYCLSALES_APP_ID } from "@/lib/constants";
+import { CYCLSALES_APP_ID, PROD_BASE_URL } from "@/lib/constants";
 import { useToast } from "@/hooks/use-toast";
 
 // Add mapping for lastMessageType human-readable labels
@@ -462,7 +462,7 @@ export default function AnalyticsContactsTable({ loading = false, locationId, se
     setTotalContacts(0);
     setPage(1);
     // Fetch count
-    fetch(`/api/location-contacts-count?location_id=${locationId}&appId=${CYCLSALES_APP_ID}`)
+    fetch(`${PROD_BASE_URL}/api/location-contacts-count?location_id=${locationId}&appId=${CYCLSALES_APP_ID}`)
       .then(res => res.json())
       .then(data => {
         if (data.success) {
@@ -485,7 +485,7 @@ export default function AnalyticsContactsTable({ loading = false, locationId, se
     setContactsLoading(true);
 
     // Use the new optimized endpoint
-    const url = `/api/location-contacts-optimized?location_id=${locationId}&page=${page}&limit=${rowsPerPage}&appId=${CYCLSALES_APP_ID}${selectedUser ? `&selected_user=${encodeURIComponent(selectedUser)}` : ''}`;
+    const url = `${PROD_BASE_URL}/api/location-contacts-optimized?location_id=${locationId}&page=${page}&limit=${rowsPerPage}&appId=${CYCLSALES_APP_ID}${selectedUser ? `&selected_user=${encodeURIComponent(selectedUser)}` : ''}`;
     console.log('Fetching from URL:', url);
     
     fetch(url)
@@ -538,7 +538,7 @@ export default function AnalyticsContactsTable({ loading = false, locationId, se
     setDetailedDataLoading(prev => ({ ...prev, [contactId]: true }));
 
     try {
-      const response = await fetch(`/api/contact-details?contact_id=${contactId}`, {
+      const response = await fetch(`${PROD_BASE_URL}/api/contact-details?contact_id=${contactId}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -600,7 +600,7 @@ export default function AnalyticsContactsTable({ loading = false, locationId, se
     setIsSearching(true);
     
     try {
-      const url = `/api/location-contacts-search?location_id=${locationId}&search=${encodeURIComponent(searchTerm)}&appId=${CYCLSALES_APP_ID}${selectedUser ? `&selected_user=${encodeURIComponent(selectedUser)}` : ''}`;
+      const url = `${PROD_BASE_URL}/api/location-contacts-search?location_id=${locationId}&search=${encodeURIComponent(searchTerm)}&appId=${CYCLSALES_APP_ID}${selectedUser ? `&selected_user=${encodeURIComponent(selectedUser)}` : ''}`;
       
       const response = await fetch(url);
       const data = await response.json();
@@ -631,7 +631,7 @@ export default function AnalyticsContactsTable({ loading = false, locationId, se
     setContactsLoading(true);
     setIsSearching(false);
     try {
-      const response = await fetch(`/api/location-contacts-optimized?location_id=${locationId}&page=${page}&limit=${rowsPerPage}&appId=${CYCLSALES_APP_ID}${selectedUser ? `&selected_user=${encodeURIComponent(selectedUser)}` : ''}`);
+      const response = await fetch(`${PROD_BASE_URL}/api/location-contacts-optimized?location_id=${locationId}&page=${page}&limit=${rowsPerPage}&appId=${CYCLSALES_APP_ID}${selectedUser ? `&selected_user=${encodeURIComponent(selectedUser)}` : ''}`);
       const data = await response.json();
       
       if (data.success) {
@@ -705,7 +705,7 @@ export default function AnalyticsContactsTable({ loading = false, locationId, se
 
     try {
       // Run the main AI analysis
-      const response = await fetch(`/api/run-ai-analysis/${contact.id}`, {
+      const response = await fetch(`${PROD_BASE_URL}/api/run-ai-analysis/${contact.id}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -717,7 +717,7 @@ export default function AnalyticsContactsTable({ loading = false, locationId, se
       if (result.success) {
         // Also run the AI sales grade analysis
         try {
-          const salesGradeResponse = await fetch(`/api/run-ai-sales-grade-analysis/${contact.id}`, {
+          const salesGradeResponse = await fetch(`${PROD_BASE_URL}/api/run-ai-sales-grade-analysis/${contact.id}`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -752,7 +752,7 @@ export default function AnalyticsContactsTable({ loading = false, locationId, se
         
         // Refresh the contacts data to show updated AI analysis
         // Trigger a re-fetch of the current page
-        const refreshResponse = await fetch(`/api/location-contacts-optimized?location_id=${locationId}&page=${page}&limit=${rowsPerPage}&appId=${CYCLSALES_APP_ID}${selectedUser ? `&selected_user=${encodeURIComponent(selectedUser)}` : ''}&_t=${Date.now()}`);
+        const refreshResponse = await fetch(`${PROD_BASE_URL}/api/location-contacts-optimized?location_id=${locationId}&page=${page}&limit=${rowsPerPage}&appId=${CYCLSALES_APP_ID}${selectedUser ? `&selected_user=${encodeURIComponent(selectedUser)}` : ''}&_t=${Date.now()}`);
         const refreshData = await refreshResponse.json();
 
         if (refreshData.success) {

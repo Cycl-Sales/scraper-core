@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { PROD_BASE_URL } from "@/lib/constants";
 
 interface SubAccountContextType {
   locationId: string | null;
@@ -41,7 +42,7 @@ export function SubAccountProvider({ children }: SubAccountProviderProps) {
     
     try {
       // Validate the location_id by making a test API call
-      const response = await fetch(`/api/location-name?location_id=${encodeURIComponent(locationId)}&appId=6867d1537079188afca5013c`);
+      const response = await fetch(`${PROD_BASE_URL}/api/location-name?location_id=${encodeURIComponent(locationId)}&appId=6867d1537079188afca5013c`);
       const data = await response.json();
       
       if (data.success && data.name) {

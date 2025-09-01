@@ -9,6 +9,7 @@ import { Calendar as CalendarIcon, HelpCircle, RefreshCw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { DateRange } from "react-day-picker";
 import { useLocation } from "wouter"; 
+import { PROD_BASE_URL } from "@/lib/constants";
 
 const columnHelpers: Record<string, string> = {
   "Location Name": "Name of the business location.",
@@ -113,7 +114,7 @@ export default function Overview() {
 
   useEffect(() => {
     setLoading(true);
-    fetch("/api/installed-locations")
+    fetch(`${PROD_BASE_URL}/api/installed-locations`)
       .then((res) => res.json())
       .then((data) => {
         setFetchedLocations(data.locations || []);
@@ -122,7 +123,7 @@ export default function Overview() {
           // Start polling
           if (!pollRef.current) {
             pollRef.current = setInterval(async () => {
-              const statusResponse = await fetch("/api/installed-locations-sync-status");
+              const statusResponse = await fetch(`${PROD_BASE_URL}/api/installed-locations-sync-status`);
               const statusData = await statusResponse.json();
               if (statusData.status === "completed") {
                 setFetchedLocations(statusData.locations || []);
@@ -161,7 +162,7 @@ export default function Overview() {
     setRefreshing(true);
     try {
       // Use the fresh endpoint for immediate sync
-      const response = await fetch("/api/installed-locations-fresh");
+      const response = await fetch(`${PROD_BASE_URL}/api/installed-locations-fresh`);
       const data = await response.json();
       
       if (data.locations) {

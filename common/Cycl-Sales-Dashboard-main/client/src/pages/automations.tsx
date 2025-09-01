@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { CYCLSALES_APP_ID } from "@/lib/constants";
+import { CYCLSALES_APP_ID, PROD_BASE_URL } from "@/lib/constants";
 import { Eye, EyeOff, Info, Plus, Redo2, Save, Trash2, Undo2, XCircle } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useSubAccount } from "@/contexts/SubAccountContext";
@@ -232,7 +232,7 @@ export default function Automations() {
     
     if (!effectiveLocationId) {
       // No location selected: fetch all locations for dropdown
-      fetch(`/api/installed-locations?appId=${CYCLSALES_APP_ID}`)
+      fetch(`${PROD_BASE_URL}/api/installed-locations?appId=${CYCLSALES_APP_ID}`)
         .then(res => res.json())
         .then(data => {
           if (Array.isArray(data.locations)) {
@@ -242,7 +242,7 @@ export default function Automations() {
         });
     } else {
       // Location selected: fetch just that location's name for display
-      fetch(`/api/installed-locations?appId=${CYCLSALES_APP_ID}`)
+      fetch(`${PROD_BASE_URL}/api/installed-locations?appId=${CYCLSALES_APP_ID}`)
         .then(res => res.json())
         .then(data => {
           if (Array.isArray(data.locations)) {
@@ -310,7 +310,7 @@ export default function Automations() {
         return;
       }
       
-      fetch('/api/automation_template/get', {
+      fetch(`${PROD_BASE_URL}/api/automation_template/get`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestBody),
@@ -367,7 +367,7 @@ export default function Automations() {
       setMaskedOpenaiApiKey(null);
       setOpenaiApiKey('');
 
-      fetch(`/api/location-openai-key/${selectedLocation}`, {
+      fetch(`${PROD_BASE_URL}/api/location-openai-key/${selectedLocation}`, {
         method: 'GET',
         headers: { 'Content-Type': 'application/json' },
       })
@@ -391,7 +391,7 @@ export default function Automations() {
 
   useEffect(() => {
     // Fetch template options from backend
-    fetch('/api/automation_template/list', {
+    fetch(`${PROD_BASE_URL}/api/automation_template/list`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -437,7 +437,7 @@ export default function Automations() {
       return;
     }
     
-    fetch('/api/automation_template/get_by_id', {
+    fetch(`${PROD_BASE_URL}/api/automation_template/get_by_id`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
@@ -588,7 +588,7 @@ export default function Automations() {
     // Show saving status
     setSaveStatus('Saving...');
     
-    fetch('/api/automation_template/update', {
+    fetch(`${PROD_BASE_URL}/api/automation_template/update`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(requestData),
@@ -612,7 +612,7 @@ export default function Automations() {
           }
           
           // Refresh the template options to include the new template
-          fetch('/api/automation_template/list', {
+          fetch(`${PROD_BASE_URL}/api/automation_template/list`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
@@ -723,7 +723,7 @@ export default function Automations() {
     setOpenaiApiKeyError(null);
 
     try {
-      const response = await fetch(`/api/location-openai-key/${selectedLocation}`, {
+      const response = await fetch(`${PROD_BASE_URL}/api/location-openai-key/${selectedLocation}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ openai_api_key: openaiApiKey }),
@@ -753,7 +753,7 @@ export default function Automations() {
     setOpenaiApiKeyLoading(true);
     setOpenaiApiKeyError(null);
     try {
-      const response = await fetch(`/api/location-openai-key/${selectedLocation}`, {
+      const response = await fetch(`${PROD_BASE_URL}/api/location-openai-key/${selectedLocation}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ openai_api_key: '' }),

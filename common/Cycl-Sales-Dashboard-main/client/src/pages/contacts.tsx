@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { mockAPI } from "@/lib/mockData";
-import { CYCLSALES_APP_ID } from "@/lib/constants";
+import { CYCLSALES_APP_ID, PROD_BASE_URL } from "@/lib/constants";
 import type { DashboardMetrics } from "@shared/schema";
 import { Calendar, Filter, Search, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -58,7 +58,7 @@ export default function Contacts() {
     
     setContactsLoading(true);
     try {
-      const response = await fetch(`/api/location-contacts-optimized?location_id=${selectedLocation}&page=${page}&limit=${rowsPerPage}&appId=${CYCLSALES_APP_ID}`);
+      const response = await fetch(`${PROD_BASE_URL}/api/location-contacts-optimized?location_id=${selectedLocation}&page=${page}&limit=${rowsPerPage}&appId=${CYCLSALES_APP_ID}`);
       const data = await response.json();
       
       if (data.success) {
@@ -89,7 +89,7 @@ export default function Contacts() {
     
     const pollInterval = setInterval(async () => {
       try {
-        const response = await fetch(`/api/contact-sync-status?contact_ids=${contactIds.join(',')}&appId=${CYCLSALES_APP_ID}`);
+        const response = await fetch(`${PROD_BASE_URL}/api/contact-sync-status?contact_ids=${contactIds.join(',')}&appId=${CYCLSALES_APP_ID}`);
         const data = await response.json();
         
         if (data.success) {

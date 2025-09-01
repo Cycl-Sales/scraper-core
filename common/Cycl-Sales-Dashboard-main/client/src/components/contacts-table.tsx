@@ -11,6 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import type { Contact as BaseContact } from "@shared/schema";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { CYCLSALES_APP_ID, PROD_BASE_URL } from "@/lib/constants";
 
 // Extend Contact type to include details_fetched
 interface Contact extends BaseContact {
@@ -149,7 +150,7 @@ export default function ContactsTable() {
         return;
       }
       
-      const response = await fetch("/api/load-more-contacts", {
+      const response = await fetch(`${PROD_BASE_URL}/api/load-more-contacts`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -224,7 +225,7 @@ export default function ContactsTable() {
     }
     setDetailsLoading(true);
     try {
-      const res = await fetch("/api/contact-details", {
+      const res = await fetch(`${PROD_BASE_URL}/api/contact-details`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ contact_id: contact.id }),
@@ -248,7 +249,7 @@ export default function ContactsTable() {
     setAiAnalysisLoading(prev => ({ ...prev, [contact.id]: true }));
     
     try {
-      const response = await fetch(`/api/run-ai-analysis/${contact.id}`, {
+      const response = await fetch(`${PROD_BASE_URL}/api/run-ai-analysis/${contact.id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
       });
