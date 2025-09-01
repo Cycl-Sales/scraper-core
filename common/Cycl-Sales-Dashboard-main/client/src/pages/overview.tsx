@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { format } from "date-fns";
 import { Calendar as CalendarIcon, HelpCircle, RefreshCw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -251,9 +251,8 @@ export default function Overview() {
               ))}
             </div>
           ) : (
-            <div className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-900">
-              <TooltipProvider>
-                <table className="w-full min-w-[1200px] text-sm">
+            <div className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-900 relative" style={{ isolation: 'isolate' }}>
+              <table className="w-full min-w-[1200px] text-sm">
                   <thead>
                     <tr className="border-b border-slate-800">
                       {columns.map((col, idx) => (
@@ -264,13 +263,13 @@ export default function Overview() {
                           <span className="inline-flex items-center gap-1">
                             {col.label}
                             {columnHelpers[col.label] && (
-                              <Tooltip>
+                              <Tooltip delayDuration={0}>
                                 <TooltipTrigger asChild>
-                                  <span className="cursor-pointer align-middle">
-                                    <HelpCircle className="w-4 h-4 text-slate-400 hover:text-blue-400" />
-                                  </span>
+                                  <button className="inline-flex items-center justify-center w-4 h-4 text-slate-400 hover:text-blue-400 cursor-pointer bg-transparent border-none p-0">
+                                    <HelpCircle className="w-4 h-4" />
+                                  </button>
                                 </TooltipTrigger>
-                                <TooltipContent side="top" align="center" sideOffset={8} className="bg-slate-800 text-slate-100 text-xs px-3 py-2 rounded-lg shadow-lg max-w-xs w-max whitespace-pre-line break-words z-50">
+                                <TooltipContent side="top" align="center" sideOffset={8} className="bg-slate-800 text-slate-100 text-xs px-3 py-2 rounded-lg shadow-lg max-w-xs w-max whitespace-pre-line break-words z-[9999]">
                                   {columnHelpers[col.label]}
                                 </TooltipContent>
                               </Tooltip>
@@ -355,7 +354,6 @@ export default function Overview() {
                     ))}
                   </tbody>
                 </table>
-              </TooltipProvider>
             </div>
           )}
 

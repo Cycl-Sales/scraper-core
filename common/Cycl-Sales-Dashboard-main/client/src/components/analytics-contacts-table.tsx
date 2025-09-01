@@ -14,6 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { format } from "date-fns";
 import { ArrowUpRight, Calendar, CheckSquare, ClipboardList, Filter, Info, Mail, MessageCircle, MessageSquare, Phone, Plug, Search, User, Target, Star, Activity, Zap, Eye } from "lucide-react";
+import AIQualityGradeModal from "./ai-quality-grade-modal";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { CYCLSALES_APP_ID } from "@/lib/constants";
@@ -337,6 +338,15 @@ interface AnalyticsContactsTableProps {
   loading?: boolean;
   locationId: string;
   selectedUser?: string;
+  activeFilters?: {
+    aiStatus: string[];
+    aiQualityGrade: string[];
+    aiSalesGrade: string[];
+    crmTasks: string[];
+    category: string[];
+    channel: string[];
+    touchSummary: string[];
+  };
 }
 
 /**
@@ -353,7 +363,15 @@ interface AnalyticsContactsTableProps {
  * - locationId: String identifier for the location
  * - selectedUser: Optional string to filter contacts by assigned user
  */
-export default function AnalyticsContactsTable({ loading = false, locationId, selectedUser }: AnalyticsContactsTableProps) {
+export default function AnalyticsContactsTable({ loading = false, locationId, selectedUser, activeFilters = {
+  aiStatus: [],
+  aiQualityGrade: [],
+  aiSalesGrade: [],
+  crmTasks: [],
+  category: [],
+  channel: [],
+  touchSummary: [],
+} }: AnalyticsContactsTableProps) {
   const { toast } = useToast();
 
   // --- New state for lazy loading ---
@@ -392,6 +410,40 @@ export default function AnalyticsContactsTable({ loading = false, locationId, se
     aiStatus: '',
     aiQualityGrade: '',
     aiSalesGrade: ''
+  });
+
+  // AI Quality Grade Modal state
+  const [aiQualityGradeModal, setAiQualityGradeModal] = useState<{
+    open: boolean;
+    contactName: string;
+    aiQualityGrade: string;
+    aiReasoning: string;
+    aiStatus?: string;
+    aiSummary?: string;
+  }>({
+    open: false,
+    contactName: '',
+    aiQualityGrade: '',
+    aiReasoning: '',
+    aiStatus: '',
+    aiSummary: ''
+  });
+
+  // AI Sales Grade Modal state
+  const [aiSalesGradeModal, setAiSalesGradeModal] = useState<{
+    open: boolean;
+    contactName: string;
+    aiSalesGrade: string;
+    aiSalesReasoning: string;
+    aiStatus?: string;
+    aiSummary?: string;
+  }>({
+    open: false,
+    contactName: '',
+    aiSalesGrade: '',
+    aiSalesReasoning: '',
+    aiStatus: '',
+    aiSummary: ''
   });
 
   const [detailedDataLoading, setDetailedDataLoading] = useState<Record<number, boolean>>({});
@@ -476,6 +528,8 @@ export default function AnalyticsContactsTable({ loading = false, locationId, se
   // const startPollingForDetails = (contactIds: number[]) => {
   //   // Function disabled since background sync is turned off
   // };
+
+
 
   // --- Function to fetch detailed contact data ---
   const fetchContactDetails = async (contactId: number) => {
@@ -650,6 +704,7 @@ export default function AnalyticsContactsTable({ loading = false, locationId, se
     setAiAnalysisLoading(prev => ({ ...prev, [contact.id]: true }));
 
     try {
+      // Run the main AI analysis
       const response = await fetch(`/api/run-ai-analysis/${contact.id}`, {
         method: 'POST',
         headers: {
@@ -660,18 +715,45 @@ export default function AnalyticsContactsTable({ loading = false, locationId, se
       const result = await response.json();
 
       if (result.success) {
-        toast({
-          title: "AI Analysis Complete",
-          description: result.message || "AI analysis has been completed successfully.",
-        });
+        // Also run the AI sales grade analysis
+        try {
+          const salesGradeResponse = await fetch(`/api/run-ai-sales-grade-analysis/${contact.id}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          });
+
+          const salesGradeResult = await salesGradeResponse.json();
+          
+          if (salesGradeResult.success) {
+            toast({
+              title: "AI Analysis Complete",
+              description: "AI analysis and sales grade analysis have been completed successfully.",
+            });
+          } else {
+            toast({
+              title: "AI Analysis Partially Complete",
+              description: "Main AI analysis completed, but sales grade analysis failed.",
+              variant: "destructive",
+            });
+          }
+        } catch (salesGradeError) {
+          console.error('Error running AI sales grade analysis:', salesGradeError);
+          toast({
+            title: "AI Analysis Partially Complete",
+            description: "Main AI analysis completed, but sales grade analysis failed.",
+            variant: "destructive",
+          });
+        }
         
         // Add a small delay to ensure the backend has processed the changes
         await new Promise(resolve => setTimeout(resolve, 1000));
         
         // Refresh the contacts data to show updated AI analysis
         // Trigger a re-fetch of the current page
-        const response = await fetch(`/api/location-contacts-optimized?location_id=${locationId}&page=${page}&limit=${rowsPerPage}&appId=${CYCLSALES_APP_ID}${selectedUser ? `&selected_user=${encodeURIComponent(selectedUser)}` : ''}&_t=${Date.now()}`);
-        const refreshData = await response.json();
+        const refreshResponse = await fetch(`/api/location-contacts-optimized?location_id=${locationId}&page=${page}&limit=${rowsPerPage}&appId=${CYCLSALES_APP_ID}${selectedUser ? `&selected_user=${encodeURIComponent(selectedUser)}` : ''}&_t=${Date.now()}`);
+        const refreshData = await refreshResponse.json();
 
         if (refreshData.success) {
           console.log('Refreshed contacts data:', refreshData.contacts);
@@ -706,6 +788,28 @@ export default function AnalyticsContactsTable({ loading = false, locationId, se
       aiStatus: contact.aiStatus?.label || 'No status',
       aiQualityGrade: contact.aiQuality?.label || 'No grade',
       aiSalesGrade: contact.aiSales?.label || 'No grade'
+    });
+  };
+
+  const handleOpenAiQualityGradeModal = (contact: any) => {
+    setAiQualityGradeModal({
+      open: true,
+      contactName: contact.name || 'Unknown Contact',
+      aiQualityGrade: contact.ai_quality_grade || 'no_grade',
+      aiReasoning: contact.ai_reasoning || '<span style="color: #6b7280;">No analysis available</span>',
+      aiStatus: contact.ai_status,
+      aiSummary: contact.ai_summary
+    });
+  };
+
+  const handleOpenAiSalesGradeModal = (contact: any) => {
+    setAiSalesGradeModal({
+      open: true,
+      contactName: contact.name || 'Unknown Contact',
+      aiSalesGrade: contact.ai_sales_grade || 'no_grade',
+      aiSalesReasoning: contact.ai_sales_reasoning || '<span style="color: #6b7280;">No sales grade analysis available</span>',
+      aiStatus: contact.ai_status,
+      aiSummary: contact.ai_summary
     });
   };
 
@@ -768,13 +872,47 @@ export default function AnalyticsContactsTable({ loading = false, locationId, se
       'no_grade': { label: 'No Grade', color: 'bg-slate-800 text-slate-400' }
     };
 
-    // Map AI sales grades
-    const aiSalesMap: { [key: string]: any } = {
-      'grade_a': { label: 'Sales Grade A', color: 'bg-green-900 text-green-300' },
-      'grade_b': { label: 'Sales Grade B', color: 'bg-blue-900 text-blue-300' },
-      'grade_c': { label: 'Sales Grade C', color: 'bg-yellow-900 text-yellow-300' },
-      'grade_d': { label: 'Sales Grade D', color: 'bg-orange-900 text-orange-300' },
-      'no_grade': { label: 'No Grade', color: 'bg-slate-800 text-slate-400' }
+    // Dynamic AI sales grade mapping - handles any user-defined grade
+    const getAiSalesGradeInfo = (gradeValue: string) => {
+      if (!gradeValue || gradeValue === 'no_grade') {
+        return { label: 'No Grade', color: 'bg-slate-800 text-slate-400' };
+      }
+      
+      // Convert grade value to display format (e.g., "grade_a" -> "Sales Grade A")
+      const gradeKey = gradeValue.toLowerCase();
+      let displayLabel = gradeValue;
+      
+      // Handle common grade patterns
+      if (gradeKey.startsWith('grade_')) {
+        const gradeLetter = gradeKey.replace('grade_', '').toUpperCase();
+        displayLabel = `Sales Grade ${gradeLetter}`;
+      } else if (gradeKey.includes('_')) {
+        // Convert snake_case to Title Case
+        displayLabel = gradeValue.split('_').map(word => 
+          word.charAt(0).toUpperCase() + word.slice(1)
+        ).join(' ');
+        displayLabel = `Sales ${displayLabel}`;
+      } else {
+        // Capitalize first letter
+        displayLabel = `Sales ${gradeValue.charAt(0).toUpperCase() + gradeValue.slice(1)}`;
+      }
+      
+      // Assign colors based on grade patterns or default to a neutral color
+      let color = 'bg-slate-700 text-slate-300'; // Default neutral color
+      
+      if (gradeKey.includes('a') || gradeKey.includes('premium') || gradeKey.includes('excellent')) {
+        color = 'bg-green-900 text-green-300';
+      } else if (gradeKey.includes('b') || gradeKey.includes('good') || gradeKey.includes('standard')) {
+        color = 'bg-blue-900 text-blue-300';
+      } else if (gradeKey.includes('c') || gradeKey.includes('average') || gradeKey.includes('basic')) {
+        color = 'bg-yellow-900 text-yellow-300';
+      } else if (gradeKey.includes('d') || gradeKey.includes('poor') || gradeKey.includes('below')) {
+        color = 'bg-orange-900 text-orange-300';
+      } else if (gradeKey.includes('f') || gradeKey.includes('fail') || gradeKey.includes('unqualified')) {
+        color = 'bg-red-900 text-red-300';
+      }
+      
+      return { label: displayLabel, color };
     };
 
     // Map CRM tasks
@@ -791,7 +929,7 @@ export default function AnalyticsContactsTable({ loading = false, locationId, se
       aiStatus: getAiStatusInfo(contact.ai_status),
       aiSummary: contact.ai_summary || 'Read',
       aiQuality: aiQualityMap[contact.ai_quality_grade] || aiQualityMap.no_grade,
-      aiSales: aiSalesMap[contact.ai_sales_grade] || aiSalesMap.no_grade,
+      aiSales: getAiSalesGradeInfo(contact.ai_sales_grade),
       crmTasks: crmTasksMap[contact.crm_tasks] || crmTasksMap.no_tasks,
       category: contact.category || 'manual',
       channel: contact.channel || 'manual',
@@ -818,8 +956,22 @@ export default function AnalyticsContactsTable({ loading = false, locationId, se
         // Fallback to original last_touch_date if no conversations
         return contact.last_touch_date || '';
       })(),
-      // Get last message from conversations instead of old last_message field
+      // Get last message from the actual last_message field
       lastMessage: (() => {
+        // First try to use the actual last_message data from backend
+        if (contact.last_message && typeof contact.last_message === 'object') {
+          return {
+            body: contact.last_message.body || '',
+            type: contact.last_message.type || '',
+            direction: contact.last_message.direction || '',
+            source: contact.last_message.source || '',
+            typeLabel: lastMessageTypeLabels[contact.last_message.type] || contact.last_message.type?.replace('TYPE_', '') || '',
+            date: contact.last_message.date_added || contact.last_message.date || '',
+            unread_count: contact.last_message.unread_count || 0
+          };
+        }
+        
+        // Fallback to conversations if last_message is not available
         if (Array.isArray(contact.conversations) && contact.conversations.length > 0) {
           // Sort conversations by write_date (most recent first) and get the latest one
           const sortedConversations = [...contact.conversations].sort((a, b) =>
@@ -857,6 +1009,7 @@ export default function AnalyticsContactsTable({ loading = false, locationId, se
 
   // Filtering logic for all columns (excluding user filtering which is now done server-side)
   const filteredRows = transformedContacts.filter(row => {
+    // Apply existing filters
     if (filters.contactName && !row.name.toLowerCase().includes(filters.contactName.toLowerCase())) return false;
     if (filters.aiStatus.length && !filters.aiStatus.includes(row.aiStatus?.label || row.aiStatus?.text || '')) return false;
     if (filters.aiSummary.length && !filters.aiSummary.includes(row.aiSummary)) return false;
@@ -884,6 +1037,48 @@ export default function AnalyticsContactsTable({ loading = false, locationId, se
     }
     if (filters.opportunities.min && Number(row.opportunities) < Number(filters.opportunities.min)) return false;
     if (filters.opportunities.max && Number(row.opportunities) > Number(filters.opportunities.max)) return false;
+    
+    // Apply new activeFilters from parent component
+    if (activeFilters.aiStatus.length > 0 && !activeFilters.aiStatus.includes(row.aiStatus?.label || row.aiStatus?.text || '')) {
+      return false;
+    }
+    
+    if (activeFilters.aiQualityGrade.length > 0) {
+      const qualityGrade = row.aiQuality?.label || 'No Grade';
+      if (!activeFilters.aiQualityGrade.includes(qualityGrade)) {
+        return false;
+      }
+    }
+    
+    if (activeFilters.aiSalesGrade.length > 0) {
+      const salesGrade = row.aiSales?.label || 'No Grade';
+      if (!activeFilters.aiSalesGrade.includes(salesGrade)) {
+        return false;
+      }
+    }
+    
+    if (activeFilters.crmTasks.length > 0) {
+      const crmTasks = row.crmTasks?.label || 'No Tasks';
+      if (!activeFilters.crmTasks.includes(crmTasks)) {
+        return false;
+      }
+    }
+    
+    if (activeFilters.category.length > 0 && !activeFilters.category.includes(row.category)) {
+      return false;
+    }
+    
+    if (activeFilters.channel.length > 0 && !activeFilters.channel.includes(row.channel)) {
+      return false;
+    }
+    
+    if (activeFilters.touchSummary.length > 0) {
+      const touchSummary = row.touchSummary || 'no_touches';
+      if (!activeFilters.touchSummary.includes(touchSummary)) {
+        return false;
+      }
+    }
+    
     return true;
   });
 
@@ -1462,9 +1657,43 @@ export default function AnalyticsContactsTable({ loading = false, locationId, se
                             </Button>
                           </TableCell>;
                         case "AI Quality Grade":
-                          return <TableCell key={col} className="whitespace-nowrap px-3 py-2">{(() => { const aiQualityLabel = row.aiQuality?.label ?? ''; const p = getChipProps('aiQuality', aiQualityLabel); return (<span className={`inline-flex items-center gap-2 px-2 py-0.5 rounded-md border ${p.border} ${p.text} font-medium tracking-tight h-7 text-[11px]`} style={{ borderWidth: 1 }}><span className={p.iconColor}>{p.icon}</span>{aiQualityLabel}</span>); })()}</TableCell>;
+                          return <TableCell key={col} className="whitespace-nowrap px-3 py-2">
+                            {(() => { 
+                              const aiQualityLabel = row.aiQuality?.label ?? ''; 
+                              const p = getChipProps('aiQuality', aiQualityLabel); 
+                              return (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className={`inline-flex items-center gap-2 px-2 py-0.5 rounded-md border ${p.border} ${p.text} font-medium tracking-tight h-7 text-[11px] hover:bg-slate-700/50 cursor-pointer`}
+                                  style={{ borderWidth: 1 }}
+                                  onClick={() => handleOpenAiQualityGradeModal(contactsData.find(c => c.id === row.id))}
+                                >
+                                  <span className={p.iconColor}>{p.icon}</span>
+                                  {aiQualityLabel}
+                                </Button>
+                              ); 
+                            })()}
+                          </TableCell>;
                         case "AI Sales Grade":
-                          return <TableCell key={col} className="whitespace-nowrap px-3 py-2">{(() => { const aiSalesLabel = row.aiSales?.label ?? ''; const p = getChipProps('aiSales', aiSalesLabel); return (<span className={`inline-flex items-center gap-2 px-2 py-0.5 rounded-md border ${p.border} ${p.text} font-medium tracking-tight h-7 text-[11px]`} style={{ borderWidth: 1 }}><span className={p.iconColor}>{p.icon}</span>{aiSalesLabel}</span>); })()}</TableCell>;
+                          return <TableCell key={col} className="whitespace-nowrap px-3 py-2">
+                            {(() => { 
+                              const aiSalesLabel = row.aiSales?.label ?? ''; 
+                              const p = getChipProps('aiSales', aiSalesLabel); 
+                              return (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className={`inline-flex items-center gap-2 px-2 py-0.5 rounded-md border ${p.border} ${p.text} font-medium tracking-tight h-7 text-[11px] hover:bg-slate-700/50 cursor-pointer`}
+                                  style={{ borderWidth: 1 }}
+                                  onClick={() => handleOpenAiSalesGradeModal(contactsData.find(c => c.id === row.id))}
+                                >
+                                  <span className={p.iconColor}>{p.icon}</span>
+                                  {aiSalesLabel}
+                                </Button>
+                              ); 
+                            })()}
+                          </TableCell>;
                         case "CRM Tasks":
                           return <TableCell key={col} className="whitespace-nowrap px-3 py-2">
                             {row.detailsLoading ? (
@@ -1677,15 +1906,46 @@ export default function AnalyticsContactsTable({ loading = false, locationId, se
                                   <div className="text-xs text-slate-200 truncate max-w-[200px]" title={row.lastMessage.body}>
                                     {row.lastMessage.body}
                                   </div>
-                                  <div className="flex items-center gap-1 mt-1">
-                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs font-medium ${row.lastMessage.type?.includes('SMS') ? 'border-blue-500 text-blue-300' :
-                                        row.lastMessage.type?.includes('EMAIL') ? 'border-green-500 text-green-300' :
-                                          row.lastMessage.type?.includes('CALL') ? 'border-purple-500 text-purple-300' :
-                                            row.lastMessage.type?.includes('CHAT') ? 'border-orange-500 text-orange-300' :
-                                              'border-slate-600 text-slate-300'
-                                      }`}>
-                                      {row.lastMessage.typeLabel || row.lastMessage.type}
+                                  <div className="flex items-center gap-1 mt-1 flex-wrap">
+                                    {/* Message Direction */}
+                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs font-medium ${
+                                      (row.lastMessage as any).direction === 'outbound' 
+                                        ? 'border-teal-500 text-teal-300' 
+                                        : 'border-orange-500 text-orange-300'
+                                    }`}>
+                                      {(row.lastMessage as any).direction === 'outbound' ? '↗' : '↙'} {(row.lastMessage as any).direction === 'outbound' ? 'Outbound' : 'Inbound'}
                                     </span>
+                                    
+                                    {/* Message Type */}
+                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs font-medium ${
+                                      row.lastMessage.type?.includes('SMS') ? 'border-green-500 text-green-300' :
+                                      row.lastMessage.type?.includes('EMAIL') ? 'border-blue-500 text-blue-300' :
+                                      row.lastMessage.type?.includes('CALL') ? 'border-purple-500 text-purple-300' :
+                                      row.lastMessage.type?.includes('CHAT') ? 'border-orange-500 text-orange-300' :
+                                      row.lastMessage.type?.includes('VOICEMAIL') ? 'border-pink-500 text-pink-300' :
+                                      'border-slate-600 text-slate-300'
+                                    }`}>
+                                      {row.lastMessage.type?.includes('SMS') ? '💬' : 
+                                       row.lastMessage.type?.includes('EMAIL') ? '✉️' : 
+                                       row.lastMessage.type?.includes('CALL') ? '📞' : 
+                                       row.lastMessage.type?.includes('CHAT') ? '💭' : 
+                                       row.lastMessage.type?.includes('VOICEMAIL') ? '🎙️' : 
+                                       '📄'} {row.lastMessage.typeLabel || row.lastMessage.type?.replace('TYPE_', '')}
+                                    </span>
+                                    
+                                    {/* Message Source */}
+                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs font-medium ${
+                                      (row.lastMessage as any).source === 'API' ? 'border-yellow-500 text-yellow-300' :
+                                      (row.lastMessage as any).source === 'Automated' ? 'border-purple-500 text-purple-300' :
+                                      (row.lastMessage as any).source === 'Manual' ? 'border-blue-500 text-blue-300' :
+                                      'border-slate-600 text-slate-300'
+                                    }`}>
+                                      {(row.lastMessage as any).source === 'API' ? '&lt;&gt;' : 
+                                       (row.lastMessage as any).source === 'Automated' ? '▶️' : 
+                                       (row.lastMessage as any).source === 'Manual' ? '👤' : 
+                                       '📋'} {(row.lastMessage as any).source || 'Unknown'}
+                                    </span>
+                                    
                                     {row.lastMessage.unread_count > 0 && (
                                       <span className="inline-flex items-center justify-center w-4 h-4 text-xs bg-red-500 text-white rounded-full">
                                         {row.lastMessage.unread_count}
@@ -1699,16 +1959,22 @@ export default function AnalyticsContactsTable({ loading = false, locationId, se
                                   </PopoverTrigger>
                                   <PopoverContent className="w-80 p-3 bg-slate-800 border-slate-700 text-slate-200">
                                     <div className="space-y-2">
-                                      <div className="font-medium text-white">Last Message</div>
+                                      <div className="font-medium text-white">Last Message Details</div>
                                       <div className="text-sm">
                                         <span className="text-slate-400">Message:</span> {row.lastMessage.body}
                                       </div>
                                       <div className="text-sm">
-                                        <span className="text-slate-400">Type:</span> {row.lastMessage.typeLabel || row.lastMessage.type}
+                                        <span className="text-slate-400">Direction:</span> {(row.lastMessage as any).direction === 'outbound' ? 'Outbound' : 'Inbound'}
                                       </div>
-                                      {row.lastMessage.date && (
+                                      <div className="text-sm">
+                                        <span className="text-slate-400">Type:</span> {row.lastMessage.typeLabel || row.lastMessage.type?.replace('TYPE_', '')}
+                                      </div>
+                                      <div className="text-sm">
+                                        <span className="text-slate-400">Source:</span> {(row.lastMessage as any).source || 'Unknown'}
+                                      </div>
+                                      {(row.lastMessage as any).date_added && (
                                         <div className="text-sm">
-                                          <span className="text-slate-400">Date:</span> {format(new Date(row.lastMessage.date), "MMMM d, yyyy 'at' h:mm a")}
+                                          <span className="text-slate-400">Date:</span> {format(new Date((row.lastMessage as any).date_added), "MMMM d, yyyy 'at' h:mm a")}
                                         </div>
                                       )}
                                       {row.lastMessage.unread_count > 0 && (
@@ -1863,6 +2129,75 @@ export default function AnalyticsContactsTable({ loading = false, locationId, se
               <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
                 <h5 className="text-sm font-medium text-slate-400 mb-2">Sales Grade</h5>
                 <p className="text-white font-semibold">{aiSummaryDialog.aiSalesGrade}</p>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* AI Quality Grade Modal */}
+      <AIQualityGradeModal
+        open={aiQualityGradeModal.open}
+        onOpenChange={(open) => setAiQualityGradeModal(prev => ({ ...prev, open }))}
+        contactName={aiQualityGradeModal.contactName}
+        aiQualityGrade={aiQualityGradeModal.aiQualityGrade}
+        aiReasoning={aiQualityGradeModal.aiReasoning}
+        aiStatus={aiQualityGradeModal.aiStatus}
+        aiSummary={aiQualityGradeModal.aiSummary}
+      />
+
+      {/* AI Sales Grade Modal */}
+      <Dialog open={aiSalesGradeModal.open} onOpenChange={(open) => setAiSalesGradeModal(prev => ({ ...prev, open }))}>
+        <DialogContent className="max-w-4xl max-h-[90vh] bg-slate-900 border-slate-800 text-slate-50 overflow-hidden">
+          <DialogHeader className="flex-shrink-0">
+            <DialogTitle className="text-xl font-bold text-white flex items-center gap-2">
+              <Target className="w-5 h-5 text-green-400" />
+              AI Sales Grade Analysis
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-6 overflow-y-auto max-h-[calc(90vh-120px)] pr-2">
+            {/* Contact Name */}
+            <div>
+              <h3 className="text-lg font-semibold text-white mb-2">{aiSalesGradeModal.contactName}</h3>
+            </div>
+
+            {/* AI Sales Grade */}
+            <div>
+              <h4 className="text-md font-medium text-slate-300 mb-3 flex items-center gap-2">
+                <Target className="w-4 h-4 text-green-400" />
+                Sales Grade: {aiSalesGradeModal.aiSalesGrade}
+              </h4>
+            </div>
+
+            {/* AI Sales Grade Reasoning */}
+            <div>
+              <h4 className="text-md font-medium text-slate-300 mb-3 flex items-center gap-2">
+                <Activity className="w-4 h-4 text-blue-400" />
+                Sales Grade Analysis
+              </h4>
+              <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
+                <div 
+                  className="text-slate-200 leading-relaxed ai-sales-reasoning-html"
+                  dangerouslySetInnerHTML={{ __html: aiSalesGradeModal.aiSalesReasoning }}
+                  style={{
+                    lineHeight: '1.6',
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* AI Analysis Details */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
+                <h5 className="text-sm font-medium text-slate-400 mb-2">AI Status</h5>
+                <div 
+                  className="text-white font-semibold"
+                  dangerouslySetInnerHTML={{ __html: aiSalesGradeModal.aiStatus || '<span style="color: #6b7280;">No status available</span>' }}
+                />
+              </div>
+              <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
+                <h5 className="text-sm font-medium text-slate-400 mb-2">Current Sales Grade</h5>
+                <p className="text-white font-semibold">{aiSalesGradeModal.aiSalesGrade}</p>
               </div>
             </div>
           </div>

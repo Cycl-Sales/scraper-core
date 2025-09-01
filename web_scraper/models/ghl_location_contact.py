@@ -86,13 +86,8 @@ class GHLLocationContact(models.Model):
         ('no_grade', 'No Grade')
     ], string='AI Quality Grade', default='no_grade')
 
-    ai_sales_grade = fields.Selection([
-        ('grade_a', 'Sales Grade A'),
-        ('grade_b', 'Sales Grade B'),
-        ('grade_c', 'Sales Grade C'),
-        ('grade_d', 'Sales Grade D'),
-        ('no_grade', 'No Grade')
-    ], string='AI Sales Grade', default='no_grade')
+    ai_sales_grade = fields.Char(string='AI Sales Grade', default='no_grade')
+    ai_sales_reasoning = fields.Html(string='AI Sales Grade Reasoning', default='<span style="color: #6b7280;">No sales grade analysis available</span>')
 
     crm_tasks = fields.Selection([
         ('overdue', '1 Overdue'),
@@ -147,6 +142,45 @@ class GHLLocationContact(models.Model):
                 return [(option.name, option.name) for option in status_options] + default_options
         
         return default_options
+
+    def _get_valid_sales_grades(self):
+        """Get valid sales grades from automation template"""
+        # Default grades
+        default_grades = ['no_grade']
+        
+        # Get grades from automation template if available
+        if hasattr(self, 'location_id') and self.location_id and self.location_id.automation_template_id:
+            ai_sales_scoring_setting = self.location_id.automation_template_id.ai_sales_scoring_setting_ids.filtered(lambda s: s.enabled)
+            if ai_sales_scoring_setting:
+                # Extract available grades from the rules using regex to find any grade pattern
+                import re
+                rule_texts = [rule.rule_text for rule in ai_sales_scoring_setting[0].rule_ids]
+                available_grades = []
+                
+                # Look for any grade pattern in the rules (case insensitive)
+                for rule_text in rule_texts:
+                    # Find any grade mentions like "Grade A", "A-grade", "Premium", "Standard", etc.
+                    # This regex looks for common grade patterns but is flexible
+                    grade_patterns = [
+                        r'\b(grade\s*[a-z])\b',  # "grade a", "grade b", etc.
+                        r'\b([a-z]-grade)\b',    # "a-grade", "b-grade", etc.
+                        r'\b(grade\s*[ivx]+)\b', # "grade i", "grade ii", "grade iii", etc.
+                        r'\b(premium|standard|basic|excellent|good|average|poor)\b',  # Common grade terms
+                        r'\b([a-z]\s*grade)\b',  # "a grade", "b grade", etc.
+                    ]
+                    
+                    for pattern in grade_patterns:
+                        matches = re.findall(pattern, rule_text.lower())
+                        for match in matches:
+                            # Convert to a consistent format for storage
+                            grade_key = match.replace(' ', '_').replace('-', '_').lower()
+                            available_grades.append(grade_key)
+                
+                # If we found specific grades in the rules, use them; otherwise use default
+                if available_grades:
+                    return list(set(available_grades)) + default_grades
+        
+        return default_grades
 
     @api.depends('contact_name', 'first_name', 'last_name', 'email', 'external_id')
     def _compute_name(self):
@@ -437,7 +471,7 @@ class GHLLocationContact(models.Model):
             ai_result = self._generate_ai_analysis_with_api_key(self.location_id.openai_api_key, contact_data, automation_template)
             
             # Update contact fields with AI results
-            self._update_contact_with_ai_results(ai_result)
+            self._update_contact_with_ai_results(ai_result, automation_template)
             
             # Update status to completed
             self.ai_analysis_status = 'completed'
@@ -458,6 +492,48 @@ class GHLLocationContact(models.Model):
             _logger.error(f"Error running AI analysis for contact {self.id}: {str(e)}")
             self.ai_analysis_status = 'failed'
             self.ai_analysis_error = str(e)
+            return {
+                'success': False,
+                'error': str(e)
+            }
+
+    def run_ai_sales_grade_analysis(self):
+        """Run AI sales grade analysis specifically for this contact"""
+        import logging
+        _logger = logging.getLogger(__name__)
+        
+        try:
+            # Get the automation template for this contact's location
+            automation_template = self.location_id.automation_template_id
+            if not automation_template:
+                raise Exception("No automation template found for this contact's location. Please assign an automation template to the location first.")
+            
+            _logger.info(f"Starting AI sales grade analysis for contact {self.id} using template {automation_template.name}")
+            
+            # Get the location's OpenAI API key
+            if not self.location_id.openai_api_key:
+                raise Exception("No OpenAI API key configured for this location. Please add an OpenAI API key to the location settings.")
+            
+            # Prepare contact data for AI analysis
+            contact_data = self._prepare_contact_data_for_ai()
+            
+            # Generate AI sales grade analysis using the location's API key
+            ai_result = self._generate_ai_sales_grade_analysis(self.location_id.openai_api_key, contact_data, automation_template)
+            
+            # Update contact fields with AI sales grade results
+            self._update_contact_with_ai_sales_grade_results(ai_result, automation_template)
+            
+            _logger.info(f"AI sales grade analysis completed successfully for contact {self.id}")
+            
+            return {
+                'success': True,
+                'message': 'AI sales grade analysis completed successfully',
+                'ai_sales_grade': self.ai_sales_grade,
+                'ai_sales_reasoning': self.ai_sales_reasoning
+            }
+            
+        except Exception as e:
+            _logger.error(f"Error running AI sales grade analysis for contact {self.id}: {str(e)}")
             return {
                 'success': False,
                 'error': str(e)
@@ -547,6 +623,7 @@ class GHLLocationContact(models.Model):
             'ai_analysis': {
                 'current_ai_status': self.ai_status,
                 'current_ai_summary': self.ai_summary,
+                'current_ai_reasoning': self.ai_reasoning,
                 'current_ai_quality_grade': self.ai_quality_grade,
                 'current_ai_sales_grade': self.ai_sales_grade,
                 'ai_analysis_status': self.ai_analysis_status,
@@ -846,8 +923,39 @@ class GHLLocationContact(models.Model):
         # Get AI sales scoring rules from automation template
         ai_sales_scoring_setting = automation_template.ai_sales_scoring_setting_ids.filtered(lambda s: s.enabled)
         sales_scoring_rules = ""
+        available_sales_grades = "no_grade"  # Default to no_grade only
+        
         if ai_sales_scoring_setting:
-            sales_scoring_rules = ai_sales_scoring_setting[0].framework or ""
+            framework = ai_sales_scoring_setting[0].framework or ""
+            rules = "\n".join([rule.rule_text for rule in ai_sales_scoring_setting[0].rule_ids]) if ai_sales_scoring_setting[0].rule_ids else ""
+            sales_scoring_rules = f"{framework}\n\n{rules}" if rules else framework
+            
+            # Extract available grades from the rules using the same logic as _get_valid_sales_grades
+            import re
+            rule_texts = [rule.rule_text for rule in ai_sales_scoring_setting[0].rule_ids]
+            available_grades = []
+            
+            # Look for any grade pattern in the rules (case insensitive)
+            for rule_text in rule_texts:
+                # Find any grade mentions like "Grade A", "A-grade", "Premium", "Standard", etc.
+                grade_patterns = [
+                    r'\b(grade\s*[a-z])\b',  # "grade a", "grade b", etc.
+                    r'\b([a-z]-grade)\b',    # "a-grade", "b-grade", etc.
+                    r'\b(grade\s*[ivx]+)\b', # "grade i", "grade ii", "grade iii", etc.
+                    r'\b(premium|standard|basic|excellent|good|average|poor)\b',  # Common grade terms
+                    r'\b([a-z]\s*grade)\b',  # "a grade", "b grade", etc.
+                ]
+                
+                for pattern in grade_patterns:
+                    matches = re.findall(pattern, rule_text.lower())
+                    for match in matches:
+                        # Convert to a consistent format for storage
+                        grade_key = match.replace(' ', '_').replace('-', '_').lower()
+                        available_grades.append(grade_key)
+            
+            # If we found specific grades in the rules, use them; otherwise use default
+            if available_grades:
+                available_sales_grades = "|".join(list(set(available_grades))) + "|no_grade"
         
         # Build the prompt
         prompt = f"""Analyze the following contact data and return a JSON response with exactly this structure:
@@ -855,7 +963,7 @@ class GHLLocationContact(models.Model):
     "ai_status": "Custom status description with HTML formatting",
     "ai_summary": "Detailed HTML-formatted summary with comprehensive analysis",
     "ai_quality_grade": "grade_a|grade_b|grade_c|no_grade",
-    "ai_sales_grade": "grade_a|grade_b|grade_c|grade_d|no_grade",
+    "ai_sales_grade": "{available_sales_grades}",
     "analysis_reasoning": "Detailed HTML-formatted reasoning with categories and explanations"
 }}
 
@@ -874,7 +982,33 @@ Requirements:
 - ai_summary: Provide a comprehensive, detailed summary in HTML format. Include multiple sections with headers, bullet points, and formatting. Cover: Contact Overview, Engagement History, Communication Patterns, Key Interactions, Opportunities & Pipeline, Risk Assessment, and Recommendations. Use specific examples from the contact data. Be as detailed as possible with concrete details about conversations, messages, opportunities, and any notable patterns. If no meaningful interactions exist, provide a detailed analysis of the contact's basic information and explain the lack of engagement.
 - ai_quality_grade: Based on engagement quality and conversation depth using the contact scoring rules
 - ai_sales_grade: Based on sales potential and opportunity value using the sales scoring rules
-- analysis_reasoning: Provide a comprehensive, detailed analysis in HTML format with multiple categories. Include sections like "Engagement Analysis", "Communication Patterns", "Sales Potential", "Risk Factors", "Recommendations", etc. Use headers, bullet points, and formatting to make it easy to read. Be as detailed as possible with specific examples from the contact data.
+- analysis_reasoning: CRITICAL: Provide a structured analysis specifically explaining the AI Quality Grade assignment. IMPORTANT: The analysis reasoning MUST reference the EXACT same grade that you assigned in the ai_quality_grade field above. Use this EXACT format with HTML styling:
+
+<h3>Overall Assessment</h3>
+<p>[Provide a concise overview of the lead's current situation and why they received the specific grade you assigned above]</p>
+
+<h3>Summary</h3>
+<ul>
+<li>[Key point about the lead's engagement level]</li>
+<li>[Key point about their responsiveness]</li>
+<li>[Key point about their qualification status]</li>
+</ul>
+
+<h3>Grade Reasoning</h3>
+<ul>
+<li><strong>Why not a higher grade:</strong> [Explain why this lead doesn't qualify for a higher grade than the one you assigned]</li>
+<li><strong>Why not a lower grade:</strong> [Explain why this lead doesn't deserve a lower grade than the one you assigned]</li>
+<li><strong>Why this grade is appropriate:</strong> [Explain why the grade you assigned is the correct assessment]</li>
+</ul>
+
+<h3>Potential Next Steps</h3>
+<ul>
+<li>[Specific actionable step 1]</li>
+<li>[Specific actionable step 2]</li>
+<li>[Specific actionable step 3]</li>
+</ul>
+
+CRITICAL: Make sure the grade mentioned in your analysis matches exactly with the ai_quality_grade you assigned above. Do NOT mention any other grades in your analysis - only reference the specific grade you assigned. Use specific examples from the contact data to support your reasoning. Be detailed and actionable in your analysis.
 
 Contact Data:
 {json.dumps(contact_data, indent=2)}
@@ -883,7 +1017,7 @@ IMPORTANT: Return ONLY the JSON object. Do not wrap it in markdown code blocks (
         
         return prompt
 
-    def _update_contact_with_ai_results(self, ai_result):
+    def _update_contact_with_ai_results(self, ai_result, automation_template=None):
         """Update contact fields with AI analysis results"""
         import logging
         _logger = logging.getLogger(__name__)
@@ -921,7 +1055,9 @@ IMPORTANT: Return ONLY the JSON object. Do not wrap it in markdown code blocks (
             
             # Validate and set values
             valid_quality_grades = ['grade_a', 'grade_b', 'grade_c', 'no_grade']
-            valid_sales_grades = ['grade_a', 'grade_b', 'grade_c', 'grade_d', 'no_grade']
+            
+            # Get valid sales grades from automation template
+            valid_sales_grades = self._get_valid_sales_grades()
             
             # Set AI status (HTML formatted)
             self.ai_status = ai_status
@@ -950,13 +1086,40 @@ IMPORTANT: Return ONLY the JSON object. Do not wrap it in markdown code blocks (
                 </div>
                 """
             
-            # Set AI reasoning (HTML formatted)
-            self.ai_reasoning = ai_reasoning
-            
+            # Set AI reasoning (HTML formatted) - validate consistency with quality grade
             if ai_quality_grade in valid_quality_grades:
                 self.ai_quality_grade = ai_quality_grade
+                
+                # Validate that the reasoning mentions the correct grade
+                grade_labels = {
+                    'grade_a': ['grade a', 'grade-a', 'a grade', 'a-grade', 'lead grade a'],
+                    'grade_b': ['grade b', 'grade-b', 'b grade', 'b-grade', 'lead grade b'],
+                    'grade_c': ['grade c', 'grade-c', 'c grade', 'c-grade', 'lead grade c'],
+                    'no_grade': ['no grade', 'no-grade', 'ungraded']
+                }
+                
+                expected_grade_terms = grade_labels.get(ai_quality_grade, [])
+                reasoning_lower = ai_reasoning.lower() if ai_reasoning else ''
+                
+                # Check if the reasoning mentions the correct grade
+                grade_mentioned = any(term in reasoning_lower for term in expected_grade_terms)
+                
+                if not grade_mentioned and ai_reasoning and 'grade' in reasoning_lower:
+                    _logger.warning(f"AI reasoning for contact {self.id} may not match the assigned grade '{ai_quality_grade}'. Reasoning: {ai_reasoning[:200]}...")
+                    
+                    # Try to fix the reasoning by replacing any grade mentions with the correct grade
+                    import re
+                    grade_pattern = r'\b(grade\s*[a-c]|grade-[a-c]|[a-c]\s*grade|[a-c]-grade|lead\s*grade\s*[a-c])\b'
+                    corrected_reasoning = re.sub(grade_pattern, f'grade {ai_quality_grade.split("_")[1].upper()}', ai_reasoning, flags=re.IGNORECASE)
+                    
+                    if corrected_reasoning != ai_reasoning:
+                        _logger.info(f"Corrected AI reasoning for contact {self.id} to match grade '{ai_quality_grade}'")
+                        ai_reasoning = corrected_reasoning
+                
+                self.ai_reasoning = ai_reasoning
             else:
                 self.ai_quality_grade = 'no_grade'
+                self.ai_reasoning = ai_reasoning
                 _logger.warning(f"Invalid AI quality grade '{ai_quality_grade}' for contact {self.id}")
             
             if ai_sales_grade in valid_sales_grades:
@@ -1622,3 +1785,347 @@ IMPORTANT: Return ONLY the JSON object. Do not wrap it in markdown code blocks (
         except Exception as e:
             _logger.error(f"Error checking AI status accuracy for contact {self.id}: {str(e)}")
             return False  # Default to needing update if there's an error
+
+    def _generate_ai_sales_grade_analysis(self, api_key, contact_data, automation_template):
+        """Generate AI sales grade analysis using the provided API key directly"""
+        import json
+        import logging
+        import requests
+        _logger = logging.getLogger(__name__)
+
+        # Validate API key
+        if not api_key:
+            _logger.error(f"No API key provided for contact {self.id}")
+            return {
+                'ai_sales_grade': 'no_grade',
+                'ai_sales_reasoning': '<div style="color: #dc2626;"><h4>API Error</h4><p>No OpenAI API key provided</p></div>'
+            }
+
+        # Validate API key format
+        if not api_key.startswith('sk-'):
+            _logger.error(f"Invalid API key format for contact {self.id}. Expected 'sk-' prefix, got: {api_key[:10]}...")
+            return {
+                'ai_sales_grade': 'no_grade',
+                'ai_sales_reasoning': '<div style="color: #dc2626;"><h4>API Error</h4><p>Invalid OpenAI API key format</p></div>'
+            }
+
+        # Log API key info (first 10 chars for debugging)
+        api_key_preview = api_key[:10] + "..." if len(api_key) > 10 else api_key
+        _logger.info(f"Using API key for sales grade analysis for contact {self.id}: {api_key_preview}")
+
+        # Create AI prompt for sales grade analysis
+        prompt = self._create_ai_sales_grade_prompt(contact_data, automation_template)
+        
+        # Log the prompt for debugging
+        _logger.info(f"AI sales grade prompt for contact {self.id}: {prompt}")
+
+        # Convert contact data to text for AI analysis
+        contact_text = json.dumps(contact_data, indent=2)
+
+        # Validate prompt and data sizes
+        prompt_length = len(prompt)
+        contact_text_length = len(contact_text)
+        total_length = prompt_length + contact_text_length
+        
+        _logger.info(f"Sales grade analysis data sizes for contact {self.id}:")
+        _logger.info(f"  Prompt length: {prompt_length} characters")
+        _logger.info(f"  Contact data length: {contact_text_length} characters")
+        _logger.info(f"  Total length: {total_length} characters")
+        
+        # Check if data is too large (OpenAI has limits)
+        if total_length > 100000:  # Conservative limit
+            _logger.warning(f"Data too large for sales grade analysis for contact {self.id}, truncating contact data")
+            # Truncate contact data to fit within limits
+            max_contact_length = 100000 - prompt_length - 1000  # Leave some buffer
+            if max_contact_length > 0:
+                contact_text = contact_text[:max_contact_length] + "... (truncated)"
+                _logger.info(f"Truncated contact data to {len(contact_text)} characters")
+            else:
+                _logger.error(f"Prompt too large for sales grade analysis for contact {self.id}, cannot proceed")
+                return {
+                    'ai_sales_grade': 'no_grade',
+                    'ai_sales_reasoning': '<div style="color: #dc2626;"><h4>Analysis Error</h4><p>Contact data too large for analysis</p></div>'
+                }
+
+        # Prepare the request to OpenAI API
+        headers = {
+            'Content-Type': 'application/json',
+            'Authorization': f'Bearer {api_key}'
+        }
+
+        data = {
+            'model': 'gpt-4o',  # Updated to use gpt-4o which is more current
+            'messages': [
+                {
+                    'role': 'system',
+                    'content': 'You are an AI assistant that analyzes contact data and provides detailed sales grade analysis. Always respond with valid JSON only.'
+                },
+                {
+                    'role': 'user',
+                    'content': f"{prompt}\n\nContact Data:\n{contact_text}"
+                }
+            ],
+            'temperature': 0.7,
+            'max_tokens': 1500
+        }
+
+        # Log request details for debugging
+        _logger.info(f"OpenAI API request for sales grade analysis for contact {self.id}:")
+        _logger.info(f"  URL: https://api.openai.com/v1/chat/completions")
+        _logger.info(f"  Model: {data['model']}")
+        _logger.info(f"  Max tokens: {data['max_tokens']}")
+        _logger.info(f"  Temperature: {data['temperature']}")
+
+        try:
+            # Make the API call
+            response = requests.post(
+                'https://api.openai.com/v1/chat/completions',
+                headers=headers,
+                json=data,
+                timeout=30
+            )
+            
+            # Log response details for debugging
+            _logger.info(f"OpenAI API response for sales grade analysis for contact {self.id}:")
+            _logger.info(f"  Status code: {response.status_code}")
+            
+            if response.status_code != 200:
+                _logger.error(f"OpenAI API error response for sales grade analysis for contact {self.id}:")
+                _logger.error(f"  Status code: {response.status_code}")
+                _logger.error(f"  Response text: {response.text}")
+            
+            response.raise_for_status()
+
+            # Parse the response
+            result = response.json()
+            ai_response_text = result['choices'][0]['message']['content']
+
+            _logger.info(f"Raw AI sales grade response for contact {self.id}: {ai_response_text}")
+
+            # Parse the JSON response
+            try:
+                import re
+                
+                # First, try to extract JSON from markdown code blocks
+                markdown_json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', ai_response_text, re.DOTALL)
+                if markdown_json_match:
+                    json_text = markdown_json_match.group(1)
+                    ai_result = json.loads(json_text)
+                else:
+                    # Fallback: try to find JSON object in the response
+                    json_match = re.search(r'\{.*\}', ai_response_text, re.DOTALL)
+                    if json_match:
+                        ai_result = json.loads(json_match.group())
+                    else:
+                        ai_result = json.loads(ai_response_text)
+
+                _logger.info(f"Parsed AI sales grade result for contact {self.id}: {ai_result}")
+                return ai_result
+
+            except json.JSONDecodeError as e:
+                _logger.error(f"Failed to parse AI sales grade response as JSON for contact {self.id}: {str(e)}")
+                # Return a fallback result
+                return {
+                    'ai_sales_grade': 'no_grade',
+                    'ai_sales_reasoning': f'<div style="color: #dc2626;"><h4>Analysis Error</h4><p>Failed to parse AI response: {str(e)}</p></div>'
+                }
+
+        except requests.exceptions.RequestException as e:
+            _logger.error(f"API request failed for sales grade analysis for contact {self.id}: {str(e)}")
+            
+            # Try fallback to gpt-3.5-turbo if gpt-4o fails
+            if 'gpt-4o' in str(data.get('model', '')):
+                _logger.info(f"Trying fallback to gpt-3.5-turbo for sales grade analysis for contact {self.id}")
+                try:
+                    data['model'] = 'gpt-3.5-turbo'
+                    response = requests.post(
+                        'https://api.openai.com/v1/chat/completions',
+                        headers=headers,
+                        json=data,
+                        timeout=30
+                    )
+                    
+                    if response.status_code == 200:
+                        _logger.info(f"Fallback model succeeded for sales grade analysis for contact {self.id}")
+                        result = response.json()
+                        ai_response_text = result['choices'][0]['message']['content']
+                        
+                        # Parse the JSON response (same logic as above)
+                        try:
+                            import re
+                            markdown_json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', ai_response_text, re.DOTALL)
+                            if markdown_json_match:
+                                json_text = markdown_json_match.group(1)
+                                ai_result = json.loads(json_text)
+                            else:
+                                json_match = re.search(r'\{.*\}', ai_response_text, re.DOTALL)
+                                if json_match:
+                                    ai_result = json.loads(json_match.group())
+                                else:
+                                    ai_result = json.loads(ai_response_text)
+                            
+                            _logger.info(f"Parsed AI sales grade result with fallback model for contact {self.id}: {ai_result}")
+                            return ai_result
+                            
+                        except json.JSONDecodeError as e:
+                            _logger.error(f"Failed to parse fallback AI sales grade response as JSON for contact {self.id}: {str(e)}")
+                            return {
+                                'ai_sales_grade': 'no_grade',
+                                'ai_sales_reasoning': f'<div style="color: #dc2626;"><h4>Analysis Error</h4><p>Failed to parse AI response: {str(e)}</p></div>'
+                            }
+                    else:
+                        _logger.error(f"Fallback model also failed for sales grade analysis for contact {self.id}: {response.status_code} - {response.text}")
+                        
+                except Exception as fallback_error:
+                    _logger.error(f"Fallback model request failed for sales grade analysis for contact {self.id}: {str(fallback_error)}")
+            
+            return {
+                'ai_sales_grade': 'no_grade',
+                'ai_sales_reasoning': f'<div style="color: #dc2626;"><h4>API Error</h4><p>Failed to connect to OpenAI API: {str(e)}</p></div>'
+            }
+
+    def _create_ai_sales_grade_prompt(self, contact_data, automation_template):
+        """Create AI prompt for sales grade analysis using automation template settings"""
+        import logging
+        _logger = logging.getLogger(__name__)
+        
+        # Get AI sales scoring rules from automation template
+        ai_sales_scoring_setting = automation_template.ai_sales_scoring_setting_ids.filtered(lambda s: s.enabled)
+        sales_scoring_rules = ""
+        available_sales_grades = "no_grade"  # Default to no_grade only
+        
+        if ai_sales_scoring_setting:
+            framework = ai_sales_scoring_setting[0].framework or ""
+            rules = "\n".join([rule.rule_text for rule in ai_sales_scoring_setting[0].rule_ids]) if ai_sales_scoring_setting[0].rule_ids else ""
+            sales_scoring_rules = f"{framework}\n\n{rules}" if rules else framework
+            
+            # Extract available grades from the rules using the same logic as _get_valid_sales_grades
+            import re
+            rule_texts = [rule.rule_text for rule in ai_sales_scoring_setting[0].rule_ids]
+            available_grades = []
+            
+            # Look for any grade pattern in the rules (case insensitive)
+            for rule_text in rule_texts:
+                # Find any grade mentions like "Grade A", "A-grade", "Premium", "Standard", etc.
+                grade_patterns = [
+                    r'\b(grade\s*[a-z])\b',  # "grade a", "grade b", etc.
+                    r'\b([a-z]-grade)\b',    # "a-grade", "b-grade", etc.
+                    r'\b(grade\s*[ivx]+)\b', # "grade i", "grade ii", "grade iii", etc.
+                    r'\b(premium|standard|basic|excellent|good|average|poor)\b',  # Common grade terms
+                    r'\b([a-z]\s*grade)\b',  # "a grade", "b grade", etc.
+                ]
+                
+                for pattern in grade_patterns:
+                    matches = re.findall(pattern, rule_text.lower())
+                    for match in matches:
+                        # Convert to a consistent format for storage
+                        grade_key = match.replace(' ', '_').replace('-', '_').lower()
+                        available_grades.append(grade_key)
+            
+            # If we found specific grades in the rules, use them; otherwise use default
+            if available_grades:
+                available_sales_grades = "|".join(list(set(available_grades))) + "|no_grade"
+        
+        # Build the prompt
+        prompt = f"""Analyze the following contact data and return a JSON response with exactly this structure:
+{{
+    "ai_sales_grade": "{available_sales_grades}",
+    "ai_sales_reasoning": "Detailed HTML-formatted reasoning explaining the sales grade assignment"
+}}
+
+Business Context: {automation_template.business_context or 'No specific business context provided.'}
+
+Sales Scoring Rules: {sales_scoring_rules}
+
+Current AI Sales Grade: The contact currently has an AI sales grade of "{contact_data.get('ai_analysis', {}).get('current_ai_sales_grade', 'no_grade')}". Consider this current grade when generating the new analysis. If the current grade is still accurate based on recent activity, you may keep it or update it as needed.
+
+Requirements:
+- ai_sales_grade: CRITICAL: You MUST use ONLY the grade options provided in the Sales Scoring Rules section above. Do NOT create your own grade names. If Sales Scoring Rules are provided, you MUST choose one of those exact grade names. If no specific grades are defined, use "no_grade".
+- ai_sales_reasoning: CRITICAL: Provide a structured analysis specifically explaining the AI Sales Grade assignment. IMPORTANT: The analysis reasoning MUST reference the EXACT same grade that you assigned in the ai_sales_grade field above. Use this EXACT format with HTML styling:
+
+<h3>Sales Grade Assessment</h3>
+<p>[Provide a concise overview of the contact's sales potential and why they received the specific grade you assigned above]</p>
+
+<h3>Sales Potential Analysis</h3>
+<ul>
+<li><strong>Opportunity Value:</strong> [Analyze the monetary value of opportunities and pipeline]</li>
+<li><strong>Engagement Level:</strong> [Assess how engaged the contact is in sales conversations]</li>
+<li><strong>Purchase Readiness:</strong> [Evaluate if the contact is ready to make a purchase decision]</li>
+</ul>
+
+<h3>Grade Reasoning</h3>
+<ul>
+<li><strong>Why not a higher grade:</strong> [Explain why this contact doesn't qualify for a higher grade than the one you assigned]</li>
+<li><strong>Why not a lower grade:</strong> [Explain why this contact doesn't deserve a lower grade than the one you assigned]</li>
+<li><strong>Why this grade is appropriate:</strong> [Explain why the grade you assigned is the correct assessment]</li>
+</ul>
+
+<h3>Sales Strategy Recommendations</h3>
+<ul>
+<li>[Specific sales approach recommendation 1]</li>
+<li>[Specific sales approach recommendation 2]</li>
+<li>[Specific sales approach recommendation 3]</li>
+</ul>
+
+CRITICAL: Make sure the grade mentioned in your analysis matches exactly with the ai_sales_grade you assigned above. Do NOT mention any other grades in your analysis - only reference the specific grade you assigned. Use specific examples from the contact data to support your reasoning. Be detailed and actionable in your analysis.
+
+Contact Data:
+{json.dumps(contact_data, indent=2)}
+
+IMPORTANT: Return ONLY the JSON object. Do not wrap it in markdown code blocks (```json) or add any additional text before or after the JSON."""
+        
+        return prompt
+
+    def _update_contact_with_ai_sales_grade_results(self, ai_result, automation_template=None):
+        """Update contact fields with AI sales grade analysis results"""
+        import logging
+        _logger = logging.getLogger(__name__)
+        
+        try:
+            # Extract AI sales grade results
+            ai_sales_grade = ai_result.get('ai_sales_grade', 'no_grade')
+            ai_sales_reasoning = ai_result.get('ai_sales_reasoning', '<span style="color: #6b7280;">No sales grade analysis available</span>')
+            
+            _logger.info(f"AI sales grade analysis for contact {self.id}:")
+            _logger.info(f"  Raw AI sales grade: '{ai_sales_grade}'")
+            _logger.info(f"  AI sales reasoning preview: '{ai_sales_reasoning[:200]}...'")
+            
+            # Validate sales grade against available options
+            if automation_template:
+                ai_sales_scoring_setting = automation_template.ai_sales_scoring_setting_ids.filtered(lambda s: s.enabled)
+                if ai_sales_scoring_setting:
+                    # Get available grades from the setting
+                    available_grades = self._get_valid_sales_grades()
+                    _logger.info(f"  Available grades from template: {available_grades}")
+                    
+                    # Normalize the AI sales grade to match the available grades format
+                    normalized_grade = ai_sales_grade.lower().replace(' ', '_').replace('-', '_')
+                    _logger.info(f"  Normalized AI sales grade: '{normalized_grade}'")
+                    
+                    # Check if the normalized grade is in available grades
+                    if normalized_grade in available_grades:
+                        ai_sales_grade = normalized_grade
+                    else:
+                        # Try to find a match by checking if any available grade contains the AI grade
+                        grade_found = False
+                        for available_grade in available_grades:
+                            if available_grade in normalized_grade or normalized_grade in available_grade:
+                                ai_sales_grade = available_grade
+                                grade_found = True
+                                break
+                        
+                        if not grade_found:
+                            _logger.warning(f"Invalid sales grade '{ai_sales_grade}' for contact {self.id}, using 'no_grade'. Available grades: {available_grades}")
+                            ai_sales_grade = 'no_grade'
+            
+            # Update the contact fields
+            self.ai_sales_grade = ai_sales_grade
+            self.ai_sales_reasoning = ai_sales_reasoning
+            
+            _logger.info(f"Updated contact {self.id} with AI sales grade results: sales_grade='{ai_sales_grade}'")
+            
+        except Exception as e:
+            _logger.error(f"Error updating contact {self.id} with AI sales grade results: {str(e)}")
+            # Set fallback values
+            self.ai_sales_grade = 'no_grade'
+            self.ai_sales_reasoning = f'<div style="color: #dc2626;"><h4>Update Error</h4><p>Failed to update contact with AI sales grade results: {str(e)}</p></div>'

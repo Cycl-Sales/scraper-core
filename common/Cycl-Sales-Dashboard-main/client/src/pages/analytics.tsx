@@ -10,6 +10,48 @@ import type { DateRange } from "react-day-picker";
 import { CYCLSALES_APP_ID } from "@/lib/constants";
 import { useSubAccount } from "@/contexts/SubAccountContext";
 
+// Filter options
+const aiStatusOptions = [
+  "Valid Lead",
+  "Wants to Stay - Retention Path",
+  "Unqualified",
+  "Not Contacted",
+  "❄️ Cold Lead - No Recent Activity",
+  "🔥 Hot Lead - Highly Engaged",
+  "❌ API Error",
+  "❌ Analysis Failed",
+  "❌ No API Key",
+  "❌ Invalid API Key",
+  "❌ Data Too Large"
+];
+
+const aiQualityOptions = [
+  "Lead Grade A",
+  "Lead Grade B", 
+  "Lead Grade C",
+  "No Grade"
+];
+
+const aiSalesOptions = [
+  "Sales Grade A",
+  "Sales Grade B",
+  "Sales Grade C", 
+  "Sales Grade D",
+  "No Grade"
+];
+
+const crmTasksOptions = [
+  "1 Overdue",
+  "2 Upcoming", 
+  "No Tasks"
+];
+
+const categoryOptions = ["Integration", "Manual", "Automated", "Referral"];
+const channelOptions = ["Integration", "Manual", "Automated", "Referral"];
+const touchSummaryOptions = ["no_touches", "SMS", "PHONE CALL", "EMAIL", "OPPORTUNITY", "FACEBOOK", "WHATSAPP", "WEBCHAT", "REVIEW", "APPOINTMENT", "ACTIVITY"];
+
+
+
 // Removed unused useQuery helper
 
 // DateRangePicker (reuse from overview)
@@ -69,6 +111,67 @@ export default function Analytics() {
   const [contactsLoading] = useState(false);
   const [syncStatus, setSyncStatus] = useState<string>("");
   const [refreshing, setRefreshing] = useState(false);
+  
+  // Agency-specific state for location selection
+  const [availableLocations, setAvailableLocations] = useState<any[]>([]);
+  const [locationsLoading, setLocationsLoading] = useState(false);
+  const [locationSelectorOpen, setLocationSelectorOpen] = useState(false);
+  
+  // Filter state
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [activeFilters, setActiveFilters] = useState({
+    aiStatus: [] as string[],
+    aiQualityGrade: [] as string[],
+    aiSalesGrade: [] as string[],
+    crmTasks: [] as string[],
+    category: [] as string[],
+    channel: [] as string[],
+    touchSummary: [] as string[],
+  });
+
+  // Fetch available locations for agency users
+  useEffect(() => {
+    if (!isSubAccount) {
+      setLocationsLoading(true);
+      fetch("/api/installed-locations")
+        .then((res) => res.json())
+        .then((data) => {
+          setAvailableLocations(data.locations || []);
+        })
+        .catch((err) => {
+          console.error("Failed to fetch locations:", err);
+        })
+        .finally(() => {
+          setLocationsLoading(false);
+        });
+    }
+  }, [isSubAccount]);
+
+  // Helper functions for filters
+  const toggleFilter = (filterType: keyof typeof activeFilters, value: string) => {
+    setActiveFilters(prev => ({
+      ...prev,
+      [filterType]: prev[filterType].includes(value) 
+        ? prev[filterType].filter(v => v !== value)
+        : [...prev[filterType], value]
+    }));
+  };
+
+  const clearAllFilters = () => {
+    setActiveFilters({
+      aiStatus: [],
+      aiQualityGrade: [],
+      aiSalesGrade: [],
+      crmTasks: [],
+      category: [],
+      channel: [],
+      touchSummary: [],
+    });
+  };
+
+  const getActiveFiltersCount = () => {
+    return Object.values(activeFilters).reduce((total, filters) => total + filters.length, 0);
+  };
 
   useEffect(() => { 
     if (locationId) {
@@ -145,11 +248,50 @@ export default function Analytics() {
         {/* Top Filters Bar */}
         <div className="flex flex-wrap items-center justify-between gap-4 bg-slate-900 rounded-2xl p-6 shadow-lg mb-6">
           <div className="flex flex-wrap gap-2 items-center">
-            {/* Location selector (pre-selected) */}
-            <Button variant="secondary" className="bg-blue-900 text-blue-300 font-semibold flex gap-2 items-center">
-              <Users className="w-4 h-4" />
-              {locationNameLoading ? "Loading..." : (locationName || locationId)}
-            </Button>
+            {/* Location selector - conditional based on user type */}
+            {!isSubAccount ? (
+              // Agency users get a location selector
+              <Popover open={locationSelectorOpen} onOpenChange={setLocationSelectorOpen}>
+                <PopoverTrigger asChild>
+                  <Button variant="secondary" className="bg-blue-900 text-blue-300 font-semibold flex gap-2 items-center min-w-[200px] justify-between">
+                    <Users className="w-4 h-4" />
+                    <span>{locationNameLoading ? "Loading..." : (locationName || locationId || "Select location")}</span>
+                    <ChevronDown className="w-4 h-4" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0 bg-slate-900 border-slate-700">
+                  <div className="p-2">
+                    {locationsLoading ? (
+                      <div className="text-slate-400 text-sm p-2">Loading locations...</div>
+                    ) : availableLocations.length > 0 ? (
+                      <div className="max-h-60 overflow-y-auto">
+                        {availableLocations.map((location) => (
+                          <button
+                            key={location.location_id}
+                            className="w-full text-left px-3 py-2 text-sm text-slate-200 hover:bg-slate-800 rounded-md flex flex-col"
+                            onClick={() => {
+                              window.location.href = `/analytics?location_id=${encodeURIComponent(location.location_id)}`;
+                              setLocationSelectorOpen(false);
+                            }}
+                          >
+                            <span className="font-medium">{location.location}</span>
+                            <span className="text-xs text-slate-400">{location.automationGroup}</span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-slate-400 text-sm p-2">No locations found</div>
+                    )}
+                  </div>
+                </PopoverContent>
+              </Popover>
+            ) : (
+              // Sub-account users get a non-clickable display
+              <Button variant="secondary" className="bg-blue-900 text-blue-300 font-semibold flex gap-2 items-center">
+                <Users className="w-4 h-4" />
+                {locationNameLoading ? "Loading..." : (locationName || locationId)}
+              </Button>
+            )}
             {/* User selector */}
             <Popover>
               <PopoverTrigger asChild>
@@ -184,10 +326,160 @@ export default function Analytics() {
               </PopoverContent>
             </Popover>
             {/* More Filters */}
-            <Button variant="outline" className="bg-slate-800 text-slate-200 flex gap-2 items-center">
-              <Filter className="w-4 h-4" />
-              More Filters
-            </Button>
+            <Popover open={filtersOpen} onOpenChange={setFiltersOpen}>
+              <PopoverTrigger asChild>
+                <Button variant="outline" className="bg-slate-800 text-slate-200 flex gap-2 items-center">
+                  <Filter className="w-4 h-4" />
+                  More Filters
+                  {getActiveFiltersCount() > 0 && (
+                    <span className="ml-1 bg-blue-600 text-white text-xs px-1.5 py-0.5 rounded-full">
+                      {getActiveFiltersCount()}
+                    </span>
+                  )}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-96 p-4 bg-slate-900 border-slate-700" align="start">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-semibold text-white">Filters</h3>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      onClick={clearAllFilters}
+                      className="text-slate-400 hover:text-white"
+                    >
+                      Clear All
+                    </Button>
+                  </div>
+                  
+                  {/* AI Status Filter */}
+                  <div>
+                    <h4 className="text-sm font-medium text-slate-300 mb-2">AI Status</h4>
+                    <div className="space-y-1">
+                      {aiStatusOptions.map((option) => (
+                        <label key={option} className="flex items-center space-x-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={activeFilters.aiStatus.includes(option)}
+                            onChange={() => toggleFilter('aiStatus', option)}
+                            className="rounded border-slate-600 bg-slate-800 text-blue-600 focus:ring-blue-500"
+                          />
+                          <span className="text-sm text-slate-200">{option}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* AI Quality Grade Filter */}
+                  <div>
+                    <h4 className="text-sm font-medium text-slate-300 mb-2">AI Quality Grade</h4>
+                    <div className="space-y-1">
+                      {aiQualityOptions.map((option) => (
+                        <label key={option} className="flex items-center space-x-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={activeFilters.aiQualityGrade.includes(option)}
+                            onChange={() => toggleFilter('aiQualityGrade', option)}
+                            className="rounded border-slate-600 bg-slate-800 text-blue-600 focus:ring-blue-500"
+                          />
+                          <span className="text-sm text-slate-200">{option}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* AI Sales Grade Filter */}
+                  <div>
+                    <h4 className="text-sm font-medium text-slate-300 mb-2">AI Sales Grade</h4>
+                    <div className="space-y-1">
+                      {aiSalesOptions.map((option) => (
+                        <label key={option} className="flex items-center space-x-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={activeFilters.aiSalesGrade.includes(option)}
+                            onChange={() => toggleFilter('aiSalesGrade', option)}
+                            className="rounded border-slate-600 bg-slate-800 text-blue-600 focus:ring-blue-500"
+                          />
+                          <span className="text-sm text-slate-200">{option}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* CRM Tasks Filter */}
+                  <div>
+                    <h4 className="text-sm font-medium text-slate-300 mb-2">CRM Tasks</h4>
+                    <div className="space-y-1">
+                      {crmTasksOptions.map((option) => (
+                        <label key={option} className="flex items-center space-x-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={activeFilters.crmTasks.includes(option)}
+                            onChange={() => toggleFilter('crmTasks', option)}
+                            className="rounded border-slate-600 bg-slate-800 text-blue-600 focus:ring-blue-500"
+                          />
+                          <span className="text-sm text-slate-200">{option}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Category Filter */}
+                  <div>
+                    <h4 className="text-sm font-medium text-slate-300 mb-2">Category</h4>
+                    <div className="space-y-1">
+                      {categoryOptions.map((option) => (
+                        <label key={option} className="flex items-center space-x-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={activeFilters.category.includes(option)}
+                            onChange={() => toggleFilter('category', option)}
+                            className="rounded border-slate-600 bg-slate-800 text-blue-600 focus:ring-blue-500"
+                          />
+                          <span className="text-sm text-slate-200">{option}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Channel Filter */}
+                  <div>
+                    <h4 className="text-sm font-medium text-slate-300 mb-2">Channel</h4>
+                    <div className="space-y-1">
+                      {channelOptions.map((option) => (
+                        <label key={option} className="flex items-center space-x-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={activeFilters.channel.includes(option)}
+                            onChange={() => toggleFilter('channel', option)}
+                            className="rounded border-slate-600 bg-slate-800 text-blue-600 focus:ring-blue-500"
+                          />
+                          <span className="text-sm text-slate-200">{option}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Touch Summary Filter */}
+                  <div>
+                    <h4 className="text-sm font-medium text-slate-300 mb-2">Touch Summary</h4>
+                    <div className="space-y-1">
+                      {touchSummaryOptions.map((option) => (
+                        <label key={option} className="flex items-center space-x-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={activeFilters.touchSummary.includes(option)}
+                            onChange={() => toggleFilter('touchSummary', option)}
+                            className="rounded border-slate-600 bg-slate-800 text-blue-600 focus:ring-blue-500"
+                          />
+                          <span className="text-sm text-slate-200">{option}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
           </div>
           <div className="flex flex-wrap gap-2 items-center">
             {/* Tab switch */}
@@ -267,7 +559,7 @@ export default function Analytics() {
               </Button>
             </div>
           </div>
-          <AnalyticsContactsTable loading={contactsLoading} locationId={locationId} selectedUser={selectedUser} />
+          <AnalyticsContactsTable loading={contactsLoading} locationId={locationId || ""} selectedUser={selectedUser} activeFilters={activeFilters} />
         </div>
       </main>
     </div>

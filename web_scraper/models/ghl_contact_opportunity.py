@@ -6,6 +6,7 @@ from datetime import datetime
 
 _logger = logging.getLogger(__name__)
 
+
 class GhlContactOpportunityCustomField(models.Model):
     _name = 'ghl.contact.opportunity.custom.field'
     _description = 'GHL Contact Opportunity Custom Field'
@@ -13,6 +14,7 @@ class GhlContactOpportunityCustomField(models.Model):
     opportunity_id = fields.Many2one('ghl.contact.opportunity', string='Opportunity', ondelete='cascade')
     custom_field_id = fields.Char(string='Custom Field ID')
     field_value = fields.Char(string='Field Value')
+
 
 class GhlContactOpportunity(models.Model):
     _name = 'ghl.contact.opportunity'
@@ -78,28 +80,28 @@ class GhlContactOpportunity(models.Model):
                 'companyId': company_id,
                 'locationId': location_id,
             }
-            
+
             token_resp = requests.post(token_url, headers=headers, data=data)
             if token_resp.status_code not in (200, 201):
                 return {
                     'success': False,
                     'message': f"Failed to get location token: {token_resp.text}"
                 }
-                
+
             token_json = token_resp.json()
             location_token = token_json.get('access_token')
-            
+
             if not location_token:
                 return {
                     'success': False,
                     'message': 'No access_token in location token response'
                 }
-            
+
             return {
                 'success': True,
                 'access_token': location_token
             }
-            
+
         except Exception as e:
             return {
                 'success': False,
@@ -118,11 +120,13 @@ class GhlContactOpportunity(models.Model):
         """
         from .ghl_api_utils import fetch_opportunities_with_pagination
         try:
-            _logger.info(f"Fetching GHL opportunities for location {location_id} with pagination (max_pages: {max_pages})")
+            _logger.info(
+                f"Fetching GHL opportunities for location {location_id} with pagination (max_pages: {max_pages})")
             result = fetch_opportunities_with_pagination(access_token, location_id, max_pages)
-            
+
             if result['success']:
-                _logger.info(f"Successfully fetched {result['total_items']} opportunities from {result['total_pages']} pages")
+                _logger.info(
+                    f"Successfully fetched {result['total_items']} opportunities from {result['total_pages']} pages")
                 return {
                     'success': True,
                     'opportunities': result['items'],
@@ -159,7 +163,7 @@ class GhlContactOpportunity(models.Model):
         """
         try:
             _logger.info(f"Starting opportunity sync for location {location_id}")
-            
+
             # Validate company_id is provided
             if not company_id:
                 return {
@@ -169,12 +173,12 @@ class GhlContactOpportunity(models.Model):
                     'updated': 0,
                     'errors': ['company_id is required']
                 }
-            
+
             _logger.info(f"Using company_id: {company_id}")
-            
+
             # Step 1: Get location token using agency token
             location_token_result = self._get_location_token(app_access_token, location_id, company_id)
-            
+
             if not location_token_result['success']:
                 return {
                     'success': False,
@@ -183,12 +187,12 @@ class GhlContactOpportunity(models.Model):
                     'updated': 0,
                     'errors': []
                 }
-            
+
             location_token = location_token_result['access_token']
-            
+
             # Step 2: Fetch opportunities using location token with pagination
             opportunities_result = self.fetch_opportunities_from_ghl_api(location_id, location_token, max_pages)
-            
+
             if not opportunities_result['success']:
                 return {
                     'success': False,
@@ -197,10 +201,10 @@ class GhlContactOpportunity(models.Model):
                     'updated': 0,
                     'errors': []
                 }
-            
+
             # Step 3: Process and save opportunities
             return self._process_opportunities(opportunities_result['opportunities'], location_id, company_id)
-            
+
         except Exception as e:
             _logger.error(f"Error in sync_opportunities_for_location: {str(e)}")
             return {
@@ -212,7 +216,8 @@ class GhlContactOpportunity(models.Model):
             }
 
     @api.model
-    def sync_opportunities_for_contact(self, app_access_token, location_id, contact_external_id, company_id=None, max_pages=None):
+    def sync_opportunities_for_contact(self, app_access_token, location_id, contact_external_id, company_id=None,
+                                       max_pages=None):
         """
         Sync opportunities for a specific contact using two-step token process with pagination support
         Args:
@@ -248,7 +253,8 @@ class GhlContactOpportunity(models.Model):
             location_token = location_token_result['access_token']
             # Step 2: Fetch opportunities using location token with pagination and contact_id filter
             from .ghl_api_utils import fetch_opportunities_with_pagination
-            result = fetch_opportunities_with_pagination(location_token, location_id, max_pages=max_pages, contact_id=contact_external_id)
+            result = fetch_opportunities_with_pagination(location_token, location_id, max_pages=max_pages,
+                                                         contact_id=contact_external_id)
             if not result['success']:
                 return {
                     'success': False,
@@ -288,12 +294,12 @@ class GhlContactOpportunity(models.Model):
                     'updated': 0,
                     'errors': []
                 }
-            
+
             # Find the installed.location record
             installed_location = self.env['installed.location'].sudo().search([
                 ('location_id', '=', location_id)
             ], limit=1)
-            
+
             if not installed_location:
                 _logger.error(f"Location {location_id} not found in Odoo for opportunity sync.")
                 return {
@@ -303,7 +309,7 @@ class GhlContactOpportunity(models.Model):
                     'updated': 0,
                     'errors': [f'Location {location_id} not found']
                 }
-            
+
             for opportunity_data in opportunities_data:
                 try:
                     ghl_id = opportunity_data.get('id')
@@ -316,9 +322,10 @@ class GhlContactOpportunity(models.Model):
                     try:
                         monetary_value = float(raw_monetary_value) if raw_monetary_value not in (None, '') else 0.0
                     except Exception as e:
-                        _logger.warning(f"Could not parse monetaryValue '{raw_monetary_value}' for opportunity {ghl_id}: {e}")
+                        _logger.warning(
+                            f"Could not parse monetaryValue '{raw_monetary_value}' for opportunity {ghl_id}: {e}")
                         monetary_value = 0.0
-                    
+
                     # Check if opportunity already exists (ALWAYS use sudo)
                     existing_opportunity = self.sudo().search([
                         ('external_id', '=', ghl_id)
@@ -338,10 +345,15 @@ class GhlContactOpportunity(models.Model):
                                 'location_external_id': location_id,
                                 'location_id': installed_location.id,
                                 'index_version': opportunity_data.get('indexVersion', 0),
-                                'notes': json.dumps(opportunity_data.get('notes', [])) if opportunity_data.get('notes') else '',
-                                'tasks': json.dumps(opportunity_data.get('tasks', [])) if opportunity_data.get('tasks') else '',
-                                'calendar_events': json.dumps(opportunity_data.get('calendarEvents', [])) if opportunity_data.get('calendarEvents') else '',
-                                'followers': json.dumps(opportunity_data.get('followers', [])) if opportunity_data.get('followers') else '',
+                                'notes': json.dumps(opportunity_data.get('notes', [])) if opportunity_data.get(
+                                    'notes') else '',
+                                'tasks': json.dumps(opportunity_data.get('tasks', [])) if opportunity_data.get(
+                                    'tasks') else '',
+                                'calendar_events': json.dumps(
+                                    opportunity_data.get('calendarEvents', [])) if opportunity_data.get(
+                                    'calendarEvents') else '',
+                                'followers': json.dumps(opportunity_data.get('followers', [])) if opportunity_data.get(
+                                    'followers') else '',
                             })
                             updated_count += 1
                             _logger.info(f"Updated opportunity {ghl_id}")
@@ -366,13 +378,16 @@ class GhlContactOpportunity(models.Model):
                         'index_version': opportunity_data.get('indexVersion', 0),
                         'notes': json.dumps(opportunity_data.get('notes', [])) if opportunity_data.get('notes') else '',
                         'tasks': json.dumps(opportunity_data.get('tasks', [])) if opportunity_data.get('tasks') else '',
-                        'calendar_events': json.dumps(opportunity_data.get('calendarEvents', [])) if opportunity_data.get('calendarEvents') else '',
-                        'followers': json.dumps(opportunity_data.get('followers', [])) if opportunity_data.get('followers') else '',
+                        'calendar_events': json.dumps(
+                            opportunity_data.get('calendarEvents', [])) if opportunity_data.get(
+                            'calendarEvents') else '',
+                        'followers': json.dumps(opportunity_data.get('followers', [])) if opportunity_data.get(
+                            'followers') else '',
                     }
                     # Parse datetime fields
                     date_field_mapping = {
                         'lastStatusChangeAt': 'last_status_change_at',
-                        'lastStageChangeAt': 'last_stage_change_at', 
+                        'lastStageChangeAt': 'last_stage_change_at',
                         'lastActionDate': 'last_action_date',
                         'createdAt': 'created_at',
                         'updatedAt': 'updated_at'
@@ -412,8 +427,10 @@ class GhlContactOpportunity(models.Model):
                         _logger.info(f"Created opportunity {ghl_id}")
                     except Exception as create_error:
                         # Check if duplicate error
-                        if 'duplicate key value violates unique constraint' in str(create_error) or 'already exists' in str(create_error):
-                            _logger.warning(f"Duplicate detected for opportunity {ghl_id} during create. Attempting to update instead.")
+                        if 'duplicate key value violates unique constraint' in str(
+                                create_error) or 'already exists' in str(create_error):
+                            _logger.warning(
+                                f"Duplicate detected for opportunity {ghl_id} during create. Attempting to update instead.")
                             # Try to find and update the existing opportunity
                             try:
                                 existing_opp = self.sudo().search([('external_id', '=', ghl_id)], limit=1)
@@ -424,7 +441,8 @@ class GhlContactOpportunity(models.Model):
                                 else:
                                     _logger.error(f"Duplicate detected but opportunity {ghl_id} not found for update")
                             except Exception as update_error:
-                                _logger.error(f"Error updating opportunity {ghl_id} after duplicate detection: {update_error}")
+                                _logger.error(
+                                    f"Error updating opportunity {ghl_id} after duplicate detection: {update_error}")
                         else:
                             error_msg = f"Error creating opportunity {ghl_id}: {create_error}"
                             errors.append(error_msg)
@@ -433,7 +451,8 @@ class GhlContactOpportunity(models.Model):
                     error_msg = f"Error processing opportunity {opportunity_data.get('id', 'unknown')}: {str(e)}"
                     errors.append(error_msg)
                     _logger.error(error_msg)
-            _logger.info(f"Opportunity sync completed for location {location_id}: {created_count} created, {updated_count} updated")
+            _logger.info(
+                f"Opportunity sync completed for location {location_id}: {created_count} created, {updated_count} updated")
             return {
                 'success': True,
                 'message': f'Successfully synced opportunities: {created_count} created, {updated_count} updated',
@@ -449,4 +468,4 @@ class GhlContactOpportunity(models.Model):
                 'created': 0,
                 'updated': 0,
                 'errors': [str(e)]
-            } 
+            }

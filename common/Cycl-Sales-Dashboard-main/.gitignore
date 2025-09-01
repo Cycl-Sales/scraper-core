@@ -103,6 +103,9 @@ backend-implementation-guide.html
 # Generated assets
 generated-icon.png
 
+# Configuration files with sensitive data
+client/src/lib/constants.ts
+
 # Replit specific
 .replit
 

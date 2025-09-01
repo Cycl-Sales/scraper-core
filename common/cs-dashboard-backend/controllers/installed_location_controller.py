@@ -1071,6 +1071,7 @@ class InstalledLocationController(http.Controller):
                     'attributions_count': len(contact.attribution_ids),
                     'ai_status': contact.ai_status if contact.ai_status else '<span style="color: #6b7280;">Not Contacted</span>',
                     'ai_summary': contact.ai_summary if contact.ai_summary else 'Read',
+                    'ai_reasoning': contact.ai_reasoning if contact.ai_reasoning else '<span style="color: #6b7280;">No analysis available</span>',
                     'ai_quality_grade': contact.ai_quality_grade if contact.ai_quality_grade else 'no_grade',
                     'ai_sales_grade': contact.ai_sales_grade if contact.ai_sales_grade else 'no_grade',
                     'crm_tasks': contact.crm_tasks or 'no_tasks',
@@ -1410,6 +1411,7 @@ class InstalledLocationController(http.Controller):
                 # AI and analytics fields for frontend table
                 'ai_status': contact.ai_status if contact.ai_status else '<span style="color: #6b7280;">Not Contacted</span>',
                 'ai_summary': contact.ai_summary if contact.ai_summary else 'Read',
+                'ai_reasoning': contact.ai_reasoning if contact.ai_reasoning else '<span style="color: #6b7280;">No analysis available</span>',
                 'ai_quality_grade': contact.ai_quality_grade if contact.ai_quality_grade else 'no_grade',
                 'ai_sales_grade': contact.ai_sales_grade if contact.ai_sales_grade else 'no_grade',
                 'crm_tasks': contact.crm_tasks or 'no_tasks',
@@ -1814,6 +1816,7 @@ class InstalledLocationController(http.Controller):
                         'attributions_count': len(contact.attribution_ids),
                         'ai_status': contact.ai_status if contact.ai_status else '<span style="color: #6b7280;">Not Contacted</span>',
                         'ai_summary': contact.ai_summary if contact.ai_summary else 'Read',
+                        'ai_reasoning': contact.ai_reasoning if contact.ai_reasoning else '<span style="color: #6b7280;">No analysis available</span>',
                         'ai_quality_grade': contact.ai_quality_grade if contact.ai_quality_grade else 'no_grade',
                         'ai_sales_grade': contact.ai_sales_grade if contact.ai_sales_grade else 'no_grade',
                         'crm_tasks': contact.crm_tasks or 'no_tasks',
@@ -2038,6 +2041,12 @@ class InstalledLocationController(http.Controller):
                     'contact': {
                         'id': contact.id,
                         'name': contact.name or '',
+                        'ai_status': contact.ai_status if contact.ai_status else '<span style="color: #6b7280;">Not Contacted</span>',
+                        'ai_summary': contact.ai_summary if contact.ai_summary else 'AI analysis pending',
+                        'ai_reasoning': contact.ai_reasoning if contact.ai_reasoning else '<span style="color: #6b7280;">No analysis available</span>',
+                        'ai_quality_grade': contact.ai_quality_grade if contact.ai_quality_grade else 'no_grade',
+                        'ai_sales_grade': contact.ai_sales_grade if contact.ai_sales_grade else 'no_grade',
+                        'ai_sales_reasoning': contact.ai_sales_reasoning if contact.ai_sales_reasoning else '<span style="color: #6b7280;">No sales grade analysis available</span>',
                         'tasks': tasks_data,
                         'tasks_count': len(tasks_data),
                         'conversations': conversations_data,
@@ -2601,10 +2610,10 @@ class InstalledLocationController(http.Controller):
         # First try to get from existing messages
         last_message = request.env['ghl.contact.message'].sudo().search([
             ('contact_id', '=', contact.id)
-        ], order='date_added desc', limit=1)
+        ], order='create_date desc', limit=1)
 
-        if last_message and last_message.date_added:
-            return last_message.date_added.isoformat()
+        if last_message and last_message.create_date:
+            return last_message.create_date.isoformat()
         
         # If no messages, try to fetch them (this will be handled by _compute_touch_summary_for_contact)
         return ''
@@ -2617,16 +2626,17 @@ class InstalledLocationController(http.Controller):
         ], order='create_date desc', limit=1)
 
         if last_message and last_message.body:
-            # Return a summary of the message
-            message_preview = last_message.body[:100] + "..." if len(last_message.body) > 100 else last_message.body
+            # Return the complete message data with all fields
             return {
-                'body': message_preview,
+                'body': last_message.body,
                 'type': last_message.message_type,
-                'date': last_message.create_date.isoformat() if last_message.create_date else '',
-                'direction': last_message.direction
+                'direction': last_message.direction,
+                'source': last_message.source or '',
+                'date_added': last_message.create_date.isoformat() if last_message.create_date else '',
+                'id': last_message.ghl_id
             }
         
-        return ''
+        return None
 
     def _compute_engagement_summary_for_contact(self, contact):
         """Compute engagement summary for a contact on-the-fly"""
@@ -3033,8 +3043,10 @@ class InstalledLocationController(http.Controller):
                     'attributions_count': len(contact.attribution_ids),
                     'ai_status': contact.ai_status if contact.ai_status else '<span style="color: #6b7280;">Not Contacted</span>',
                     'ai_summary': contact.ai_summary if contact.ai_summary else 'AI analysis pending',
+                    'ai_reasoning': contact.ai_reasoning if contact.ai_reasoning else '<span style="color: #6b7280;">No analysis available</span>',
                     'ai_quality_grade': contact.ai_quality_grade if contact.ai_quality_grade else 'no_grade',
                     'ai_sales_grade': contact.ai_sales_grade if contact.ai_sales_grade else 'no_grade',
+                    'ai_sales_reasoning': contact.ai_sales_reasoning if contact.ai_sales_reasoning else '<span style="color: #6b7280;">No sales grade analysis available</span>',
                     'crm_tasks': contact.crm_tasks or 'no_tasks',
                     'category': contact.category or 'manual',
                     'channel': contact.channel or 'manual',
@@ -3555,6 +3567,7 @@ class InstalledLocationController(http.Controller):
                     'attributions_count': len(contact.attribution_ids),
                     'ai_status': contact.ai_status if contact.ai_status else '<span style="color: #6b7280;">Not Contacted</span>',
                     'ai_summary': contact.ai_summary if contact.ai_summary else 'AI analysis pending',
+                    'ai_reasoning': contact.ai_reasoning if contact.ai_reasoning else '<span style="color: #6b7280;">No analysis available</span>',
                     'ai_quality_grade': contact.ai_quality_grade if contact.ai_quality_grade else 'no_grade',
                     'ai_sales_grade': contact.ai_sales_grade if contact.ai_sales_grade else 'no_grade',
                     'crm_tasks': contact.crm_tasks or 'no_tasks',
@@ -3717,6 +3730,7 @@ class InstalledLocationController(http.Controller):
                                     'body': conv_last_message.body,
                                     'type': conv_last_message.message_type,
                                     'direction': conv_last_message.direction,
+                                    'source': conv_last_message.source or '',
                                     'date_added': conv_last_message.date_added.isoformat() if conv_last_message.date_added else '',
                                     'id': conv_last_message.ghl_id
                                 }
@@ -3794,8 +3808,8 @@ class InstalledLocationController(http.Controller):
                         touch_summary = ', '.join(touch_parts) if touch_parts else 'no_touches'
 
                         # Get last message
-                        last_message = messages.sorted('date_added', reverse=True)[0] if messages else None
-                        last_touch_date = last_message.date_added if last_message else False
+                        last_message = messages.sorted('create_date', reverse=True)[0] if messages else None
+                        last_touch_date = last_message.create_date if last_message else False
 
                         # Get last message content
                         last_message_data = None
@@ -3805,7 +3819,8 @@ class InstalledLocationController(http.Controller):
                                 'body': last_message.body,
                                 'type': last_message.message_type,
                                 'direction': last_message.direction,
-                                'date_added': last_message.date_added.isoformat() if last_message.date_added else '',
+                                'source': last_message.source or '',
+                                'date_added': last_message.create_date.isoformat() if last_message.create_date else '',
                                 'id': last_message.ghl_id
                             }
 
@@ -3825,6 +3840,7 @@ class InstalledLocationController(http.Controller):
                             'attributions_count': len(contact.attribution_ids),
                             'ai_status': contact.ai_status,
                             'ai_summary': contact.ai_summary,
+                            'ai_reasoning': contact.ai_reasoning,
                             'ai_quality_grade': contact.ai_quality_grade,
                             'ai_sales_grade': contact.ai_sales_grade,
                             'crm_tasks': contact.crm_tasks,
@@ -4664,6 +4680,79 @@ class InstalledLocationController(http.Controller):
             
         except Exception as e:
             _logger.error(f"Error updating AI status for all contacts: {str(e)}")
+            return Response(
+                json.dumps({'success': False, 'error': str(e)}),
+                content_type='application/json',
+                status=500,
+                headers=get_cors_headers(request)
+            )
+
+    @http.route('/api/run-ai-sales-grade-analysis/<int:contact_id>', type='http', auth='none', methods=['POST', 'OPTIONS'], csrf=False)
+    def run_ai_sales_grade_analysis(self, contact_id, **kwargs):
+        """Run AI sales grade analysis for a specific contact"""
+        _logger.info(f"run_ai_sales_grade_analysis called for contact_id: {contact_id}")
+        
+        if request.httprequest.method == 'OPTIONS':
+            return Response(status=200, headers=get_cors_headers(request))
+
+        try:
+            # Find the contact
+            contact = request.env['ghl.location.contact'].sudo().browse(contact_id)
+            if not contact.exists():
+                _logger.error(f"Contact {contact_id} not found")
+                return Response(
+                    json.dumps({'success': False, 'error': 'Contact not found'}),
+                    content_type='application/json',
+                    status=404,
+                    headers=get_cors_headers(request)
+                )
+
+            _logger.info(f"Running AI sales grade analysis for contact {contact_id} (name: {contact.name})")
+            
+            # Run AI sales grade analysis
+            result = contact.run_ai_sales_grade_analysis()
+            
+            _logger.info(f"AI sales grade analysis result for contact {contact_id}: {result}")
+            
+            # Log the updated contact fields
+            _logger.info(f"Contact {contact_id} AI sales grade fields after analysis: sales_grade='{contact.ai_sales_grade}', sales_reasoning='{contact.ai_sales_reasoning}'")
+            
+            # Force a database commit to ensure the data is saved
+            request.env.cr.commit()
+            _logger.info(f"Contact {contact_id} AI sales grade data committed to database")
+            
+            # Verify the data was actually saved by re-reading from database
+            _logger.info(f"Contact {contact_id} AI sales grade fields after commit verification: sales_grade='{contact.ai_sales_grade}', sales_reasoning='{contact.ai_sales_reasoning}'")
+            
+            # Additional verification: Query the database directly
+            contact_from_db = request.env['ghl.location.contact'].sudo().browse(contact_id)
+            _logger.info(f"Contact {contact_id} AI sales grade fields from direct DB query: sales_grade='{contact_from_db.ai_sales_grade}', sales_reasoning='{contact_from_db.ai_sales_reasoning}'")
+            
+            if result.get('success'):
+                return Response(
+                    json.dumps({
+                        'success': True,
+                        'message': result.get('message', 'AI sales grade analysis completed successfully'),
+                        'ai_sales_grade': contact.ai_sales_grade,
+                        'ai_sales_reasoning': contact.ai_sales_reasoning
+                    }),
+                    content_type='application/json',
+                    status=200,
+                    headers=get_cors_headers(request)
+                )
+            else:
+                return Response(
+                    json.dumps({
+                        'success': False,
+                        'error': result.get('error', 'AI sales grade analysis failed')
+                    }),
+                    content_type='application/json',
+                    status=500,
+                    headers=get_cors_headers(request)
+                )
+
+        except Exception as e:
+            _logger.error(f"Error in run_ai_sales_grade_analysis for contact {contact_id}: {str(e)}")
             return Response(
                 json.dumps({'success': False, 'error': str(e)}),
                 content_type='application/json',

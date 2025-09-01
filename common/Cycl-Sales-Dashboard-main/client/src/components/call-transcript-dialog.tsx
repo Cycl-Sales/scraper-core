@@ -15,7 +15,8 @@ import {
   SkipBack,
   SkipForward,
   TrendingUp,
-  Volume2
+  Volume2,
+  VolumeX
 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 
@@ -95,6 +96,7 @@ export default function CallTranscriptDialog({ open, onOpenChange, callData, onD
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [audioRef, setAudioRef] = useState<HTMLAudioElement | null>(null);
+  const [isMuted, setIsMuted] = useState(false);
   const transcriptRefs = useRef<(HTMLDivElement | null)[]>([]);
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
 
@@ -197,11 +199,27 @@ export default function CallTranscriptDialog({ open, onOpenChange, callData, onD
   };
 
   const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (audioRef) {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (audioRef && audioRef.duration) {
       const rect = e.currentTarget.getBoundingClientRect();
       const clickX = e.clientX - rect.left;
-      const percentage = clickX / rect.width;
-      audioRef.currentTime = percentage * audioRef.duration;
+      const percentage = Math.max(0, Math.min(1, clickX / rect.width));
+      const newTime = percentage * audioRef.duration;
+      
+      audioRef.currentTime = newTime;
+      console.log(`Seeking to ${newTime}s (${(percentage * 100).toFixed(1)}%)`);
+    }
+  };
+
+  const handleMuteToggle = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (audioRef) {
+      audioRef.muted = !audioRef.muted;
+      setIsMuted(audioRef.muted);
     }
   };
 
@@ -522,20 +540,6 @@ export default function CallTranscriptDialog({ open, onOpenChange, callData, onD
             <CardContent className="flex flex-col p-6 h-full">
               {/* Audio Player */}
               <div className="mb-6">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-xs text-slate-400">Audio</span>
-                  {callData.recordingUrl && (
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
-                      className="text-slate-400 hover:text-white ml-auto"
-                      onClick={handleDownload}
-                    >
-                      <Download className="w-4 h-4" />
-                    </Button>
-                  )}
-                </div>
-                
                 {/* Hidden Audio Element */}
                 {callData.recordingUrl && (
                   <audio
@@ -550,57 +554,60 @@ export default function CallTranscriptDialog({ open, onOpenChange, callData, onD
                   />
                 )}
                 
-                {/* Audio Progress Bar */}
-                <div className="space-y-2">
-                  <div className="flex justify-between text-xs text-slate-400">
-                    <span>{formatTime(currentTime)}</span>
-                    <span>{formatTime(duration)}</span>
+                {/* Modern Audio Player */}
+                {callData.recordingUrl ? (
+                  <div className="bg-slate-700 rounded-lg p-3 flex items-center gap-3">
+                    {/* Play Button */}
+                    <button
+                      onClick={handlePlayPause}
+                      className="w-8 h-8 bg-slate-600 rounded-full flex items-center justify-center hover:bg-slate-500 transition-colors"
+                      disabled={!callData.recordingUrl}
+                    >
+                      {isPlaying ? (
+                        <Pause className="w-4 h-4 text-white" />
+                      ) : (
+                        <Play className="w-4 h-4 text-white ml-0.5" />
+                      )}
+                    </button>
+                    
+                    {/* Time Display */}
+                    <div className="text-sm text-slate-200 font-medium">
+                      {formatTime(currentTime)} / {formatTime(duration)}
+                    </div>
+                    
+                    {/* Progress Bar */}
+                    <div 
+                      className="flex-1 bg-slate-600 rounded-full h-2 cursor-pointer relative"
+                      onClick={handleProgressClick}
+                    >
+                      <div
+                        className="bg-blue-500 h-2 rounded-full transition-all duration-300 pointer-events-none"
+                        style={{ width: duration > 0 ? `${(currentTime / duration) * 100}%` : '0%' }}
+                      />
+                    </div>
+                    
+                    {/* Volume Icon */}
+                    <button 
+                      className="w-6 h-6 flex items-center justify-center hover:bg-slate-600 rounded transition-colors"
+                      onClick={handleMuteToggle}
+                    >
+                      {isMuted ? (
+                        <VolumeX className="w-4 h-4 text-slate-300" />
+                      ) : (
+                        <Volume2 className="w-4 h-4 text-slate-300" />
+                      )}
+                    </button>
+                    
+                    {/* More Options Icon */}
+                    <button className="w-6 h-6 flex items-center justify-center">
+                      <div className="flex flex-col gap-0.5">
+                        <div className="w-1 h-1 bg-slate-300 rounded-full"></div>
+                        <div className="w-1 h-1 bg-slate-300 rounded-full"></div>
+                        <div className="w-1 h-1 bg-slate-300 rounded-full"></div>
+                      </div>
+                    </button>
                   </div>
-                  <div 
-                    className="w-full bg-slate-700 rounded-full h-2 cursor-pointer"
-                    onClick={handleProgressClick}
-                  >
-                    <div
-                      className="bg-blue-500 h-2 rounded-full transition-all duration-300"
-                      style={{ width: duration > 0 ? `${(currentTime / duration) * 100}%` : '0%' }}
-                    />
-                  </div>
-                </div>
-                
-                {/* Audio Controls */}
-                <div className="flex items-center justify-center gap-4 mt-2">
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    className="text-slate-400 hover:text-white"
-                    onClick={handleSkipBack}
-                    disabled={!callData.recordingUrl}
-                  >
-                    <SkipBack className="w-4 h-4" />
-                  </Button>
-                  <Button
-                    onClick={handlePlayPause}
-                    className="bg-blue-600 hover:bg-blue-700 rounded-full w-10 h-10 p-0"
-                    disabled={!callData.recordingUrl}
-                  >
-                    {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                  </Button>
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    className="text-slate-400 hover:text-white"
-                    onClick={handleSkipForward}
-                    disabled={!callData.recordingUrl}
-                  >
-                    <SkipForward className="w-4 h-4" />
-                  </Button>
-                  <Button variant="ghost" size="sm" className="text-slate-400 hover:text-white">
-                    <Volume2 className="w-4 h-4" />
-                  </Button>
-                </div>
-                
-                {/* No Recording Message */}
-                {!callData.recordingUrl && (
+                ) : (
                   <div className="text-center py-4 text-slate-400 text-sm">
                     No recording available for this call
                   </div>

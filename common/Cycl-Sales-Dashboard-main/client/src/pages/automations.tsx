@@ -262,9 +262,9 @@ export default function Automations() {
   // In the UI, render and update using the nested state only
 
   // State for toggles, checkboxes, and inputs
-  const [templateName, setTemplateName] = useState("Generic Default");
+  const [templateName, setTemplateName] = useState("");
   const [isDefaultConfig, setIsDefaultConfig] = useState(false);
-  const [businessContext, setBusinessContext] = useState("This company acquires residential properties that are in pre-foreclosure or facing auction. The goal is to either reinstate the mortgage with funding or purchase the property. Once acquired, the company temporarily holds the property, assigns the ...");
+  const [businessContext, setBusinessContext] = useState("");
   const [saveContactStatus, setSaveContactStatus] = useState({
     addTag: true,
     updateField: true,
@@ -331,7 +331,10 @@ export default function Automations() {
             // Update all the settings arrays
             setCallTranscriptSettings(templateData.call_transcript_setting_ids || []);
             setCallSummarySettings(templateData.call_summary_setting_ids || []);
+            
+            // Use AI Sales Scoring settings exactly as they come from the database
             setAiSalesScoringSettings(templateData.ai_sales_scoring_setting_ids || []);
+            
             setRunContactAutomationsSettings(templateData.run_contact_automations_setting_ids || []);
             setContactStatusSettings(templateData.contact_status_setting_ids || []);
             setAiContactScoringSettings(templateData.ai_contact_scoring_setting_ids || []);
@@ -345,9 +348,12 @@ export default function Automations() {
             }
           } else {
             // If no template found, set default values
-            setTemplateName('Generic Default');
-            setBusinessContext('This company acquires residential properties that are in pre-foreclosure or facing auction. The goal is to either reinstate the mortgage with funding or purchase the property. Once acquired, the company temporarily holds the property, assigns the ...');
+            setTemplateName('');
+            setBusinessContext('');
             setIsDefaultConfig(true);
+            
+            // Initialize empty AI Sales Scoring settings - let user create their own
+            setAiSalesScoringSettings([]);
           }
         })
         .catch(error => {
@@ -767,6 +773,34 @@ export default function Automations() {
     }
   };
 
+  // Handlers for AI Sales Scoring dynamic rules
+  const handleAddSalesRule = () => {
+    if (!aiSalesScoringSettings[0]) {
+      // Create new AI Sales Scoring setting if none exists
+      setAiSalesScoringSettings([{
+        id: Date.now(),
+        enabled: true,
+        framework: "",
+        rule_ids: [{ id: Date.now(), rule_text: '' }]
+      }]);
+    } else {
+      const newRules = [...(aiSalesScoringSettings[0].rule_ids || []), { id: Date.now(), rule_text: '' }];
+      setAiSalesScoringSettings([{ ...aiSalesScoringSettings[0], rule_ids: newRules }]);
+    }
+  };
+  const handleRemoveSalesRule = (idx: number) => {
+    if (!aiSalesScoringSettings[0]) return;
+    const newRules = [...(aiSalesScoringSettings[0].rule_ids || [])];
+    newRules.splice(idx, 1);
+    setAiSalesScoringSettings([{ ...aiSalesScoringSettings[0], rule_ids: newRules }]);
+  };
+  const handleChangeSalesRule = (idx: number, value: string) => {
+    if (!aiSalesScoringSettings[0]) return;
+    const newRules = [...(aiSalesScoringSettings[0].rule_ids || [])];
+    newRules[idx] = { ...newRules[idx], rule_text: value };
+    setAiSalesScoringSettings([{ ...aiSalesScoringSettings[0], rule_ids: newRules }]);
+  };
+
   return (
     <div className="min-h-screen w-full bg-slate-950 text-slate-50 overflow-x-hidden">
       {!isSubAccount && <TopNavigation />}
@@ -889,7 +923,12 @@ export default function Automations() {
                 <CardDescription>Use this text area to provide context for the AI to use in various tasks to help it better understand the business and provide more accurate results.</CardDescription>
               </CardHeader>
               <CardContent>
-                <Textarea value={businessContext} onChange={e => setBusinessContext(e.target.value)} className="bg-slate-800 border-slate-700 min-h-[100px]" />
+                <Textarea 
+                  value={businessContext} 
+                  onChange={e => setBusinessContext(e.target.value)} 
+                  placeholder="Describe your business context, goals, and processes..."
+                  className="bg-slate-800 border-slate-700 min-h-[100px]" 
+                />
               </CardContent>
             </Card>
           </div>
@@ -1044,31 +1083,54 @@ export default function Automations() {
                   <CardTitle>AI Sales Scoring <span className="ml-2 px-2 py-0.5 bg-blue-900 text-blue-300 rounded text-xs font-semibold">Recommended</span></CardTitle>
                   <CardDescription>Use AI to analyze phone calls and conversations to provide a score based on your framework, rules, and examples.</CardDescription>
                 </div>
-                <Switch checked={aiSalesScoringSettings[0]?.enabled || false} onCheckedChange={val => setAiSalesScoringSettings([{ ...aiSalesScoringSettings[0], enabled: val }])} />
+                <Switch checked={aiSalesScoringSettings[0]?.enabled || false} onCheckedChange={val => {
+                  if (!aiSalesScoringSettings[0]) {
+                    // Create new AI Sales Scoring setting if none exists
+                    setAiSalesScoringSettings([{
+                      id: Date.now(),
+                      enabled: val,
+                      framework: "",
+                      rule_ids: []
+                    }]);
+                  } else {
+                    setAiSalesScoringSettings([{ ...aiSalesScoringSettings[0], enabled: val }]);
+                  }
+                }} />
               </CardHeader>
               <CardContent className="space-y-4">
                 <Label className="font-semibold text-slate-300">Sales Framework</Label>
                 <Input 
-                  value={aiSalesScoringSettings[0]?.framework || "CONSULTATIVE SALES FRAMEWORK – BUSINESS ACQUISITIONS"} 
-                  onChange={e => setAiSalesScoringSettings([{ ...aiSalesScoringSettings[0], framework: e.target.value }])}
+                  value={aiSalesScoringSettings[0]?.framework || ""} 
+                  onChange={e => {
+                    if (!aiSalesScoringSettings[0]) {
+                      // Create new AI Sales Scoring setting if none exists
+                      setAiSalesScoringSettings([{
+                        id: Date.now(),
+                        enabled: true,
+                        framework: e.target.value,
+                        rule_ids: []
+                      }]);
+                    } else {
+                      setAiSalesScoringSettings([{ ...aiSalesScoringSettings[0], framework: e.target.value }]);
+                    }
+                  }}
+                  placeholder="Enter your sales framework..."
                   className="bg-slate-800 border-slate-700" 
                 />
                 <Label className="font-semibold text-slate-300">Rules & Examples</Label>
                 <div className="space-y-2">
-                  {/* salesRules state is removed, so this section will not render dynamic rules */}
-                  <Textarea 
-                    value={aiSalesScoringSettings[0]?.rule_ids?.[0]?.rule_text || "An A-grade contact is fully committed — they have signed the agreement or scheduled a notary, respond quickly, follow instructions, and clearly want to stop the foreclosure or proceed with a sale. They show urgency and cooperation without needing to be chased.\n\nA B-grade contact is interested but slightly delayed — they may have received the agreement but haven't signed yet, are responsive but waiting on a spouse, or seem open but are processing the decision. They ask questions and show intent, but still require active follow-up.\n\nA C-grade contact is lukewarm — they respond inconsistently, give short or unclear answers, and haven't shown strong urgency. They may say they're interested but haven't taken action or confirmed they're ready to move forward.\n\nA D-grade contact is non-committal — they reply slowly, avoid key questions, deflect with vague excuses, or say things like 'I'll think about it' with no clear follow-through. They're in foreclosure but not showing interest in help yet.\n\nAn F-grade contact does not engage at all — they ignore calls and texts, respond negatively, or have clearly said they are not interested or no longer need assistance."} 
-                    onChange={e => {
-                      const updatedRules = [...(aiSalesScoringSettings[0]?.rule_ids || [])];
-                      if (updatedRules.length > 0) {
-                        updatedRules[0] = { ...updatedRules[0], rule_text: e.target.value };
-                      } else {
-                        updatedRules.push({ id: Date.now(), rule_text: e.target.value });
-                      }
-                      setAiSalesScoringSettings([{ ...aiSalesScoringSettings[0], rule_ids: updatedRules }]);
-                    }}
-                    className="bg-slate-800 border-slate-700 min-h-[120px]" 
-                  />
+                  {aiSalesScoringSettings[0]?.rule_ids?.map((rule, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      <Textarea 
+                        value={rule.rule_text} 
+                        onChange={e => handleChangeSalesRule(idx, e.target.value)} 
+                        placeholder="Enter sales rule or example..."
+                        className="bg-slate-800 border-slate-700 flex-1 min-h-[80px]" 
+                      />
+                      <Button variant="ghost" size="icon" onClick={() => handleRemoveSalesRule(idx)}><Trash2 className="w-4 h-4 text-slate-400" /></Button>
+                    </div>
+                  )) || []}
+                  <Button variant="ghost" className="flex items-center gap-2 text-blue-400" onClick={handleAddSalesRule}><Plus className="w-4 h-4" />Add a rule</Button>
                 </div>
               </CardContent>
             </Card>
@@ -1185,8 +1247,9 @@ export default function Automations() {
                 <div className="space-y-2">
                   {/* contactValueExamples state is removed, so this section will not render dynamic value examples */}
                   <Textarea 
-                    value={aiContactScoringSettings[0]?.examples_rules || "An A-grade contact is fully committed — they have signed the agreement or scheduled a notary, respond quickly, follow instructions, and clearly want to stop the foreclosure or proceed with a sale. They show urgency and cooperation without needing to be chased.\n\nA B-grade contact is interested but slightly delayed — they may have received the agreement but haven't signed yet, are responsive but waiting on a spouse, or seem open but are processing the decision. They ask questions and show intent, but still require active follow-up.\n\nA C-grade contact is lukewarm — they respond inconsistently, give short or unclear answers, and haven't shown strong urgency. They may say they're interested but haven't taken action or confirmed they're ready to move forward.\n\nA D-grade contact is non-committal — they reply slowly, avoid key questions, deflect with vague excuses, or say things like 'I'll think about it' with no clear follow-through. They're in foreclosure but not showing interest in help yet.\n\nAn F-grade contact does not engage at all — they ignore calls and texts, respond negatively, or have clearly said they are not interested or no longer need assistance."} 
+                    value={aiContactScoringSettings[0]?.examples_rules || ""} 
                     onChange={e => setAiContactScoringSettings([{ ...aiContactScoringSettings[0], examples_rules: e.target.value }])}
+                    placeholder="Enter your contact scoring examples and rules..."
                     className="bg-slate-800 border-slate-700 min-h-[120px]" 
                   />
                 </div>
@@ -1249,7 +1312,7 @@ export default function Automations() {
                 <div className="space-y-2">
                   {/* contactValueExamples state is removed, so this section will not render dynamic value examples */}
                   <Textarea 
-                    value={contactValueSettings[0]?.value_example_ids?.[0]?.example_text || "An A-grade contact is fully committed — they have signed the agreement or scheduled a notary, respond quickly, follow instructions, and clearly want to stop the foreclosure or proceed with a sale. They show urgency and cooperation without needing to be chased.\n\nA B-grade contact is interested but slightly delayed — they may have received the agreement but haven't signed yet, are responsive but waiting on a spouse, or seem open but are processing the decision. They ask questions and show intent, but still require active follow-up.\n\nA C-grade contact is lukewarm — they respond inconsistently, give short or unclear answers, and haven't shown strong urgency. They may say they're interested but haven't taken action or confirmed they're ready to move forward.\n\nA D-grade contact is non-committal — they reply slowly, avoid key questions, deflect with vague excuses, or say things like 'I'll think about it' with no clear follow-through. They're in foreclosure but not showing interest in help yet.\n\nAn F-grade contact does not engage at all — they ignore calls and texts, respond negatively, or have clearly said they are not interested or no longer need assistance."} 
+                    value={contactValueSettings[0]?.value_example_ids?.[0]?.example_text || ""} 
                     onChange={e => {
                       const updatedExamples = [...(contactValueSettings[0]?.value_example_ids || [])];
                       if (updatedExamples.length > 0) {
@@ -1259,6 +1322,7 @@ export default function Automations() {
                       }
                       setContactValueSettings([{ ...contactValueSettings[0], value_example_ids: updatedExamples }]);
                     }}
+                    placeholder="Enter your contact value examples..."
                     className="bg-slate-800 border-slate-700 min-h-[120px]" 
                   />
                 </div>
@@ -1290,7 +1354,7 @@ export default function Automations() {
                 <div className="space-y-2">
                   {/* taskRules state is removed, so this section will not render dynamic task rules */}
                   <Textarea 
-                    value={taskGenerationSettings[0]?.task_rule_ids?.[0]?.rule_text || "An A-grade contact is fully committed — they have signed the agreement or scheduled a notary, respond quickly, follow instructions, and clearly want to stop the foreclosure or proceed with a sale. They show urgency and cooperation without needing to be chased.\n\nA B-grade contact is interested but slightly delayed — they may have received the agreement but haven't signed yet, are responsive but waiting on a spouse, or seem open but are processing the decision. They ask questions and show intent, but still require active follow-up.\n\nA C-grade contact is lukewarm — they respond inconsistently, give short or unclear answers, and haven't shown strong urgency. They may say they're interested but haven't taken action or confirmed they're ready to move forward.\n\nA D-grade contact is non-committal — they reply slowly, avoid key questions, deflect with vague excuses, or say things like 'I'll think about it' with no clear follow-through. They're in foreclosure but not showing interest in help yet.\n\nAn F-grade contact does not engage at all — they ignore calls and texts, respond negatively, or have clearly said they are not interested or no longer need assistance."} 
+                    value={taskGenerationSettings[0]?.task_rule_ids?.[0]?.rule_text || ""} 
                     onChange={e => {
                       const updatedRules = [...(taskGenerationSettings[0]?.task_rule_ids || [])];
                       if (updatedRules.length > 0) {
@@ -1300,6 +1364,7 @@ export default function Automations() {
                       }
                       setTaskGenerationSettings([{ ...taskGenerationSettings[0], task_rule_ids: updatedRules }]);
                     }}
+                    placeholder="Enter your task generation rules..."
                     className="bg-slate-800 border-slate-700 min-h-[120px]" 
                   />
                 </div>

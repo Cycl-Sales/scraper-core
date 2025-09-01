@@ -79,7 +79,7 @@ function App() {
   return (
     <ThemeProvider>
       <SubAccountProvider>
-        <TooltipProvider>
+        <TooltipProvider delayDuration={0} skipDelayDuration={0}>
           <div className="dark">
             <Toaster />
             <Router />
