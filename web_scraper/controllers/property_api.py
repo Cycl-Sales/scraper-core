@@ -104,16 +104,46 @@ class ZillowPropertyAPI(http.Controller):
 
 
 class ContactDetailsAPI(http.Controller):
-    @http.route('/api/contact-details', type='json', auth='user', methods=['POST'], csrf=False)
+    @http.route('/api/contact-details', type='http', auth='user', methods=['POST', 'OPTIONS'], csrf=False)
     def get_contact_details(self, **kwargs):
-        contact_id = kwargs.get('contact_id')
+        # Handle preflight OPTIONS request
+        if request.httprequest.method == 'OPTIONS':
+            return Response(
+                status=200,
+                headers=get_cors_headers(request)
+            )
+        
+        # Parse request data
+        data = {}
+        try:
+            import json
+            raw_body = request.httprequest.get_data(as_text=True)
+            if raw_body:
+                data = json.loads(raw_body)
+        except Exception as e:
+            print('Error parsing raw body:', str(e))
+        
+        if not data:
+            data = kwargs
+        
+        contact_id = data.get('contact_id')
         if not contact_id:
-            return {'success': False, 'error': 'contact_id is required'}
+            return Response(
+                json.dumps({'success': False, 'error': 'contact_id is required'}),
+                content_type='application/json',
+                status=400,
+                headers=get_cors_headers(request)
+            )
         
         try:
             contact = request.env['ghl.location.contact'].sudo().browse(int(contact_id))
             if not contact:
-                return {'success': False, 'error': 'Contact not found'}
+                return Response(
+                    json.dumps({'success': False, 'error': 'Contact not found'}),
+                    content_type='application/json',
+                    status=404,
+                    headers=get_cors_headers(request)
+                )
             
             if contact.details_fetched:
                 # Already fetched, return details with related data
@@ -121,7 +151,12 @@ class ContactDetailsAPI(http.Controller):
                 contact_data['tasks'] = contact.task_ids.read()
                 contact_data['conversations'] = contact.conversation_ids.read()
                 contact_data['opportunities'] = contact.opportunity_ids.read()
-                return {'success': True, 'contact': contact_data}
+                return Response(
+                    json.dumps({'success': True, 'contact': contact_data}),
+                    content_type='application/json',
+                    status=200,
+                    headers=get_cors_headers(request)
+                )
             
             # Get the access token from the associated application
             app = request.env['cyclsales.application'].sudo().search([
@@ -130,7 +165,12 @@ class ContactDetailsAPI(http.Controller):
             ], limit=1)
             
             if not app or not app.access_token:
-                return {'success': False, 'error': 'No valid access token found'}
+                return Response(
+                    json.dumps({'success': False, 'error': 'No valid access token found'}),
+                    content_type='application/json',
+                    status=400,
+                    headers=get_cors_headers(request)
+                )
             
             # Fetch details from GHL API
             success = self._fetch_contact_details_from_ghl(contact, app.access_token)
@@ -142,23 +182,63 @@ class ContactDetailsAPI(http.Controller):
                 contact_data['tasks'] = contact.task_ids.read()
                 contact_data['conversations'] = contact.conversation_ids.read()
                 contact_data['opportunities'] = contact.opportunity_ids.read()
-                return {'success': True, 'contact': contact_data}
+                return Response(
+                    json.dumps({'success': True, 'contact': contact_data}),
+                    content_type='application/json',
+                    status=200,
+                    headers=get_cors_headers(request)
+                )
             else:
-                return {'success': False, 'error': 'Failed to fetch contact details from GHL API'}
+                return Response(
+                    json.dumps({'success': False, 'error': 'Failed to fetch contact details from GHL API'}),
+                    content_type='application/json',
+                    status=500,
+                    headers=get_cors_headers(request)
+                )
                 
         except Exception as e:
             _logger.error(f"Error fetching contact details: {str(e)}", exc_info=True)
-            return {'success': False, 'error': f'Internal server error: {str(e)}'}
+            return Response(
+                json.dumps({'success': False, 'error': f'Internal server error: {str(e)}'}),
+                content_type='application/json',
+                status=500,
+                headers=get_cors_headers(request)
+            )
 
-    @http.route('/api/load-more-contacts', type='json', auth='user', methods=['POST'], csrf=False)
+    @http.route('/api/load-more-contacts', type='http', auth='user', methods=['POST', 'OPTIONS'], csrf=False)
     def load_more_contacts(self, **kwargs):
         """Load additional contacts from database with pagination"""
-        location_id = kwargs.get('location_id')
-        page = kwargs.get('page', 1)
-        page_size = kwargs.get('page_size', 100)
+        # Handle preflight OPTIONS request
+        if request.httprequest.method == 'OPTIONS':
+            return Response(
+                status=200,
+                headers=get_cors_headers(request)
+            )
+        
+        # Parse request data
+        data = {}
+        try:
+            import json
+            raw_body = request.httprequest.get_data(as_text=True)
+            if raw_body:
+                data = json.loads(raw_body)
+        except Exception as e:
+            print('Error parsing raw body:', str(e))
+        
+        if not data:
+            data = kwargs
+        
+        location_id = data.get('location_id')
+        page = data.get('page', 1)
+        page_size = data.get('page_size', 100)
         
         if not location_id:
-            return {'success': False, 'error': 'location_id is required'}
+            return Response(
+                json.dumps({'success': False, 'error': 'location_id is required'}),
+                content_type='application/json',
+                status=400,
+                headers=get_cors_headers(request)
+            )
         
         try:
             # Find the installed location
@@ -167,7 +247,12 @@ class ContactDetailsAPI(http.Controller):
             ], limit=1)
             
             if not installed_location:
-                return {'success': False, 'error': 'Location not found'}
+                return Response(
+                    json.dumps({'success': False, 'error': 'Location not found'}),
+                    content_type='application/json',
+                    status=404,
+                    headers=get_cors_headers(request)
+                )
             
             # Calculate offset for pagination
             offset = (page - 1) * page_size
@@ -194,19 +279,28 @@ class ContactDetailsAPI(http.Controller):
             
             has_more = (offset + page_size) < total_contacts
             
-            return {
-                'success': True,
-                'contacts': contacts_data,
-                'page': page,
-                'page_size': page_size,
-                'total_contacts': total_contacts,
-                'has_more': has_more,
-                'offset': offset
-            }
+            return Response(
+                json.dumps({
+                    'success': True,
+                    'contacts': contacts_data,
+                    'total_contacts': total_contacts,
+                    'page': page,
+                    'page_size': page_size,
+                    'has_more': has_more
+                }),
+                content_type='application/json',
+                status=200,
+                headers=get_cors_headers(request)
+            )
             
         except Exception as e:
             _logger.error(f"Error loading more contacts: {str(e)}", exc_info=True)
-            return {'success': False, 'error': f'Internal server error: {str(e)}'}
+            return Response(
+                json.dumps({'success': False, 'error': f'Internal server error: {str(e)}'}),
+                content_type='application/json',
+                status=500,
+                headers=get_cors_headers(request)
+            )
 
     def _process_contact_data(self, contact_data, installed_location):
         """Process a single contact data and create/update the record"""

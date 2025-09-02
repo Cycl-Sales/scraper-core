@@ -1498,7 +1498,8 @@ class InstalledLocationController(http.Controller):
             return Response(status=200, headers=get_cors_headers(request))
 
         location_id = kwargs.get('location_id')
-        _logger.info(f"location_id param: {location_id}")
+        selected_user = kwargs.get('selected_user', '')  # Add support for user filtering
+        _logger.info(f"location_id param: {location_id}, selected_user: {selected_user}")
         if not location_id:
             _logger.error("Missing location_id param")
             return Response(
@@ -1562,30 +1563,82 @@ class InstalledLocationController(http.Controller):
                     headers=get_cors_headers(request)
                 )
             
-            result = loc.fetch_contacts_count(app.access_token, 'Ipg8nKDPLYKsbtodR6LN')
-            _logger.info(f"fetch_contacts_count result: {result}")
-            if result.get('success'):
-                return Response(
-                    json.dumps({
-                        'success': True,
-                        'total_contacts': result.get('total_contacts', 0),
-                        'location_id': location_id
-                    }),
-                    content_type='application/json',
-                    status=200,
-                    headers=get_cors_headers(request)
+            # If user filtering is applied, get count from GHL API with filter
+            if selected_user and selected_user.strip():
+                _logger.info(f"User filter applied: {selected_user}, getting filtered count from GHL API")
+                
+                # Get filtered count directly from GHL API
+                _logger.info(f"Calling _get_filtered_contacts_count_from_ghl with: location_id={location_id}, selected_user={selected_user}")
+                filtered_count_result = self._get_filtered_contacts_count_from_ghl(
+                    location_id, selected_user, app.access_token, 'Ipg8nKDPLYKsbtodR6LN'
                 )
+                _logger.info(f"_get_filtered_contacts_count_from_ghl returned: {filtered_count_result}")
+                
+                if filtered_count_result.get('success'):
+                    filtered_count = filtered_count_result.get('total_contacts', 0)
+                    _logger.info(f"GHL API filtered contacts count: {filtered_count}")
+                    
+                    return Response(
+                        json.dumps({
+                            'success': True,
+                            'total_contacts': filtered_count,
+                            'location_id': location_id,
+                            'user_filter': selected_user,
+                            'is_filtered': True,
+                            'source': 'ghl_api'
+                        }),
+                        content_type='application/json',
+                        status=200,
+                        headers=get_cors_headers(request)
+                    )
+                else:
+                    _logger.warning(f"GHL API filtered count failed: {filtered_count_result.get('error')}, falling back to database")
+                    # Fallback to database count if GHL API fails
+                    domain = [('location_id.location_id', '=', location_id)]
+                    domain.append(('assigned_to', '=', selected_user))
+                    filtered_count = request.env['ghl.location.contact'].sudo().search_count(domain)
+                    
+                    return Response(
+                        json.dumps({
+                            'success': True,
+                            'total_contacts': filtered_count,
+                            'location_id': location_id,
+                            'user_filter': selected_user,
+                            'is_filtered': True,
+                            'source': 'database_fallback'
+                        }),
+                        content_type='application/json',
+                        status=200,
+                        headers=get_cors_headers(request)
+                    )
             else:
-                _logger.error(f"fetch_contacts_count error: {result.get('error')}")
-                return Response(
-                    json.dumps({
-                        'success': False,
-                        'error': result.get('error', 'Failed to fetch contacts count')
-                    }),
-                    content_type='application/json',
-                    status=500,
-                    headers=get_cors_headers(request)
-                )
+                # No user filter, get total count from GHL API
+                result = loc.fetch_contacts_count(app.access_token, 'Ipg8nKDPLYKsbtodR6LN')
+                _logger.info(f"fetch_contacts_count result: {result}")
+                if result.get('success'):
+                    return Response(
+                        json.dumps({
+                            'success': True,
+                            'total_contacts': result.get('total_contacts', 0),
+                            'location_id': location_id,
+                            'is_filtered': False,
+                            'source': 'ghl_api'
+                        }),
+                        content_type='application/json',
+                        status=200,
+                        headers=get_cors_headers(request)
+                    )
+                else:
+                    _logger.error(f"fetch_contacts_count error: {result.get('error')}")
+                    return Response(
+                        json.dumps({
+                            'success': False,
+                            'error': result.get('error', 'Failed to fetch contacts count')
+                        }),
+                        content_type='application/json',
+                        status=500,
+                        headers=get_cors_headers(request)
+                    )
         except Exception as e:
             import traceback
             tb = traceback.format_exc()
@@ -2887,35 +2940,13 @@ class InstalledLocationController(http.Controller):
             
             # Add user filtering if selected_user is provided
             if selected_user and selected_user.strip():
-                _logger.info(f"Filtering contacts by selected user: {selected_user}")
-                # First, find the user by name to get their external_id
-                user_record = request.env['ghl.location.user'].sudo().search([
-                    ('location_id', '=', location_id),
-                    '|',
-                    ('name', '=', selected_user),
-                    '&', ('first_name', '!=', False), ('last_name', '!=', False),
-                    ('first_name', 'ilike', selected_user.split()[0] if selected_user.split() else ''),
-                    ('last_name', 'ilike', selected_user.split()[-1] if len(selected_user.split()) > 1 else '')
-                ], limit=1)
+                _logger.info(f"Filtering contacts by selected user (external_id): {selected_user}")
                 
-                if user_record:
-                    _logger.info(f"Found user record: {user_record.name} with external_id: {user_record.external_id}")
-                    domain.append(('assigned_to', '=', user_record.external_id))
-                else:
-                    _logger.warning(f"No user found with name: {selected_user}")
-                    # If no user found, return empty result
-                    return Response(
-                        json.dumps({
-                            'success': True,
-                            'contacts': [],
-                            'total_contacts': 0,
-                            'has_more': False,
-                            'page': page,
-                            'limit': limit
-                        }),
-                        content_type='application/json',
-                        headers=get_cors_headers(request)
-                    )
+                # Since the frontend now sends the external_id directly, use it for filtering
+                domain.append(('assigned_to', '=', selected_user))
+                
+                # Log the domain for debugging
+                _logger.info(f"Applied user filter domain: {domain}")
             
             # First, let's see what contacts we have in total (with user filter if applicable)
             all_contacts = request.env['ghl.location.contact'].sudo().search(domain, order='date_added desc')
@@ -3293,17 +3324,16 @@ class InstalledLocationController(http.Controller):
                 sync_thread.start()
                 _logger.info(f"Started background sync for {len(contact_ids_for_background)} contacts")
 
-            # Get the actual total count from the database
-            total_contacts_in_db = request.env['ghl.location.contact'].sudo().search_count([
-                ('location_id.location_id', '=', location_id)
-            ])
+            # Get the actual total count from the database (respecting user filter if applied)
+            total_contacts_in_db = request.env['ghl.location.contact'].sudo().search_count(domain)
             
             # Calculate if there are more pages
             has_more_pages = (page * limit) < total_contacts_in_db
             
             # Debug logging
             _logger.info(f"Returning contacts data for location {location_id}:")
-            _logger.info(f"  Total contacts in DB: {total_contacts_in_db}")
+            _logger.info(f"  User filter applied: {selected_user if selected_user else 'None'}")
+            _logger.info(f"  Total contacts in DB (with filter): {total_contacts_in_db}")
             _logger.info(f"  Contact data length: {len(contact_data)}")
             _logger.info(f"  Page: {page}, Limit: {limit}, Has more: {has_more_pages}")
             _logger.info(f"  First few contacts: {contact_data[:2] if contact_data else 'No contacts'}")
@@ -4759,3 +4789,319 @@ class InstalledLocationController(http.Controller):
                 status=500,
                 headers=get_cors_headers(request)
             )
+
+    @http.route('/api/sync-location-contacts', type='http', auth='none', methods=['POST', 'OPTIONS'], csrf=False)
+    def sync_location_contacts(self, **kwargs):
+        """
+        Manual endpoint to trigger full GHL API synchronization for a location
+        This ensures all available contacts from GHL are fetched and stored locally
+        """
+        _logger.info(f"sync_location_contacts called with kwargs: {kwargs}")
+        if request.httprequest.method == 'OPTIONS':
+            return Response(status=200, headers=get_cors_headers(request))
+
+        location_id = kwargs.get('location_id')
+        if not location_id:
+            _logger.error("Missing location_id param")
+            return Response(
+                json.dumps({'success': False, 'error': 'location_id is required'}),
+                content_type='application/json',
+                status=400,
+                headers=get_cors_headers(request)
+            )
+
+        try:
+            app_id = self._get_app_id_from_request(kwargs)
+            company_id = 'Ipg8nKDPLYKsbtodR6LN'
+            app = request.env['cyclsales.application'].sudo().search([
+                ('app_id', '=', app_id),
+                ('is_active', '=', True)
+            ], limit=1)
+
+            if not app or not app.access_token:
+                _logger.error("No valid access token found for this app_id.")
+                return Response(
+                    json.dumps({'success': False, 'error': 'No valid access token found for this app_id.'}),
+                    content_type='application/json',
+                    status=400,
+                    headers=get_cors_headers(request)
+                )
+
+            loc = request.env['installed.location'].sudo().search([('location_id', '=', location_id)], limit=1)
+            if not loc:
+                _logger.error("Location not found in DB")
+                return Response(
+                    json.dumps({'success': False, 'error': 'Location not found'}),
+                    content_type='application/json',
+                    status=404,
+                    headers=get_cors_headers(request)
+                )
+
+            # Start background sync in a separate thread
+            def background_full_sync():
+                from odoo import api, SUPERUSER_ID
+                from odoo.modules.registry import Registry
+                import time
+                from datetime import datetime
+
+                dbname = request.env.cr.dbname
+                max_retries = 3
+                retry_delay = 2
+
+                # Small delay to avoid immediate concurrency
+                time.sleep(0.5)
+
+                for attempt in range(max_retries):
+                    try:
+                        _logger.info(f"Starting full GHL sync for location {location_id} (attempt {attempt + 1})")
+
+                        registry = Registry(dbname)
+                        with registry.cursor() as cr:
+                            env = api.Environment(cr, SUPERUSER_ID, {})
+                            
+                            # Get fresh app record
+                            app_record = env['cyclsales.application'].search([
+                                ('app_id', '=', app_id),
+                                ('is_active', '=', True)
+                            ], limit=1)
+                            
+                            if not app_record or not app_record.access_token:
+                                _logger.error("No valid access token found in background sync")
+                                return
+
+                            # Get location record
+                            location_record = env['installed.location'].search([
+                                ('location_id', '=', location_id)
+                            ], limit=1)
+                            
+                            if not location_record:
+                                _logger.error(f"Location {location_id} not found in background sync")
+                                return
+
+                            # First, get total count from GHL API
+                            ghl_count_result = location_record.fetch_contacts_count(
+                                app_record.access_token, company_id
+                            )
+                            
+                            if ghl_count_result.get('success'):
+                                ghl_total = ghl_count_result.get('total_contacts', 0)
+                                _logger.info(f"GHL API reports {ghl_total} total contacts for location {location_id}")
+                            else:
+                                _logger.warning(f"Could not get GHL contact count: {ghl_count_result.get('error')}")
+                                ghl_total = 0
+
+                            # Check current local count
+                            current_count = env['ghl.location.contact'].search_count([
+                                ('location_id.location_id', '=', location_id)
+                            ])
+                            _logger.info(f"Local database has {current_count} contacts before sync")
+
+                            # If we have significantly fewer contacts locally, do a full sync
+                            if ghl_total > 0 and current_count < ghl_total * 0.8:
+                                _logger.info(f"Local count ({current_count}) is significantly lower than GHL total ({ghl_total}). Starting full sync...")
+                                
+                                # Use the comprehensive fetch method to get all contacts
+                                sync_result = location_record.fetch_location_contacts_lazy(
+                                    company_id, location_id, app_record.access_token, page=1, limit=100
+                                )
+                                
+                                if sync_result.get('success'):
+                                    # Continue fetching until we have all contacts
+                                    page = 2
+                                    while True:
+                                        # Check if we need more contacts
+                                        current_local_count = env['ghl.location.contact'].search_count([
+                                            ('location_id.location_id', '=', location_id)
+                                        ])
+                                        
+                                        if current_local_count >= ghl_total * 0.95:  # Stop when we have 95% of contacts
+                                            _logger.info(f"Reached 95% of GHL contacts ({current_local_count}/{ghl_total}), stopping sync")
+                                            break
+                                        
+                                        _logger.info(f"Fetching page {page} for location {location_id}")
+                                        page_result = location_record.fetch_location_contacts_lazy(
+                                            company_id, location_id, app_record.access_token, page=page, limit=100
+                                        )
+                                        
+                                        if not page_result.get('success'):
+                                            _logger.error(f"Failed to fetch page {page}: {page_result.get('error')}")
+                                            break
+                                        
+                                        # Check if we got new contacts
+                                        new_count = env['ghl.location.contact'].search_count([
+                                            ('location_id.location_id', '=', location_id)
+                                        ])
+                                        
+                                        if new_count <= current_local_count:
+                                            _logger.info(f"No new contacts on page {page}, stopping")
+                                            break
+                                        
+                                        current_local_count = new_count
+                                        page += 1
+                                        
+                                        # Add small delay to avoid overwhelming the API
+                                        time.sleep(0.5)
+                                        
+                                        # Safety check to prevent infinite loops
+                                        if page > 50:  # Max 50 pages
+                                            _logger.warning("Reached maximum page limit (50), stopping sync")
+                                            break
+                                    
+                                    final_count = env['ghl.location.contact'].search_count([
+                                        ('location_id.location_id', '=', location_id)
+                                    ])
+                                    _logger.info(f"Full sync completed. Final count: {final_count}/{ghl_total}")
+                                else:
+                                    _logger.error(f"Failed to start full sync: {sync_result.get('error')}")
+                            else:
+                                _logger.info(f"Local database is sufficiently synced ({current_count}/{ghl_total})")
+
+                            cr.commit()
+
+                    except Exception as e:
+                        _logger.error(f"Background sync error (attempt {attempt + 1}): {str(e)}")
+                        if attempt < max_retries - 1:
+                            time.sleep(retry_delay)
+                        else:
+                            _logger.error(f"All retry attempts failed for location {location_id}")
+
+            # Start background sync thread
+            sync_thread = threading.Thread(target=background_full_sync)
+            sync_thread.daemon = True
+            sync_thread.start()
+            _logger.info(f"Started full GHL sync thread for location {location_id}")
+
+            return Response(
+                json.dumps({
+                    'success': True,
+                    'message': 'Full GHL synchronization started in background',
+                    'location_id': location_id,
+                    'sync_started': True
+                }),
+                content_type='application/json',
+                headers=get_cors_headers(request)
+            )
+
+        except Exception as e:
+            import traceback
+            tb = traceback.format_exc()
+            _logger.error(f"Exception in sync_location_contacts: {str(e)}\n{tb}")
+            return Response(
+                json.dumps({'success': False, 'error': str(e), 'traceback': tb}),
+                content_type='application/json',
+                status=500,
+                headers=get_cors_headers(request)
+            )
+
+    def _get_filtered_contacts_count_from_ghl(self, location_id, selected_user, app_access_token, company_id):
+        """
+        Get filtered contact count directly from GHL API
+        This ensures we get the real-time count, not just local database count
+        """
+        try:
+            from odoo.addons.web_scraper.models.ghl_api_utils import get_location_token
+            import requests
+            
+            # Get location access token
+            location_token = get_location_token(app_access_token, company_id, location_id)
+            if not location_token:
+                _logger.error("Failed to get location access token for filtered count")
+                return {'success': False, 'error': 'Failed to get location access token'}
+            
+            # Build the GHL API request with user filter
+            url = "https://services.leadconnectorhq.com/contacts/search"
+            headers = {
+                'Accept': 'application/json',
+                'Authorization': f'Bearer {location_token}',
+                'Version': '2021-07-28',
+            }
+            
+            # Base request body
+            data = {
+                'locationId': location_id,
+                'pageLimit': 1,  # We only need count, not actual contacts
+                'page': 1,
+                'sort': [
+                    {
+                        'field': 'dateUpdated',
+                        'direction': 'desc'
+                    }
+                ]
+            }
+            
+            # Add user filter if specified
+            if selected_user and selected_user.strip():
+                # GHL API supports filtering by assignedTo using the proper filter structure
+                # According to documentation: field="assignedTo", operator="eq", value=user_id
+                data['filters'] = [
+                    {
+                        "field": "assignedTo",
+                        "operator": "eq",
+                        "value": selected_user
+                    }
+                ]
+                _logger.info(f"Adding GHL API filter for user: {selected_user}")
+                _logger.info(f"Filter structure: {data['filters']}")
+                _logger.info(f"Using field 'assignedTo' with value '{selected_user}' (per GHL API docs)")
+            
+            _logger.info(f"Fetching filtered contacts count from GHL API for location {location_id}")
+            _logger.info(f"Request data: {data}")
+            
+            # First, let's test without filters to see the base response structure
+            if selected_user and selected_user.strip():
+                _logger.info("Testing base response structure first...")
+                base_data = data.copy()
+                if 'filters' in base_data:
+                    del base_data['filters']
+                
+                base_response = requests.post(url, headers=headers, json=base_data, timeout=30)
+                if base_response.status_code == 200:
+                    base_result = base_response.json()
+                    _logger.info(f"Base response (no filters): {base_result}")
+                    _logger.info(f"Base response keys: {list(base_result.keys())}")
+                    if 'contacts' in base_result and base_result['contacts']:
+                        sample_contact = base_result['contacts'][0]
+                        _logger.info(f"Sample contact structure: {sample_contact}")
+                        _logger.info(f"Sample contact keys: {list(sample_contact.keys())}")
+                        # Look for user assignment fields
+                        user_fields = [k for k in sample_contact.keys() if 'user' in k.lower() or 'assign' in k.lower()]
+                        _logger.info(f"Potential user assignment fields: {user_fields}")
+                        
+                        # Also check for any fields that might contain the user ID
+                        if 'assignedTo' in sample_contact:
+                            _logger.info(f"assignedTo value: {sample_contact['assignedTo']}")
+                        if 'assignedToId' in sample_contact:
+                            _logger.info(f"assignedToId value: {sample_contact['assignedToId']}")
+                        if 'userId' in sample_contact:
+                            _logger.info(f"userId value: {sample_contact['userId']}")
+                        if 'assignedUserId' in sample_contact:
+                            _logger.info(f"assignedUserId value: {sample_contact['assignedUserId']}")
+            
+            response = requests.post(url, headers=headers, json=data, timeout=30)
+            if response.status_code == 200:
+                result = response.json()
+                total_count = result.get('total', 0)
+                _logger.info(f"GHL API filtered contacts count for location {location_id}: {total_count}")
+                _logger.info(f"GHL API response structure: {list(result.keys())}")
+                _logger.info(f"GHL API response sample: {result}")
+                
+                # Compare filtered vs unfiltered counts
+                if selected_user and selected_user.strip():
+                    _logger.info(f"COMPARISON: Filtered count: {total_count}, Expected from GHL app: ~540")
+                    if total_count < 100:  # If we're getting a very low count, the filter might not be working
+                        _logger.warning(f"WARNING: Filtered count ({total_count}) is much lower than expected (540).")
+                        _logger.warning(f"Check GHL API response for errors or incorrect filter structure.")
+                    else:
+                        _logger.info(f"SUCCESS: Filter working correctly. Got {total_count} contacts (expected ~540)")
+                
+                return {'success': True, 'total_contacts': total_count, 'is_filtered': bool(selected_user)}
+            else:
+                _logger.error(f"GHL API filtered count failed. Status: {response.status_code}, Response: {response.text}")
+                return {'success': False, 'error': f'GHL API request failed with status {response.status_code}'}
+                
+        except Exception as e:
+            import traceback
+            tb = traceback.format_exc()
+            _logger.error(f"Error getting filtered contacts count from GHL API: {str(e)}")
+            _logger.error(f"Full traceback: {tb}")
+            return {'success': False, 'error': str(e), 'traceback': tb}

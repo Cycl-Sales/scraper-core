@@ -107,6 +107,7 @@ export default function Analytics() {
   const [activeTab, setActiveTab] = useState("contacts");
   const [users, setUsers] = useState<any[]>([]);
   const [selectedUser, setSelectedUser] = useState<string>("");
+  const [selectedUserExternalId, setSelectedUserExternalId] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [contactsLoading] = useState(false);
   const [syncStatus, setSyncStatus] = useState<string>("");
@@ -241,6 +242,57 @@ export default function Analytics() {
     }
   };
 
+  // Function to sync all contacts from GHL API
+  const syncAllContacts = async () => {
+    if (!locationId) return;
+    
+    setRefreshing(true);
+    setSyncStatus("Starting full GHL sync...");
+    
+    try {
+      const response = await fetch(`${PROD_BASE_URL}/api/sync-location-contacts`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          location_id: locationId,
+          appId: CYCLSALES_APP_ID
+        })
+      });
+      
+      const data = await response.json();
+      if (data.success) {
+        setSyncStatus("Full GHL sync started successfully. This may take several minutes.");
+        setTimeout(() => setSyncStatus(""), 10000);
+        
+        // Wait a bit then refresh the contacts table to show updated counts
+        setTimeout(async () => {
+          try {
+            const refreshResponse = await fetch(`${PROD_BASE_URL}/api/location-contacts-optimized?location_id=${encodeURIComponent(locationId)}&page=1&limit=10&appId=${CYCLSALES_APP_ID}`);
+            const refreshData = await refreshResponse.json();
+            if (refreshData.success) {
+              setSyncStatus("Sync completed! Refreshed contact data.");
+              setTimeout(() => setSyncStatus(""), 5000);
+            }
+          } catch (refreshError) {
+            console.error("Error refreshing after sync:", refreshError);
+          }
+        }, 5000);
+      } else {
+        console.error("Failed to start sync:", data.error);
+        setSyncStatus("Failed to start sync: " + (data.error || "Unknown error"));
+        setTimeout(() => setSyncStatus(""), 5000);
+      }
+    } catch (error) {
+      console.error("Error starting sync:", error);
+      setSyncStatus("Error starting sync: " + (error instanceof Error ? error.message : String(error)));
+      setTimeout(() => setSyncStatus(""), 5000);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   return (
     <div className="min-h-screen w-full bg-slate-950 text-slate-50 overflow-x-hidden">
       {!isSubAccount && <TopNavigation />}
@@ -311,7 +363,12 @@ export default function Analytics() {
                         <button
                           key={user.id}
                           className="w-full text-left px-3 py-2 text-sm text-slate-200 hover:bg-slate-800 rounded-md flex flex-col"
-                          onClick={() => setSelectedUser(user.name || `${user.first_name} ${user.last_name}`)}
+                          onClick={() => {
+                            const displayName = user.name || `${user.first_name} ${user.last_name}`;
+                            setSelectedUser(displayName);
+                            setSelectedUserExternalId(user.external_id || "");
+                            console.log(`Selected user: ${displayName} with external_id: ${user.external_id}`);
+                          }}
                         >
                           <span className="font-medium">{user.name || `${user.first_name} ${user.last_name}`}</span>
                           <span className="text-xs text-slate-400">{user.email}</span>
@@ -322,9 +379,24 @@ export default function Analytics() {
                   ) : (
                     <div className="text-slate-400 text-sm p-2">No users found</div>
                   )}
+                  {selectedUser && (
+                    <div className="border-t border-slate-700 pt-2 mt-2">
+                      <button
+                        className="w-full text-left px-3 py-2 text-sm text-red-400 hover:bg-slate-800 rounded-md"
+                        onClick={() => {
+                          setSelectedUser("");
+                          setSelectedUserExternalId("");
+                          console.log("Cleared user selection");
+                        }}
+                      >
+                        Clear Selection
+                      </button>
+                    </div>
+                  )}
                 </div>
               </PopoverContent>
             </Popover>
+
             {/* More Filters */}
             <Popover open={filtersOpen} onOpenChange={setFiltersOpen}>
               <PopoverTrigger asChild>
@@ -553,13 +625,51 @@ export default function Analytics() {
                 <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
                 {refreshing ? 'Refreshing...' : 'Refresh'}
               </Button>
+              <Button 
+                variant="outline" 
+                className="flex gap-2 items-center bg-blue-800 text-blue-200 border-blue-700 hover:bg-blue-700"
+                onClick={syncAllContacts}
+                disabled={refreshing}
+              >
+                <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+                {refreshing ? 'Syncing...' : 'Sync All Contacts'}
+              </Button>
               <Button variant="outline" className="flex gap-2 items-center bg-slate-800 text-slate-200 border-slate-700">
                 <Filter className="w-4 h-4" />
                 Customize Columns
               </Button>
+              <Button 
+                variant="outline" 
+                className="flex gap-2 items-center bg-yellow-800 text-yellow-200 border-yellow-700 hover:bg-yellow-700"
+                onClick={() => {
+                  console.log('Debug info:');
+                  console.log('  - selectedUser:', selectedUser);
+                  console.log('  - selectedUserExternalId:', selectedUserExternalId);
+                  console.log('  - locationId:', locationId);
+                  console.log('  - users count:', users.length);
+                  console.log('  - users:', users);
+                }}
+                title="Debug user filtering"
+              >
+                🐛 Debug
+              </Button>
             </div>
           </div>
-          <AnalyticsContactsTable loading={contactsLoading} locationId={locationId || ""} selectedUser={selectedUser} activeFilters={activeFilters} />
+          <AnalyticsContactsTable 
+            loading={contactsLoading} 
+            locationId={locationId || ""} 
+            selectedUser={selectedUserExternalId || selectedUser} 
+            activeFilters={activeFilters} 
+          />
+          {/* Debug info */}
+          {selectedUser && (
+            <div className="mt-4 p-3 bg-slate-800 rounded-lg text-xs text-slate-300">
+              <div><strong>Debug Info:</strong></div>
+              <div>Selected User: {selectedUser}</div>
+              <div>External ID: {selectedUserExternalId || 'None'}</div>
+              <div>Sent to Table: {selectedUserExternalId || selectedUser}</div>
+            </div>
+          )}
         </div>
       </main>
     </div>

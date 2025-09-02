@@ -739,12 +739,19 @@ class GHLOAuthController(http.Controller):
                 headers=get_cors_headers(request)
             )
 
-    @http.route('/api/dashboard/events', type='json', auth='none', methods=['POST'], csrf=False)
+    @http.route('/api/dashboard/events', type='http', auth='none', methods=['POST', 'OPTIONS'], csrf=False)
     def ghl_event_webhook(self, **kwargs):
         """
         Endpoint to receive and log GHL event webhooks for debugging and location management.
         Logs all incoming data, parses the event, and manages ghl.location records.
         """
+        # Handle preflight OPTIONS request
+        if request.httprequest.method == 'OPTIONS':
+            return Response(
+                status=200,
+                headers=get_cors_headers(request)
+            )
+        
         try:
             raw_data = request.httprequest.data
             json_data = None
@@ -837,151 +844,112 @@ class GHLOAuthController(http.Controller):
                         if json_data.get('installType') == 'Company':
                             # Company-level installation
                             if company_id:
-                                self._store_ghl_credentials(company_id, access_token, refresh_token, None, app_id)
-                                _logger.info(f"Stored company-level credentials for company: {company_id}")
+                                # Store company-level credentials
+                                company_cred = request.env['ghl.company.credential'].sudo().search([
+                                    ('company_id', '=', company_id)
+                                ], limit=1)
                                 
-                                # Sync all locations for this company
-                                synced_locations = self._sync_all_company_locations(company_id, access_token, app_id)
-                                _logger.info(f"Synced {len(synced_locations)} locations for company: {company_id}")
+                                if company_cred:
+                                    company_cred.write({
+                                        'access_token': access_token,
+                                        'refresh_token': refresh_token,
+                                        'app_id': app_id,
+                                        'last_updated': fields.Datetime.now()
+                                    })
+                                    _logger.info(f"Updated company credentials for company_id: {company_id}")
+                                else:
+                                    request.env['ghl.company.credential'].sudo().create({
+                                        'company_id': company_id,
+                                        'access_token': access_token,
+                                        'refresh_token': refresh_token,
+                                        'app_id': app_id,
+                                        'last_updated': fields.Datetime.now()
+                                    })
+                                    _logger.info(f"Created company credentials for company_id: {company_id}")
+                            else:
+                                _logger.warning("Company-level installation but no company_id provided")
                         
                         elif json_data.get('installType') == 'Location':
                             # Location-level installation
                             if location_id:
-                                self._store_ghl_credentials(location_id, access_token, refresh_token, None, app_id)
-                                _logger.info(f"Stored location-level credentials for location: {location_id}")
+                                # Store location-level credentials
+                                location_cred = request.env['ghl.location.credential'].sudo().search([
+                                    ('location_id', '=', location_id)
+                                ], limit=1)
+                                
+                                if location_cred:
+                                    location_cred.write({
+                                        'access_token': access_token,
+                                        'refresh_token': refresh_token,
+                                        'app_id': app_id,
+                                        'last_updated': fields.Datetime.now()
+                                    })
+                                    _logger.info(f"Updated location credentials for location_id: {location_id}")
+                                else:
+                                    request.env['ghl.location.credential'].sudo().create({
+                                        'location_id': location_id,
+                                        'access_token': access_token,
+                                        'refresh_token': refresh_token,
+                                        'app_id': app_id,
+                                        'last_updated': fields.Datetime.now()
+                                    })
+                                    _logger.info(f"Created location credentials for location_id: {location_id}")
+                            else:
+                                _logger.warning("Location-level installation but no location_id provided")
                         
-                        # Remove the temporary tokens
-                        for temp_key, temp_data in list(self._temp_tokens.items()):
-                            if temp_data.get('app_id') == app_id:
-                                del self._temp_tokens[temp_key]
-                                _logger.info(f"Removed temporary tokens for app_id: {app_id}")
-                                break
+                        # Clean up temporary tokens
+                        del self._temp_tokens[temp_key]
+                        _logger.info("Cleaned up temporary tokens")
                         
-                        _logger.info("GHL installation completed successfully!")
+                        # Update or create ghl.location record
+                        if location_id:
+                            location_record = request.env['ghl.location'].sudo().search([
+                                ('location_id', '=', location_id)
+                            ], limit=1)
+                            
+                            if location_record:
+                                location_record.write({
+                                    'is_installed': True,
+                                    'last_updated': fields.Datetime.now()
+                                })
+                                _logger.info(f"Updated ghl.location record for location_id: {location_id}")
+                            else:
+                                request.env['ghl.location'].sudo().create({
+                                    'location_id': location_id,
+                                    'company_id': company_id,
+                                    'is_installed': True,
+                                    'last_updated': fields.Datetime.now()
+                                })
+                                _logger.info(f"Created ghl.location record for location_id: {location_id}")
+                        
+                        _logger.info("GHL installation completed successfully")
+                        return Response(
+                            json.dumps({'success': True, 'message': 'Installation completed'}),
+                            content_type='application/json',
+                            status=200,
+                            headers=get_cors_headers(request)
+                        )
                     else:
-                        _logger.warning("No matching temporary tokens found for this installation")
+                        _logger.warning(f"No matching temporary tokens found for app_id: {json_data.get('appId')}")
                 else:
-                    _logger.info("No temporary tokens found - this may be a direct webhook without OAuth flow")
+                    _logger.warning("No temporary tokens stored")
             
-            # Handle INSTALL and UNINSTALL events for the new models
-            if event_type in ['INSTALL', 'UNINSTALL'] and location_id:
-                _logger.info(f"Processing {event_type} event for location: {location_id}")
-                
-                # Get the app_id from the event
-                app_id = json_data.get('appId')
-                if not app_id:
-                    _logger.error(f"No app_id found in {event_type} event")
-                    return {'success': False, 'error': 'No app_id in event'}
-                
-                # Find the cyclsales.application record
-                CyclSalesApp = request.env['cyclsales.application'].sudo()
-                app = CyclSalesApp.search([
-                    ('app_id', '=', app_id),
-                    ('is_active', '=', True)
-                ], limit=1)
-                
-                if not app:
-                    _logger.error(f"No active cyclsales.application found for app_id: {app_id}")
-                    return {'success': False, 'error': f'No active application found for app_id: {app_id}'}
-                
-                # Find the installed.location record
-                InstalledLocation = request.env['installed.location'].sudo()
-                installed_location = InstalledLocation.search([
-                    ('location_id', '=', location_id)
-                ], limit=1)
-                
-                if event_type == 'INSTALL':
-                    _logger.info(f"Processing INSTALL event for location: {location_id}")
-                    
-                    if installed_location:
-                        # Update existing location
-                        installed_location.write({
-                            'is_installed': True,
-                            'app_id': app_id,
-                        })
-                        _logger.info(f"Updated existing installed.location for INSTALL: {location_id}")
-                    else:
-                        # Create new location
-                        installed_location = InstalledLocation.create({
-                            'location_id': location_id,
-                            'name': f'GHL Location {location_id}',
-                            'is_installed': True,
-                            'app_id': app_id,
-                        })
-                        _logger.info(f"Created new installed.location for INSTALL: {location_id}")
-                    
-                    # Add the application to the location's application_ids
-                    if app not in installed_location.application_ids:
-                        installed_location.application_ids = [(4, app.id)]
-                        _logger.info(f"Added application {app.name} to location {location_id}")
-                    
-                    # Add the location to the application's location_ids
-                    if installed_location not in app.location_ids:
-                        app.location_ids = [(4, installed_location.id)]
-                        _logger.info(f"Added location {location_id} to application {app.name}")
-                
-                elif event_type == 'UNINSTALL':
-                    _logger.info(f"Processing UNINSTALL event for location: {location_id}")
-                    
-                    if installed_location:
-                        # Remove the application from the location's application_ids
-                        if app in installed_location.application_ids:
-                            installed_location.application_ids = [(3, app.id)]
-                            _logger.info(f"Removed application {app.name} from location {location_id}")
-                        
-                        # Remove the location from the application's location_ids
-                        if installed_location in app.location_ids:
-                            app.location_ids = [(3, installed_location.id)]
-                            _logger.info(f"Removed location {location_id} from application {app.name}")
-                        
-                        # Check if location has any remaining applications
-                        if not installed_location.application_ids:
-                            # No more applications installed, mark as uninstalled
-                            installed_location.write({
-                                'is_installed': False,
-                                'app_id': False,
-                            })
-                            _logger.info(f"Marked location {location_id} as uninstalled (no more apps)")
-                        else:
-                            # Other applications still installed, update app_id to first remaining app
-                            remaining_app = installed_location.application_ids[0]
-                            installed_location.write({
-                                'app_id': remaining_app.app_id,
-                            })
-                            _logger.info(f"Updated location {location_id} app_id to {remaining_app.app_id}")
-                    else:
-                        _logger.warning(f"No installed.location found for UNINSTALL event: {location_id}")
-                
-                # Also update the old ghl.location model for backward compatibility
-                GHLLocation = request.env['ghl.location'].sudo()
-                if event_type == 'INSTALL':
-                    loc = GHLLocation.search([('location_id', '=', location_id)], limit=1)
-                    if loc:
-                        loc.write({'is_installed': True})
-                    else:
-                        GHLLocation.create({
-                            'location_id': location_id,
-                            'name': f'GHL Location {location_id}',
-                            'is_installed': True,
-                        })
-                elif event_type == 'UNINSTALL':
-                    loc = GHLLocation.search([('location_id', '=', location_id)], limit=1)
-                    if loc:
-                        loc.write({'is_installed': False})
-            return {
-                'success': True,
-                'message': 'Event received and processed',
-                'received_kwargs': kwargs,
-                'received_params': dict(request.params),
-                'received_data': raw_data.decode() if raw_data else None,
-                'received_json': json_data,
-            }
+            # Return success response
+            return Response(
+                json.dumps({'success': True, 'message': 'Event processed'}),
+                content_type='application/json',
+                status=200,
+                headers=get_cors_headers(request)
+            )
+            
         except Exception as e:
-            _logger.error(f"Error in GHL Event Webhook: {str(e)}")
-            return {
-                'success': False,
-                'error': str(e)
-            }
+            _logger.error(f"Error processing GHL event webhook: {str(e)}")
+            return Response(
+                json.dumps({'error': str(e)}),
+                content_type='application/json',
+                status=500,
+                headers=get_cors_headers(request)
+            )
 
     @http.route('/api/dashboard/locations', type='http', auth='none', methods=['GET'], csrf=False)
     def get_ghl_locations(self, **kwargs):

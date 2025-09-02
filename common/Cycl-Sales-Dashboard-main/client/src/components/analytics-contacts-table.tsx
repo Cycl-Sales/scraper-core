@@ -454,25 +454,35 @@ export default function AnalyticsContactsTable({ loading = false, locationId, se
   // Track if polling is active - DISABLED
   // const [isPolling, setIsPolling] = useState(false);
 
-  // Fetch total contacts count and first page when locationId changes
+  // Fetch total contacts count and first page when locationId or selectedUser changes
   useEffect(() => {
     if (!locationId) return;
     setContactsLoading(true);
     setContactsData([]);
     setTotalContacts(0);
     setPage(1);
+    
+    // Build count URL with user filter if applicable
+    const countUrl = `${PROD_BASE_URL}/api/location-contacts-count?location_id=${locationId}&appId=${CYCLSALES_APP_ID}${selectedUser ? `&selected_user=${encodeURIComponent(selectedUser)}` : ''}`;
+    console.log('Fetching count from URL:', countUrl);
+    
     // Fetch count
-    fetch(`${PROD_BASE_URL}/api/location-contacts-count?location_id=${locationId}&appId=${CYCLSALES_APP_ID}`)
+    fetch(countUrl)
       .then(res => res.json())
       .then(data => {
         if (data.success) {
+          console.log('Count response:', data);
           setTotalContacts(data.total_contacts || 0);
         } else {
           setTotalContacts(0);
         }
       })
+      .catch(err => {
+        console.error('Error fetching count:', err);
+        setTotalContacts(0);
+      })
       .finally(() => { });
-  }, [locationId]);
+  }, [locationId, selectedUser]);
 
   // Fetch contacts for current page
   useEffect(() => {
@@ -482,6 +492,7 @@ export default function AnalyticsContactsTable({ loading = false, locationId, se
     }
     
     console.log('Fetching contacts for locationId:', locationId, 'page:', page, 'limit:', rowsPerPage, 'selectedUser:', selectedUser);
+    console.log('selectedUser type:', typeof selectedUser, 'length:', selectedUser?.length);
     setContactsLoading(true);
 
     // Use the new optimized endpoint
