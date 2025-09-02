@@ -3371,7 +3371,26 @@ class InstalledLocationController(http.Controller):
     @http.route('/api/location-contacts-search', type='http', auth='none', methods=['GET', 'OPTIONS'], csrf=False)
     def search_location_contacts(self, **kwargs):
         """
-        Search contacts by name in real-time
+        Search contacts by name in real-time with GHL API integration
+        
+        This endpoint provides a hybrid search approach:
+        1. First searches the local Odoo database for contacts
+        2. If insufficient local results (< threshold), searches GoHighLevel API
+        3. Combines and deduplicates results from both sources
+        4. Optionally creates new contact records from GHL API results
+        
+        Configuration options (via res.config.settings):
+        - ghl_enable_api_search: Enable/disable GHL API search
+        - ghl_search_threshold: Minimum local results before skipping GHL API
+        - ghl_search_limit: Maximum contacts to fetch from GHL API
+        - ghl_api_timeout: Timeout for GHL API requests
+        - ghl_auto_create_contacts: Auto-create contacts from GHL API results
+        - final_contact_limit: Maximum total contacts to return
+        - local_search_limit: Maximum contacts from local search
+        - cross_location_limit: Maximum contacts from cross-location search
+        
+        GHL API search uses 'contains' operator on firstNameLowerCase and lastNameLowerCase fields
+        as per the GHL API documentation.
         """
         _logger.info(f"search_location_contacts called with kwargs: {kwargs}")
         if request.httprequest.method == 'OPTIONS':
@@ -3400,6 +3419,9 @@ class InstalledLocationController(http.Controller):
             )
 
         try:
+            import time
+            start_time = time.time()
+            
             app_id = self._get_app_id_from_request(kwargs)
             company_id = 'Ipg8nKDPLYKsbtodR6LN'
             app = request.env['cyclsales.application'].sudo().search([
@@ -3414,6 +3436,22 @@ class InstalledLocationController(http.Controller):
                     status=400,
                     headers=get_cors_headers(request)
                 )
+
+            # Check if GHL API search is enabled in configuration
+            config = request.env['res.config.settings'].sudo().search([], limit=1)
+            ghl_search_enabled = config.ghl_enable_api_search if config and hasattr(config, 'ghl_enable_api_search') else True
+            ghl_auto_create = config.ghl_auto_create_contacts if config and hasattr(config, 'ghl_auto_create_contacts') else True
+            
+            # Initialize all configuration variables with defaults
+            ghl_threshold = config.ghl_search_threshold if config and hasattr(config, 'ghl_search_threshold') else 10
+            ghl_search_limit = config.ghl_search_limit if config and hasattr(config, 'ghl_search_limit') else 50
+            ghl_api_timeout = config.ghl_api_timeout if config and hasattr(config, 'ghl_api_timeout') else 10
+            final_contact_limit = config.final_contact_limit if config and hasattr(config, 'final_contact_limit') else 50
+            local_search_limit = config.local_search_limit if config and hasattr(config, 'local_search_limit') else 50
+            cross_location_limit = config.cross_location_limit if config and hasattr(config, 'cross_location_limit') else 50
+            
+            _logger.info(f"GHL API search enabled: {ghl_search_enabled}, auto-create contacts: {ghl_auto_create}")
+            _logger.info(f"GHL search threshold: {ghl_threshold}, limit: {ghl_search_limit}, timeout: {ghl_api_timeout}")
 
             # Search contacts in database by name (case-insensitive)
             _logger.info(f"Searching for term: '{search_term}' in location: {location_id}")
@@ -3511,7 +3549,7 @@ class InstalledLocationController(http.Controller):
                 all_contact_ids.add(contact.id)
             
             contacts = request.env['ghl.location.contact'].sudo().browse(list(all_contact_ids))
-            contacts = contacts.sorted('date_added', reverse=True)[:50]  # Sort and limit
+            contacts = contacts.sorted('date_added', reverse=True)[:local_search_limit]  # Sort and limit
             
             # Debug: Check for contacts with search term in last_name specifically
             bar_lastname_contacts = request.env['ghl.location.contact'].sudo().search([
@@ -3535,9 +3573,226 @@ class InstalledLocationController(http.Controller):
                 # Add user filter if provided
                 if user_filter_domain:
                     search_domain.extend(user_filter_domain)
-                contacts = request.env['ghl.location.contact'].sudo().search(search_domain, order='date_added desc', limit=50)
+                contacts = request.env['ghl.location.contact'].sudo().search(search_domain, order='date_added desc', limit=cross_location_limit)
             
             _logger.info(f"Search found {len(contacts)} contacts matching '{search_term}'")
+
+            # If we have sufficient local results, use them
+            if len(contacts) >= ghl_threshold:
+                _logger.info(f"Sufficient local results ({len(contacts)} >= {ghl_threshold}), skipping GHL API call")
+                use_ghl_api = False
+            else:
+                _logger.info(f"Insufficient local results ({len(contacts)} < {ghl_threshold}), will try GHL API")
+                use_ghl_api = True
+
+            # Try GHL API search if we have insufficient local results and it's enabled
+            ghl_contacts = []
+            if use_ghl_api and ghl_search_enabled and app.access_token:
+                try:
+                    _logger.info(f"Searching GHL API for term: '{search_term}' in location: {location_id}")
+                    
+                    # Step 1: Get location-specific access token using existing function
+                    _logger.info("Getting location access token from GHL API...")
+                    
+                    # Get the company_id from the app
+                    app_company_id = app.company_id or company_id
+                    _logger.info(f"Using company_id: {app_company_id} for location token request")
+                    
+                    # Use the existing get_location_token function from ghl_api_utils
+                    from odoo.addons.web_scraper.models.ghl_api_utils import get_location_token
+                    location_token = get_location_token(
+                        app.access_token, 
+                        app_company_id,
+                        location_id
+                    )
+                    
+                    if not location_token:
+                        _logger.error("Failed to get location access token")
+                        raise Exception("Failed to get location access token")
+                    
+                    _logger.info("Successfully obtained location access token")
+                    _logger.info(f"Location token: {location_token[:20]}...{location_token[-20:] if len(location_token) > 40 else ''}")
+                    
+                    # Step 2: Prepare GHL API search query using the correct format
+                    # First try with the simple query field for better performance
+                    ghl_search_query = {
+                        "locationId": location_id,
+                        "page": 1,
+                        "pageLimit": ghl_search_limit,
+                        "query": search_term,  # Simple text search across all fields
+                        "sort": [
+                            {
+                                "field": "firstNameLowerCase",
+                                "direction": "asc"
+                            }
+                        ]
+                    }
+                    
+                    # If we want more specific control, we can use filters instead:
+                    # ghl_search_query = {
+                    #     "locationId": location_id,
+                    #     "page": 1,
+                    #     "pageLimit": ghl_search_limit,
+                    #     "filters": [
+                    #         {
+                    #             "group": "OR",
+                    #             "filters": [
+                    #                 {
+                    #                     "field": "firstNameLowerCase",
+                    #                     "operator": "contains",
+                    #                     "value": search_term.lower()
+                    #                 },
+                    #                 {
+                    #                     "field": "lastNameLowerCase",
+                    #                     "operator": "contains", 
+                    #                     "value": search_term.lower()
+                    #                 }
+                    #             ]
+                    #         }
+                    #     ],
+                    #     "sort": [
+                    #         {
+                    #             "field": "firstNameLowerCase",
+                    #             "direction": "asc"
+                    #                 }
+                    #         ]
+                    # }
+                    
+                    # Add user filter if provided
+                    if user_filter_domain and selected_user:
+                        ghl_search_query["assignedTo"] = user_filter_domain[0][2]  # Get the external_id
+                    
+                    _logger.info(f"GHL API search query: {ghl_search_query}")
+                    
+                    # Step 3: Make GHL API call with location token
+                    import requests
+                    ghl_url = "https://services.leadconnectorhq.com/contacts/search"
+                    ghl_headers = {
+                        "Authorization": f"Bearer {location_token}",
+                        "Version": "2021-07-28",
+                        "Content-Type": "application/json"
+                    }
+                    
+                    ghl_response = requests.post(
+                        ghl_url,
+                        json=ghl_search_query,
+                        headers=ghl_headers,
+                        timeout=ghl_api_timeout
+                    )
+                    
+                    if ghl_response.status_code == 200:
+                        ghl_data = ghl_response.json()
+                        ghl_contacts = ghl_data.get('contacts', [])
+                        _logger.info(f"GHL API returned {len(ghl_contacts)} contacts")
+                        _logger.info(f"GHL API response data keys: {list(ghl_data.keys())}")
+                        
+                        # Log the first contact structure for debugging
+                        if ghl_contacts:
+                            first_contact = ghl_contacts[0]
+                            _logger.info(f"First contact structure: {list(first_contact.keys())}")
+                            _logger.info(f"Sample contact data: {first_contact}")
+                        
+                        # Process GHL contacts and add them to local database if they don't exist
+                        for ghl_contact in ghl_contacts:
+                            # Check if contact already exists
+                            existing_contact = request.env['ghl.location.contact'].sudo().search([
+                                ('external_id', '=', ghl_contact.get('id'))
+                            ], limit=1)
+                            
+                            if not existing_contact and ghl_auto_create:
+                                # Create new contact record
+                                try:
+                                    # Map GHL API fields to our model fields
+                                    new_contact_data = {
+                                        'external_id': ghl_contact.get('id'),
+                                        'location_id': installed_location.id,
+                                        'first_name': ghl_contact.get('firstName', ''),
+                                        'last_name': ghl_contact.get('lastName', ''),
+                                        'email': ghl_contact.get('email', ''),
+                                        'assigned_to': ghl_contact.get('assignedTo'),
+                                        'source': ghl_contact.get('source', ''),
+                                        'tags': json.dumps(ghl_contact.get('tags', [])),
+                                        'ai_status': 'ghl_fresh',
+                                        'ai_summary': 'Contact fetched from GHL API'
+                                    }
+                                    
+                                    # Handle date parsing for GHL API ISO format
+                                    if ghl_contact.get('dateAdded'):
+                                        try:
+                                            from datetime import datetime
+                                            # Parse ISO 8601 format from GHL API
+                                            date_added = datetime.fromisoformat(ghl_contact.get('dateAdded').replace('Z', '+00:00'))
+                                            new_contact_data['date_added'] = date_added
+                                        except Exception as e:
+                                            _logger.warning(f"Could not parse dateAdded '{ghl_contact.get('dateAdded')}': {str(e)}")
+                                            # Don't set date_added if parsing fails
+                                    
+                                    # Add optional fields if they exist
+                                    if ghl_contact.get('timezone'):
+                                        new_contact_data['timezone'] = ghl_contact.get('timezone')
+                                    if ghl_contact.get('country'):
+                                        new_contact_data['country'] = ghl_contact.get('country')
+                                    if ghl_contact.get('businessId'):
+                                        new_contact_data['business_id'] = ghl_contact.get('businessId')
+                                    if ghl_contact.get('businessName'):
+                                        new_contact_data['business_id'] = ghl_contact.get('businessName')
+                                    if ghl_contact.get('phone'):
+                                        # Store phone in engagement_summary since we don't have a phone field
+                                        if 'engagement_summary' not in new_contact_data:
+                                            new_contact_data['engagement_summary'] = json.dumps({})
+                                        current_engagement = json.loads(new_contact_data['engagement_summary']) if new_contact_data['engagement_summary'] else {}
+                                        current_engagement['phone'] = ghl_contact.get('phone')
+                                        current_engagement['additional_phones'] = ghl_contact.get('additionalPhones', [])
+                                        new_contact_data['engagement_summary'] = json.dumps(current_engagement)
+                                    
+                                    # Handle custom fields if they exist
+                                    if ghl_contact.get('customFields'):
+                                        # Store custom fields in engagement_summary
+                                        if 'engagement_summary' not in new_contact_data:
+                                            new_contact_data['engagement_summary'] = json.dumps({})
+                                        current_engagement = json.loads(new_contact_data['engagement_summary']) if new_contact_data['engagement_summary'] else {}
+                                        current_engagement['custom_fields'] = ghl_contact.get('customFields')
+                                        current_engagement['ghl_data'] = {
+                                            'address': ghl_contact.get('address'),
+                                            'city': ghl_contact.get('city'),
+                                            'state': ghl_contact.get('state'),
+                                            'postal_code': ghl_contact.get('postalCode'),
+                                            'website': ghl_contact.get('website'),
+                                            'type': ghl_contact.get('type'),
+                                            'dnd': ghl_contact.get('dnd'),
+                                            'valid_email': ghl_contact.get('validEmail'),
+                                            'date_updated': ghl_contact.get('dateUpdated'),
+                                            'date_of_birth': ghl_contact.get('dateOfBirth'),
+                                            'opportunities': ghl_contact.get('opportunities', [])
+                                        }
+                                        new_contact_data['engagement_summary'] = json.dumps(current_engagement)
+                                    
+                                    new_contact = request.env['ghl.location.contact'].sudo().create(new_contact_data)
+                                    _logger.info(f"Created new contact from GHL API: {new_contact.name} (ID: {new_contact.id})")
+                                    
+                                    # Add to contacts list for this search
+                                    contacts = contacts | new_contact
+                                    
+                                except Exception as e:
+                                    _logger.error(f"Error creating contact from GHL API: {str(e)}")
+                                    continue
+                            else:
+                                # Contact exists, add to results if not already included
+                                if existing_contact.id not in [c.id for c in contacts]:
+                                    contacts = contacts | existing_contact
+                    
+                    else:
+                        _logger.warning(f"GHL API search failed with status {ghl_response.status_code}: {ghl_response.text}")
+                        
+                except Exception as e:
+                    _logger.error(f"Error searching GHL API: {str(e)}")
+                    # Continue with local results only
+                    # Log the error but don't fail the entire search
+                    ghl_contacts = []
+                    use_ghl_api = False
+
+            # Re-sort and limit contacts after potential GHL additions
+            contacts = contacts.sorted('date_added', reverse=True)[:final_contact_limit]
 
             contact_data = []
             for contact in contacts:
@@ -3627,13 +3882,41 @@ class InstalledLocationController(http.Controller):
 
                 contact_data.append(contact_info)
 
+            # Calculate performance metrics
+            total_time = time.time() - start_time
+            
+            # Prepare response message
+            response_message = f'Found {len(contact_data)} contacts matching "{search_term}"'
+            if ghl_contacts:
+                response_message += f' (including {len(ghl_contacts)} fresh from GHL API)'
+            elif use_ghl_api and ghl_search_enabled:
+                response_message += ' (GHL API search attempted but no new contacts found)'
+            
             return Response(
                 json.dumps({
                     'success': True,
                     'contacts': contact_data,
                     'total_contacts': len(contact_data),
                     'search_term': search_term,
-                    'message': f'Found {len(contact_data)} contacts matching "{search_term}"'
+                    'ghl_api_used': use_ghl_api,
+                    'ghl_api_enabled': ghl_search_enabled,
+                    'ghl_contacts_found': len(ghl_contacts),
+                    'local_contacts_found': len(contact_data) - len(ghl_contacts),
+                    'performance': {
+                        'total_time_ms': round(total_time * 1000, 2),
+                        'contacts_per_second': round(len(contact_data) / total_time, 2) if total_time > 0 else 0
+                    },
+                    'config': {
+                        'ghl_search_enabled': ghl_search_enabled,
+                        'ghl_auto_create_contacts': ghl_auto_create,
+                        'ghl_search_threshold': ghl_threshold,
+                        'ghl_search_limit': ghl_search_limit,
+                        'ghl_api_timeout': ghl_api_timeout,
+                        'final_contact_limit': final_contact_limit,
+                        'local_search_limit': local_search_limit,
+                        'cross_location_limit': cross_location_limit
+                    },
+                    'message': response_message
                 }),
                 content_type='application/json',
                 status=200,

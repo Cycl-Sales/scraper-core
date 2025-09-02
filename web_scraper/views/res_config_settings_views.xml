@@ -18,6 +18,18 @@
                             <field name="openai_api_key" password="True" placeholder="Your OpenAI API Key"/>
                         </setting>
                     </block>
+                    <block title="GHL API Search Configuration">
+                        <setting id="ghl_search_settings" help="Configure GoHighLevel API search settings for contact search">
+                            <field name="ghl_enable_api_search"/>
+                            <field name="ghl_search_threshold"/>
+                            <field name="ghl_search_limit"/>
+                            <field name="ghl_api_timeout"/>
+                            <field name="final_contact_limit"/>
+                            <field name="local_search_limit"/>
+                            <field name="cross_location_limit"/>
+                            <field name="ghl_auto_create_contacts"/>
+                        </setting>
+                    </block>
                 </app>
             </xpath>
         </field>

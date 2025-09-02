@@ -45,4 +45,46 @@ class ResConfigSettings(models.TransientModel):
         string="GHL API Delay Between Requests (seconds)",
         default=0.1,
         help="Delay between API requests to avoid rate limiting"
+    )
+
+    # GHL API Search Settings
+    ghl_enable_api_search = fields.Boolean(
+        string="Enable GHL API Search",
+        default=True,
+        help="Enable searching GoHighLevel API when local results are insufficient"
+    )
+    ghl_search_threshold = fields.Integer(
+        string="GHL Search Threshold",
+        default=10,
+        help="Minimum number of local results required before skipping GHL API search"
+    )
+    ghl_search_limit = fields.Integer(
+        string="GHL Search Limit",
+        default=50,
+        help="Maximum number of contacts to fetch from GHL API search"
+    )
+    ghl_api_timeout = fields.Integer(
+        string="GHL API Timeout (seconds)",
+        default=10,
+        help="Timeout for GHL API requests in seconds"
+    )
+    final_contact_limit = fields.Integer(
+        string="Final Contact Limit",
+        default=50,
+        help="Maximum number of contacts to return in search results"
+    )
+    local_search_limit = fields.Integer(
+        string="Local Search Limit",
+        default=50,
+        help="Maximum number of contacts to return from local database search"
+    )
+    cross_location_limit = fields.Integer(
+        string="Cross Location Search Limit",
+        default=50,
+        help="Maximum number of contacts to return when searching across all locations"
+    )
+    ghl_auto_create_contacts = fields.Boolean(
+        string="Auto-create Contacts from GHL API",
+        default=True,
+        help="Automatically create new contact records when found via GHL API search"
     ) 
