@@ -319,6 +319,12 @@ class GhlContactMessageTranscript(models.Model):
                 # Create new transcript records
                 created_records = self.create_from_api_data(message_id, transcript_data)
 
+                # Update the message record to mark transcript fetch as attempted
+                # transcript_fetched will be computed automatically based on transcript_ids
+                message.write({
+                    'transcript_fetch_attempted': True
+                })
+
                 # Get transcript summary for duration info
                 transcript_summary = self.get_transcript_summary()
 

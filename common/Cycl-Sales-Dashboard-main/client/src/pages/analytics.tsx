@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import TopNavigation from "@/components/top-navigation";
 import AnalyticsContactsTable from "@/components/analytics-contacts-table";
+import CallDetailsTable from "@/components/call-details-table";
 import { Button } from "@/components/ui/button";
 import { Calendar as CalendarIcon, Filter, Share2, User, Users, ChevronDown, RefreshCw } from "lucide-react";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
@@ -603,74 +604,111 @@ export default function Analytics() {
           </div>
         </div> */}
 
-        {/* Contacts Table Section */}
-        <div className="bg-slate-900 rounded-2xl p-6 shadow-lg">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <span className="text-lg font-semibold text-white">Contacts</span>
-              {syncStatus && (
-                <div className="flex items-center gap-2 px-3 py-1 bg-blue-900/50 border border-blue-700 rounded-md">
-                  <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
-                  <span className="text-blue-300 text-sm">{syncStatus}</span>
-                </div>
-              )}
+        {/* Content Section - Contacts or Calls */}
+        {activeTab === "contacts" ? (
+          /* Contacts Table Section */
+          <div className="bg-slate-900 rounded-2xl p-6 shadow-lg">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <span className="text-lg font-semibold text-white">Contacts</span>
+                {syncStatus && (
+                  <div className="flex items-center gap-2 px-3 py-1 bg-blue-900/50 border border-blue-700 rounded-md">
+                    <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
+                    <span className="text-blue-300 text-sm">{syncStatus}</span>
+                  </div>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <Button 
+                  variant="outline" 
+                  className="flex gap-2 items-center bg-slate-800 text-slate-200 border-slate-700"
+                  onClick={refreshContacts}
+                  disabled={refreshing}
+                >
+                  <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+                  {refreshing ? 'Refreshing...' : 'Refresh'}
+                </Button>
+                <Button 
+                  variant="outline" 
+                  className="flex gap-2 items-center bg-blue-800 text-blue-200 border-blue-700 hover:bg-blue-700"
+                  onClick={syncAllContacts}
+                  disabled={refreshing}
+                >
+                  <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+                  {refreshing ? 'Syncing...' : 'Sync All Contacts'}
+                </Button>
+                <Button variant="outline" className="flex gap-2 items-center bg-slate-800 text-slate-200 border-slate-700">
+                  <Filter className="w-4 h-4" />
+                  Customize Columns
+                </Button>
+                <Button 
+                  variant="outline" 
+                  className="flex gap-2 items-center bg-yellow-800 text-yellow-200 border-yellow-700 hover:bg-yellow-700"
+                  onClick={() => {
+                    console.log('Debug info:');
+                    console.log('  - selectedUser:', selectedUser);
+                    console.log('  - selectedUserExternalId:', selectedUserExternalId);
+                    console.log('  - locationId:', locationId);
+                    console.log('  - users count:', users.length);
+                    console.log('  - users:', users);
+                  }}
+                  title="Debug user filtering"
+                >
+                  🐛 Debug
+                </Button>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <Button 
-                variant="outline" 
-                className="flex gap-2 items-center bg-slate-800 text-slate-200 border-slate-700"
-                onClick={refreshContacts}
-                disabled={refreshing}
-              >
-                <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-                {refreshing ? 'Refreshing...' : 'Refresh'}
-              </Button>
-              <Button 
-                variant="outline" 
-                className="flex gap-2 items-center bg-blue-800 text-blue-200 border-blue-700 hover:bg-blue-700"
-                onClick={syncAllContacts}
-                disabled={refreshing}
-              >
-                <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-                {refreshing ? 'Syncing...' : 'Sync All Contacts'}
-              </Button>
-              <Button variant="outline" className="flex gap-2 items-center bg-slate-800 text-slate-200 border-slate-700">
-                <Filter className="w-4 h-4" />
-                Customize Columns
-              </Button>
-              <Button 
-                variant="outline" 
-                className="flex gap-2 items-center bg-yellow-800 text-yellow-200 border-yellow-700 hover:bg-yellow-700"
-                onClick={() => {
-                  console.log('Debug info:');
-                  console.log('  - selectedUser:', selectedUser);
-                  console.log('  - selectedUserExternalId:', selectedUserExternalId);
-                  console.log('  - locationId:', locationId);
-                  console.log('  - users count:', users.length);
-                  console.log('  - users:', users);
-                }}
-                title="Debug user filtering"
-              >
-                🐛 Debug
-              </Button>
-            </div>
+            <AnalyticsContactsTable 
+              loading={contactsLoading} 
+              locationId={locationId || ""} 
+              selectedUser={selectedUserExternalId || selectedUser} 
+              activeFilters={activeFilters} 
+            />
+            {/* Debug info */}
+            {selectedUser && (
+              <div className="mt-4 p-3 bg-slate-800 rounded-lg text-xs text-slate-300">
+                <div><strong>Debug Info:</strong></div>
+                <div>Selected User: {selectedUser}</div>
+                <div>External ID: {selectedUserExternalId || 'None'}</div>
+                <div>Sent to Table: {selectedUserExternalId || selectedUser}</div>
+              </div>
+            )}
           </div>
-          <AnalyticsContactsTable 
-            loading={contactsLoading} 
-            locationId={locationId || ""} 
-            selectedUser={selectedUserExternalId || selectedUser} 
-            activeFilters={activeFilters} 
-          />
-          {/* Debug info */}
-          {selectedUser && (
-            <div className="mt-4 p-3 bg-slate-800 rounded-lg text-xs text-slate-300">
-              <div><strong>Debug Info:</strong></div>
-              <div>Selected User: {selectedUser}</div>
-              <div>External ID: {selectedUserExternalId || 'None'}</div>
-              <div>Sent to Table: {selectedUserExternalId || selectedUser}</div>
+        ) : (
+          /* Calls Table Section */
+          <div className="bg-slate-900 rounded-2xl p-6 shadow-lg">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <span className="text-lg font-semibold text-white">Calls</span>
+                <div className="flex items-center gap-2 px-3 py-1 bg-slate-800 border border-slate-700 rounded-md">
+                  <div className="w-2 h-2 bg-slate-400 rounded-full"></div>
+                  <span className="text-slate-300 text-sm">Showing call data for this location</span>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button 
+                  variant="outline" 
+                  className="flex gap-2 items-center bg-slate-800 text-slate-200 border-slate-700"
+                  onClick={() => window.location.reload()}
+                  disabled={refreshing}
+                >
+                  <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+                  Refresh Calls
+                </Button>
+                <Button variant="outline" className="flex gap-2 items-center bg-slate-800 text-slate-200 border-slate-700">
+                  <Filter className="w-4 h-4" />
+                  Call Filters
+                </Button>
+              </div>
             </div>
-          )}
-        </div>
+            <CallDetailsTable 
+              loading={contactsLoading} 
+              locationId={locationId || ""} 
+              selectedUser={selectedUserExternalId || selectedUser} 
+              activeFilters={activeFilters} 
+            />
+          </div>
+        )}
       </main>
     </div>
   );

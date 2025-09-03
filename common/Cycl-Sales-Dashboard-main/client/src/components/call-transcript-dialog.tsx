@@ -93,13 +93,55 @@ function parseTimestamp(ts: string): number {
 }
 
 export default function CallTranscriptDialog({ open, onOpenChange, callData, onDataRefresh }: CallTranscriptDialogProps) {
+  // Don't render if no call data is provided
+  if (!callData) {
+    return null;
+  }
+
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [audioRef, setAudioRef] = useState<HTMLAudioElement | null>(null);
   const [isMuted, setIsMuted] = useState(false);
+  const [isFetchingTranscript, setIsFetchingTranscript] = useState(false);
+  const [isFetchingRecording, setIsFetchingRecording] = useState(false);
+  const [localTranscript, setLocalTranscript] = useState(callData.transcript || []);
+  const [localRecordingUrl, setLocalRecordingUrl] = useState(callData.recordingUrl || '');
   const transcriptRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const recordingFetchAttemptedRef = useRef(false);
+  const transcriptFetchAttemptedRef = useRef(false);
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
+
+  // Update local transcript and recording when callData changes and check for existing data
+  useEffect(() => {
+    setLocalTranscript(callData.transcript || []);
+    setLocalRecordingUrl(callData.recordingUrl || '');
+    
+    // Reset the fetch attempt flags when callData changes
+    recordingFetchAttemptedRef.current = false;
+    transcriptFetchAttemptedRef.current = false;
+    
+    // Check for transcripts if we don't have any and haven't already fetched them
+    if ((!callData.transcript || callData.transcript.length === 0) && callData.id && !isFetchingTranscript && !transcriptFetchAttemptedRef.current) {
+      // Use setTimeout to avoid calling the function during render
+      setTimeout(() => {
+        if (!isFetchingTranscript && !transcriptFetchAttemptedRef.current) {
+          handleCheckExistingTranscript();
+        }
+      }, 100);
+    }
+
+    // Check for recordings if we don't have any and haven't already fetched them
+    // Only check if we haven't already attempted to fetch and don't have a local recording URL
+    if (!localRecordingUrl && callData.id && !isFetchingRecording && !recordingFetchAttemptedRef.current) {
+      // Use setTimeout to avoid calling the function during render
+      setTimeout(() => {
+        if (!isFetchingRecording && !recordingFetchAttemptedRef.current) {
+          handleCheckExistingRecording();
+        }
+      }, 100);
+    }
+  }, [callData.transcript, callData.recordingUrl, callData.id, isFetchingTranscript, isFetchingRecording]);
 
   // Auto-scroll to active transcript entry
   useEffect(() => {
@@ -225,13 +267,188 @@ export default function CallTranscriptDialog({ open, onOpenChange, callData, onD
   };
 
   const handleDownload = () => {
-    if (callData.recordingUrl) {
+    if (localRecordingUrl) {
       const link = document.createElement('a');
-      link.href = callData.recordingUrl;
-      link.download = callData.recordingUrl.split('/').pop() || 'recording.mp3';
+      link.href = localRecordingUrl;
+      link.download = localRecordingUrl.split('/').pop() || 'recording.mp3';
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+    }
+  };
+
+  const handleCheckExistingTranscript = async () => {
+    if (!callData) return;
+    
+    // Mark that we've attempted to fetch
+    transcriptFetchAttemptedRef.current = true;
+    
+    try {
+      console.log('Checking for existing transcript for call:', callData.id);
+
+      const response = await fetch(`${PROD_BASE_URL}/api/get-transcript/${callData.id}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      console.log('Existing transcript API Response status:', response.status);
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log('Existing transcript API Response result:', result);
+        
+        if (result.success && result.transcript && result.transcript.length > 0) {
+          // Update local transcript state with existing data
+          setLocalTranscript(result.transcript);
+          console.log(`Found existing transcript with ${result.transcript_count} segments`);
+          return; // Don't fetch if we already have transcripts
+        }
+      }
+      
+      // If no existing transcript found, fetch from GHL API
+      console.log('No existing transcript found, fetching from GHL API...');
+      await handleFetchTranscript();
+      
+    } catch (error) {
+      console.error('Error checking existing transcript:', error);
+      // Fallback to fetching from GHL API
+      await handleFetchTranscript();
+    }
+  };
+
+  const handleFetchTranscript = async () => {
+    if (!callData) return;
+    
+    // Mark that we've attempted to fetch
+    transcriptFetchAttemptedRef.current = true;
+    setIsFetchingTranscript(true);
+    try {
+      console.log('Fetching transcript for call:', callData.id);
+
+      const response = await fetch(`${PROD_BASE_URL}/api/fetch-transcript/${callData.id}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          appId: '6867d1537079188afca5013c' // Default app ID
+        }),
+      });
+
+      console.log('Transcript API Response status:', response.status);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Transcript API Error response:', errorText);
+        throw new Error(`Failed to fetch transcript: ${response.status} ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      console.log('Transcript API Response result:', result);
+      
+      if (result.success) {
+        // Update local transcript state
+        setLocalTranscript(result.transcript);
+        alert(`Transcript fetched successfully! ${result.total_sentences} sentences found.`);
+        
+        // Trigger data refresh
+        if (onDataRefresh) {
+          await onDataRefresh();
+        } else {
+          // Fallback: close and reopen dialog to trigger refresh
+          onOpenChange(false);
+          setTimeout(() => onOpenChange(true), 100);
+        }
+      } else {
+        throw new Error(result.error || 'Failed to fetch transcript');
+      }
+    } catch (error) {
+      console.error('Error fetching transcript:', error);
+      alert(`Error fetching transcript: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsFetchingTranscript(false);
+    }
+  };
+
+  const handleCheckExistingRecording = async () => {
+    if (!callData) return;
+    
+    // Mark that we've attempted to fetch
+    recordingFetchAttemptedRef.current = true;
+    
+    try {
+      console.log('Checking for existing recording for call:', callData.id);
+
+      // If we already have a recording URL, no need to fetch
+      if (callData.recordingUrl) {
+        setLocalRecordingUrl(callData.recordingUrl);
+        return;
+      }
+
+      // If no recording URL, fetch it
+      console.log('No existing recording found, fetching from GHL API...');
+      await handleFetchRecording();
+      
+    } catch (error) {
+      console.error('Error checking existing recording:', error);
+      // Fallback to fetching from GHL API
+      await handleFetchRecording();
+    }
+  };
+
+  const handleFetchRecording = async () => {
+    if (!callData) return;
+    
+    // Mark that we've attempted to fetch
+    recordingFetchAttemptedRef.current = true;
+    setIsFetchingRecording(true);
+    try {
+      console.log('Fetching recording for call:', callData.id);
+
+      const response = await fetch(`${PROD_BASE_URL}/api/fetch-recording/${callData.id}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          appId: '6867d1537079188afca5013c' // Default app ID
+        }),
+      });
+
+      console.log('Recording API Response status:', response.status);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Recording API Error response:', errorText);
+        throw new Error(`Failed to fetch recording: ${response.status} ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      console.log('Recording API Response result:', result);
+      
+      if (result.success) {
+        // Update local recording state
+        setLocalRecordingUrl(result.recording_url);
+        alert(`Recording fetched successfully!`);
+        
+        // Trigger data refresh
+        if (onDataRefresh) {
+          await onDataRefresh();
+        } else {
+          // Fallback: close and reopen dialog to trigger refresh
+          onOpenChange(false);
+          setTimeout(() => onOpenChange(true), 100);
+        }
+      } else {
+        throw new Error(result.error || 'Failed to fetch recording');
+      }
+    } catch (error) {
+      console.error('Error fetching recording:', error);
+      alert(`Error fetching recording: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsFetchingRecording(false);
     }
   };
 
@@ -286,7 +503,7 @@ export default function CallTranscriptDialog({ open, onOpenChange, callData, onD
 
   // Find the active transcript index for highlighting
   let activeIndex = -1;
-  const transcriptTimes = callData.transcript.map(entry => parseTimestamp(entry.timestamp));
+  const transcriptTimes = localTranscript?.map(entry => parseTimestamp(entry.timestamp)) || [];
   for (let i = 0; i < transcriptTimes.length; i++) {
     const time = transcriptTimes[i];
     const nextTime = transcriptTimes[i + 1] ?? Infinity;
@@ -311,6 +528,16 @@ export default function CallTranscriptDialog({ open, onOpenChange, callData, onD
               </DialogTitle>
               <DialogDescription className="text-slate-400">
                 View call recording, transcript, and AI analysis for this conversation.
+                {isFetchingTranscript && (
+                  <span className="ml-2 text-blue-400">
+                    📥 Fetching transcript...
+                  </span>
+                )}
+                {isFetchingRecording && (
+                  <span className="ml-2 text-blue-400">
+                    📥 Fetching recording...
+                  </span>
+                )}
               </DialogDescription>
             </div>
             <div className="flex items-center gap-2">
@@ -542,10 +769,10 @@ export default function CallTranscriptDialog({ open, onOpenChange, callData, onD
               {/* Audio Player */}
               <div className="mb-6">
                 {/* Hidden Audio Element */}
-                {callData.recordingUrl && (
+                {localRecordingUrl && (
                   <audio
                     ref={(el) => setAudioRef(el)}
-                    src={callData.recordingUrl}
+                    src={localRecordingUrl}
                     onTimeUpdate={handleTimeUpdate}
                     onLoadedMetadata={handleLoadedMetadata}
                     onPlay={() => setIsPlaying(true)}
@@ -556,7 +783,7 @@ export default function CallTranscriptDialog({ open, onOpenChange, callData, onD
                 )}
                 
                 {/* Modern Audio Player */}
-                {callData.recordingUrl ? (
+                {localRecordingUrl ? (
                   <div className="bg-slate-700 rounded-lg p-3 flex items-center gap-3">
                     {/* Play Button */}
                     <button
@@ -610,35 +837,78 @@ export default function CallTranscriptDialog({ open, onOpenChange, callData, onD
                   </div>
                 ) : (
                   <div className="text-center py-4 text-slate-400 text-sm">
-                    No recording available for this call
+                    {isFetchingRecording ? (
+                      <>
+                        <div className="text-slate-400 text-sm">📥 Fetching recording from GHL API...</div>
+                        <div className="text-slate-500 text-xs mt-2">This may take a few moments</div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="text-slate-400 text-sm">No recording available for this call</div>
+                        <div className="text-slate-500 text-xs mt-2">Click the button below to fetch recording from GHL API</div>
+                        <Button
+                          onClick={handleFetchRecording}
+                          className="mt-4 bg-blue-600 hover:bg-blue-700 text-white"
+                          size="sm"
+                        >
+                          📥 Fetch Recording
+                        </Button>
+                      </>
+                    )}
                   </div>
                 )}
               </div>
               {/* Transcript */}
               <div className="flex-1 overflow-y-auto pr-2">
                 <div className="space-y-4 pb-4">
-                  {callData.transcript.map((entry, index) => (
-                    <div
-                      key={index}
-                      ref={el => (transcriptRefs.current[index] = el)}
-                      className={`space-y-2 transition-colors duration-200 ${
-                        index === activeIndex ? "bg-blue-900/40 border-l-4 border-blue-400" : ""
-                      }`}
-                    >
-                      <div className="flex items-center gap-2 text-xs">
-                        <span className="text-slate-400">{entry.timestamp}</span>
-                        <Badge
-                          variant="outline"
-                          className={`border-slate-600 text-xs ${entry.speaker === 'agent' ? 'text-blue-400' : 'text-green-400'}`}
-                        >
-                          {entry.speakerName}
-                        </Badge>
-                      </div>
-                      <p className="text-sm text-slate-200 pl-4 border-l-2 border-slate-700">
-                        {entry.text}
-                      </p>
+                  {isFetchingTranscript ? (
+                    <div className="text-center py-8">
+                      <div className="text-slate-400 text-sm">📥 Fetching transcript from GHL API...</div>
+                      <div className="text-slate-500 text-xs mt-2">This may take a few moments</div>
                     </div>
-                  ))}
+                  ) : localTranscript && localTranscript.length > 0 ? (
+                    localTranscript.map((entry, index) => (
+                      <div
+                        key={index}
+                        ref={el => (transcriptRefs.current[index] = el)}
+                        className={`space-y-2 transition-colors duration-200 ${
+                          index === activeIndex ? "bg-blue-900/40 border-l-4 border-blue-400" : ""
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className="text-slate-400">{entry.timestamp}</span>
+                          <Badge
+                            variant="outline"
+                            className={`border-slate-600 text-xs ${entry.speaker === 'agent' ? 'text-blue-400' : 'text-green-400'}`}
+                          >
+                            {entry.speakerName}
+                          </Badge>
+                        </div>
+                        <p className="text-sm text-slate-200 pl-4 border-l-2 border-slate-700">
+                          {entry.text}
+                        </p>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-center py-8">
+                      <div className="text-slate-400 text-sm">No transcript available for this call</div>
+                      <div className="text-slate-500 text-xs mt-2">
+                        {isFetchingTranscript ? 
+                          '📥 Fetching transcript from GHL API...' : 
+                          'Click the button below to fetch transcript from GHL API'
+                        }
+                      </div>
+                      {!isFetchingTranscript && (
+                        <Button
+                          onClick={handleFetchTranscript}
+                          className="mt-4 bg-blue-600 hover:bg-blue-700 text-white"
+                          size="sm"
+                        >
+                          📥 Fetch Transcript
+                        </Button>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             </CardContent>

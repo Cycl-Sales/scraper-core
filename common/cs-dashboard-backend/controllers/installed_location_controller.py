@@ -4812,6 +4812,513 @@ class InstalledLocationController(http.Controller):
                 headers=get_cors_headers(request)
             )
 
+    @http.route('/api/location-calls/<string:location_id>', type='http', auth='none', methods=['GET', 'OPTIONS'], csrf=False)
+    def get_location_calls(self, location_id, **kwargs):
+        """
+        Get all call messages for a specific location with pagination and filtering
+        """
+        _logger.info(f"get_location_calls called for location_id: {location_id}")
+
+        # Handle preflight OPTIONS request
+        if request.httprequest.method == 'OPTIONS':
+            return Response(
+                status=200,
+                headers=get_cors_headers(request)
+            )
+
+        try:
+            # Get app_id from parameters
+            app_id = self._get_app_id_from_request(kwargs)
+            
+            # Get pagination parameters
+            page = int(kwargs.get('page', 1))
+            limit = int(kwargs.get('limit', 10))
+            offset = (page - 1) * limit
+            
+            # Get optional filters
+            selected_user = kwargs.get('selected_user', '')
+            search_term = kwargs.get('search', '')
+            
+            # Find the installed location
+            installed_location = request.env['installed.location'].sudo().search([
+                ('location_id', '=', location_id)
+            ], limit=1)
+
+            if not installed_location:
+                return Response(
+                    json.dumps({'success': False, 'error': 'Location not found'}),
+                    content_type='application/json',
+                    status=404,
+                    headers=get_cors_headers(request)
+                )
+
+            # Build domain for call messages - directly search by location_id
+            # This is simpler and more direct than the previous approach
+            domain = [
+                ('location_id.location_id', '=', location_id),
+                ('message_type', '=', 'TYPE_CALL')
+            ]
+            _logger.info(f"Built domain for location {location_id}: {domain}")
+            
+            # Add user filter if specified
+            if selected_user and selected_user.strip():
+                # Search for contacts assigned to this user
+                user_contacts = request.env['ghl.location.contact'].sudo().search([
+                    ('location_id', '=', location_id),
+                    ('assigned_to', '=', selected_user)
+                ])
+                if user_contacts:
+                    user_contact_ids = [c.id for c in user_contacts]
+                    # Filter to only show calls for contacts assigned to this user
+                    domain = [
+                        ('contact_id', 'in', user_contact_ids),
+                        ('message_type', '=', 'TYPE_CALL')
+                    ]
+                    _logger.info(f"Applied user filter: {domain}")
+            
+            # Add search filter if specified
+            if search_term and search_term.strip():
+                # Search in contact names and phone numbers
+                search_contacts = request.env['ghl.location.contact'].sudo().search([
+                    ('location_id', '=', location_id),
+                    ('|'),
+                    ('first_name', 'ilike', search_term),
+                    ('last_name', 'ilike', search_term),
+                    ('phone', 'ilike', search_term)
+                ])
+                if search_contacts:
+                    search_contact_ids = [c.id for c in search_contacts]
+                    # Filter to only show calls for contacts matching search
+                    domain = [
+                        ('contact_id', 'in', search_contact_ids),
+                        ('message_type', '=', 'TYPE_CALL')
+                    ]
+                    _logger.info(f"Applied search filter: {domain}")
+            
+            # Get total count
+            total_calls = request.env['ghl.contact.message'].sudo().search_count(domain)
+            _logger.info(f"Total calls found for domain {domain}: {total_calls}")
+            _logger.info(f"Domain breakdown: location_id.location_id='{location_id}', message_type='TYPE_CALL'")
+            
+            # Debug: Let's also check the raw count without any filters
+            raw_total = request.env['ghl.contact.message'].sudo().search_count([
+                ('message_type', '=', 'TYPE_CALL')
+            ])
+            _logger.info(f"Raw total calls in system (no location filter): {raw_total}")
+            
+            # Debug: Check location-specific count
+            location_total = request.env['ghl.contact.message'].sudo().search_count([
+                ('location_id.location_id', '=', location_id)
+            ])
+            _logger.info(f"Total messages for location {location_id}: {location_total}")
+            
+            # Get paginated results
+            call_messages = request.env['ghl.contact.message'].sudo().search(
+                domain,
+                order='date_added desc',
+                limit=limit,
+                offset=offset
+            )
+            _logger.info(f"Retrieved {len(call_messages)} call messages for pagination")
+            
+            # Debug: Let's also check what the first few messages look like
+            if call_messages:
+                first_message = call_messages[0]
+                _logger.info(f"First message debug: id={first_message.id}, contact_id={first_message.contact_id.id if first_message.contact_id else 'None'}, location_id={first_message.location_id.location_id if first_message.location_id else 'None'}")
+            
+            # Additional debugging: Let's check what call messages exist in the system
+            all_call_messages = request.env['ghl.contact.message'].sudo().search([
+                ('message_type', '=', 'TYPE_CALL')
+            ], limit=5)
+            _logger.info(f"Sample of all call messages in system: {[(m.id, m.contact_id.name if m.contact_id else 'None', m.location_id.location_id if m.location_id else 'None') for m in all_call_messages]}")
+            
+            # Prepare response data - use the same structure as the working endpoint
+            calls_data = []
+            for message in call_messages:
+                # Get contact information
+                contact = request.env['ghl.location.contact'].sudo().browse(message.contact_id.id) if message.contact_id else None
+                
+                if contact:
+                    # Calculate duration from transcript if meta_id.call_duration is not available
+                    calculated_duration = None
+                    if message.meta_id and message.meta_id.call_duration:
+                        calculated_duration = message.meta_id.call_duration
+                    else:
+                        # Try to calculate from transcript data
+                        transcript_records = request.env['ghl.contact.message.transcript'].sudo().search([
+                            ('message_id', '=', message.id)
+                        ])
+                        if transcript_records:
+                            calculated_duration = sum(t.duration for t in transcript_records if t.duration)
+                    
+                    # Use the same data structure as the working endpoint
+                    call_data = {
+                        'id': message.id,
+                        'ghl_id': message.ghl_id,
+                        'message_type': message.message_type,
+                        'body': message.body or '',
+                        'direction': message.direction or '',
+                        'status': message.status or '',
+                        'content_type': message.content_type or '',
+                        'source': message.source or '',
+                        'user_id': message.user_id.name if message.user_id else '',
+                        'conversation_provider_id': message.conversation_provider_id or '',
+                        'date_added': message.date_added.isoformat() if message.date_added else None,
+                        'conversation_id': message.conversation_id.ghl_id if message.conversation_id else None,
+                        'location_id': message.location_id.location_id if message.location_id else None,
+                        # Include meta data if available
+                        'meta': {
+                            'call_duration': calculated_duration,
+                            'call_status': message.meta_id.call_status if message.meta_id and message.meta_id.call_status else None,
+                        } if message.meta_id or calculated_duration else None,
+                        # Include AI analysis data
+                        'ai_call_grade': message.ai_call_grade or None,
+                        'ai_call_summary_generated': message.ai_call_summary_generated or False,
+                        'ai_call_summary_date': message.ai_call_summary_date.isoformat() if message.ai_call_summary_date else None,
+                        # Include contact info
+                        'contact': {
+                            'id': contact.id,
+                            'name': contact.name,
+                            'external_id': contact.external_id,
+                            'email': contact.email,
+                            'phone': '',
+                        },
+                        # Include recording URL if available
+                        'recording_url': f'/api/ghl-message/{message.id}/recording' if message.recording_fetched else None,
+                        'recording_filename': message.recording_filename or None,
+                        'recording_size': message.recording_size or None,
+                        'recording_content_type': message.recording_content_type or None,
+                        # Include transcript data if available
+                        'transcript_fetched': message.transcript_fetched or False,
+                        'transcript_ids': [
+                            {
+                                'id': t.id,
+                                'sentence_index': t.sentence_index,
+                                'start_time_seconds': t.start_time_seconds,
+                                'end_time_seconds': t.end_time_seconds,
+                                'transcript': t.transcript,
+                                'confidence': t.confidence,
+                                'duration': t.duration
+                            } for t in message.transcript_ids.sorted('sentence_index')
+                        ] if message.transcript_ids else [],
+                    }
+                    calls_data.append(call_data)
+            
+            _logger.info(f"Found {len(calls_data)} call messages for location {location_id}")
+            _logger.info(f"Total calls count: {total_calls}, Page: {page}, Limit: {limit}")
+            _logger.info(f"Response data: success={True}, calls_count={len(calls_data)}, total_calls={total_calls}")
+            
+            return Response(
+                json.dumps({
+                    'success': True,
+                    'calls': calls_data,
+                    'total_calls': total_calls,
+                    'page': page,
+                    'limit': limit,
+                    'total_pages': (total_calls + limit - 1) // limit,
+                    'message': f'Successfully fetched {len(calls_data)} call messages'
+                }),
+                content_type='application/json',
+                headers=get_cors_headers(request)
+            )
+
+        except Exception as e:
+            import traceback
+            tb = traceback.format_exc()
+            _logger.error(f"Exception in get_location_calls: {str(e)}\n{tb}")
+            return Response(
+                json.dumps({
+                    'success': False,
+                    'error': str(e),
+                    'message': 'Failed to fetch call messages'
+                }),
+                content_type='application/json',
+                status=500,
+                headers=get_cors_headers(request)
+            )
+
+    @http.route('/api/fetch-transcript/<int:message_id>', type='http', auth='none', methods=['POST', 'OPTIONS'], csrf=False)
+    def fetch_transcript_for_message(self, message_id, **kwargs):
+        """
+        Fetch transcript for a specific call message
+        """
+        _logger.info(f"fetch_transcript_for_message called for message_id: {message_id}")
+
+        # Handle preflight OPTIONS request
+        if request.httprequest.method == 'OPTIONS':
+            return Response(
+                status=200,
+                headers=get_cors_headers(request)
+            )
+
+        try:
+            # Get app_id from parameters
+            app_id = self._get_app_id_from_request(kwargs)
+            
+            # Find the message
+            message = request.env['ghl.contact.message'].sudo().browse(message_id)
+            if not message.exists():
+                return Response(
+                    json.dumps({'success': False, 'error': 'Message not found'}),
+                    content_type='application/json',
+                    status=404,
+                    headers=get_cors_headers(request)
+                )
+
+            if message.message_type != 'TYPE_CALL':
+                return Response(
+                    json.dumps({'success': False, 'error': 'Message is not a call message'}),
+                    content_type='application/json',
+                    status=400,
+                    headers=get_cors_headers(request)
+                )
+
+            # Fetch transcript using the existing method
+            transcript_result = request.env['ghl.contact.message.transcript'].sudo().fetch_transcript_for_message(
+                message_id=message_id, 
+                app_id=app_id
+            )
+
+            if transcript_result.get('success'):
+                # Get the updated transcript data
+                transcript_records = request.env['ghl.contact.message.transcript'].sudo().search([
+                    ('message_id', '=', message_id)
+                ], order='sentence_index asc')
+
+                transcript_data = []
+                for record in transcript_records:
+                    transcript_data.append({
+                        'timestamp': f"{record.start_time_seconds:.1f}s",
+                        'speaker': 'agent',  # Default to agent, could be enhanced later
+                        'speakerName': 'Agent',
+                        'text': record.transcript,
+                        'confidence': record.confidence,
+                        'duration': record.duration
+                    })
+
+                return Response(
+                    json.dumps({
+                        'success': True,
+                        'transcript': transcript_data,
+                        'message': transcript_result.get('message', 'Transcript fetched successfully'),
+                        'call_duration_seconds': transcript_result.get('call_duration_seconds', 0),
+                        'call_duration_formatted': transcript_result.get('call_duration_formatted', '0:00'),
+                        'total_sentences': transcript_result.get('total_sentences', 0),
+                        'average_confidence': transcript_result.get('average_confidence', 0)
+                    }),
+                    content_type='application/json',
+                    headers=get_cors_headers(request)
+                )
+            else:
+                return Response(
+                    json.dumps({
+                        'success': False,
+                        'error': transcript_result.get('error', 'Failed to fetch transcript')
+                    }),
+                    content_type='application/json',
+                    status=500,
+                    headers=get_cors_headers(request)
+                )
+
+        except Exception as e:
+            import traceback
+            tb = traceback.format_exc()
+            _logger.error(f"Exception in fetch_transcript_for_message: {str(e)}\n{tb}")
+            return Response(
+                json.dumps({
+                    'success': False,
+                    'error': str(e),
+                    'message': 'Failed to fetch transcript'
+                }),
+                content_type='application/json',
+                status=500,
+                headers=get_cors_headers(request)
+            )
+
+    @http.route('/api/fetch-recording/<int:message_id>', type='http', auth='none', methods=['POST', 'OPTIONS'], csrf=False)
+    def fetch_recording_for_message(self, message_id, **kwargs):
+        """
+        Fetch recording for a specific call message
+        """
+        _logger.info(f"fetch_recording_for_message called for message_id: {message_id}")
+
+        # Handle preflight OPTIONS request
+        if request.httprequest.method == 'OPTIONS':
+            return Response(
+                status=200,
+                headers=get_cors_headers(request)
+            )
+
+        try:
+            # Get app_id from parameters
+            app_id = self._get_app_id_from_request(kwargs)
+            
+            # Find the message
+            message = request.env['ghl.contact.message'].sudo().browse(message_id)
+            if not message.exists():
+                return Response(
+                    json.dumps({'success': False, 'error': 'Message not found'}),
+                    content_type='application/json',
+                    status=404,
+                    headers=get_cors_headers(request)
+                )
+
+            if message.message_type != 'TYPE_CALL':
+                return Response(
+                    json.dumps({'success': False, 'error': 'Message is not a call message'}),
+                    content_type='application/json',
+                    status=400,
+                    headers=get_cors_headers(request)
+                )
+
+            # Check if recording is already fetched
+            if message.recording_fetched and (message.recording_data or message.recording_filename):
+                return Response(
+                    json.dumps({
+                        'success': True,
+                        'message': 'Recording already fetched',
+                        'recording_fetched': True,
+                        'recording_url': f'/api/ghl-message/{message.id}/recording'
+                    }),
+                    content_type='application/json',
+                    headers=get_cors_headers(request)
+                )
+
+            # Fetch recording using the existing method
+            # Pass the app_id to the method
+            recording_result = message.fetch_recording_url(app_id=app_id)
+            
+            if recording_result.get('success'):
+                # Re-read the message to get updated recording data
+                message = request.env['ghl.contact.message'].sudo().browse(message_id)
+                
+                return Response(
+                    json.dumps({
+                        'success': True,
+                        'message': 'Recording fetched successfully',
+                        'recording_fetched': message.recording_fetched,
+                        'recording_url': f'/api/ghl-message/{message.id}/recording',
+                        'recording_filename': message.recording_filename,
+                        'recording_size': message.recording_size,
+                        'recording_content_type': message.recording_content_type
+                    }),
+                    content_type='application/json',
+                    headers=get_cors_headers(request)
+                )
+            else:
+                return Response(
+                    json.dumps({
+                        'success': False,
+                        'error': recording_result.get('error', 'Failed to fetch recording')
+                    }),
+                    content_type='application/json',
+                    status=500,
+                    headers=get_cors_headers(request)
+                )
+
+        except Exception as e:
+            import traceback
+            tb = traceback.format_exc()
+            _logger.error(f"Exception in fetch_recording_for_message: {str(e)}\n{tb}")
+            return Response(
+                json.dumps({
+                    'success': False,
+                    'error': str(e),
+                    'message': 'Failed to fetch recording'
+                }),
+                content_type='application/json',
+                status=500,
+                headers=get_cors_headers(request)
+            )
+
+    @http.route('/api/get-transcript/<int:message_id>', type='http', auth='none', methods=['GET', 'OPTIONS'], csrf=False)
+    def get_transcript_for_message(self, message_id, **kwargs):
+        """
+        Get existing transcript for a specific call message
+        """
+        _logger.info(f"get_transcript_for_message called for message_id: {message_id}")
+
+        # Handle preflight OPTIONS request
+        if request.httprequest.method == 'OPTIONS':
+            return Response(
+                status=200,
+                headers=get_cors_headers(request)
+            )
+
+        try:
+            # Find the message
+            message = request.env['ghl.contact.message'].sudo().browse(message_id)
+            if not message.exists():
+                return Response(
+                    json.dumps({'success': False, 'error': 'Message not found'}),
+                    content_type='application/json',
+                    status=404,
+                    headers=get_cors_headers(request)
+                )
+
+            if message.message_type != 'TYPE_CALL':
+                return Response(
+                    json.dumps({'success': False, 'error': 'Message is not a call message'}),
+                    content_type='application/json',
+                    status=400,
+                    headers=get_cors_headers(request)
+                )
+
+            # Check if transcript exists and is fetched
+            if not message.transcript_fetched or not message.transcript_ids:
+                return Response(
+                    json.dumps({
+                        'success': False, 
+                        'error': 'No transcript available',
+                        'transcript_fetched': message.transcript_fetched,
+                        'transcript_count': len(message.transcript_ids)
+                    }),
+                    content_type='application/json',
+                    status=404,
+                    headers=get_cors_headers(request)
+                )
+
+            # Get existing transcript data
+            transcript_records = message.transcript_ids.sorted('sentence_index')
+            
+            transcript_data = []
+            for record in transcript_records:
+                transcript_data.append({
+                    'timestamp': f"{record.start_time_seconds:.1f}s",
+                    'speaker': 'agent',  # Default to agent, could be enhanced later
+                    'speakerName': 'Agent',
+                    'text': record.transcript,
+                    'confidence': record.confidence,
+                    'duration': record.duration
+                })
+
+            return Response(
+                json.dumps({
+                    'success': True,
+                    'transcript': transcript_data,
+                    'message': f'Retrieved {len(transcript_data)} existing transcript segments',
+                    'transcript_fetched': message.transcript_fetched,
+                    'transcript_count': len(transcript_data)
+                }),
+                content_type='application/json',
+                headers=get_cors_headers(request)
+            )
+
+        except Exception as e:
+            import traceback
+            tb = traceback.format_exc()
+            _logger.error(f"Exception in get_transcript_for_message: {str(e)}\n{tb}")
+            return Response(
+                json.dumps({
+                    'success': False,
+                    'error': str(e),
+                    'message': 'Failed to get transcript'
+                }),
+                content_type='application/json',
+                status=500,
+                headers=get_cors_headers(request)
+            )
+
     @http.route('/api/location-openai-key/<string:location_id>/validate', type='http', auth='none', methods=['POST', 'OPTIONS'], csrf=False)
     def validate_location_openai_key(self, location_id, **kwargs):
         """

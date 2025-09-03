@@ -97,7 +97,11 @@ class GhlContactMessage(models.Model):
     recording_filename = fields.Char('Recording Filename')
     recording_content_type = fields.Char('Recording Content Type')
     recording_size = fields.Integer('Recording Size (bytes)')
-    recording_fetched = fields.Boolean('Recording Fetched', default=False)
+    recording_fetched = fields.Boolean('Recording Fetched', compute='_compute_recording_fetched', store=True)
+
+    # Transcript fields
+    transcript_fetched = fields.Boolean('Transcript Fetched', compute='_compute_transcript_fetched', store=True)
+    transcript_fetch_attempted = fields.Boolean('Transcript Fetch Attempted', default=False)
 
     # AI Analysis fields
     ai_call_summary_html = fields.Html('AI Call Summary', help='AI-generated HTML summary of the call')
@@ -195,6 +199,18 @@ class GhlContactMessage(models.Model):
                 record.display_name = f"Message - {record.contact_id.name}"
             else:
                 record.display_name = f"Message {record.ghl_id}"
+
+    @api.depends('transcript_ids')
+    def _compute_transcript_fetched(self):
+        """Compute transcript_fetched based on whether transcript_ids has records"""
+        for record in self:
+            record.transcript_fetched = bool(record.transcript_ids and len(record.transcript_ids) > 0)
+
+    @api.depends('recording_data', 'recording_filename')
+    def _compute_recording_fetched(self):
+        """Compute recording_fetched based on whether recording data exists"""
+        for record in self:
+            record.recording_fetched = bool(record.recording_data or record.recording_filename)
 
     @api.constrains('contact_id', 'location_id')
     def _check_contact_location_consistency(self):
@@ -470,7 +486,7 @@ class GhlContactMessage(models.Model):
         _logger.info(f"Result type: {type(result)}, Result: {result}")
         return result
 
-    def fetch_recording_url(self, location_id=None, message_id=None):
+    def fetch_recording_url(self, location_id=None, message_id=None, app_id=None):
         """
         Fetch recording URL for a message from GHL API.
         Args:
@@ -497,9 +513,15 @@ class GhlContactMessage(models.Model):
             }
 
         # Step 1: Get agency access token
-        app = self.env['cyclsales.application'].sudo().search([
-            ('is_active', '=', True)
-        ], limit=1)
+        # Use the provided app_id parameter if available
+        if app_id:
+            app = self.env['cyclsales.application'].sudo().search([
+                ('app_id', '=', app_id)
+            ], limit=1)
+        else:
+            app = self.env['cyclsales.application'].sudo().search([
+                ('is_active', '=', True)
+            ], limit=1)
 
         if not app or not app.access_token:
             _logger.error("No agency access token found")
@@ -584,8 +606,8 @@ class GhlContactMessage(models.Model):
                     'recording_data': recording_data_b64,
                     'recording_filename': filename,
                     'recording_content_type': content_type,
-                    'recording_size': len(response.content),
-                    'recording_fetched': True
+                    'recording_size': len(response.content)
+                    # recording_fetched will be computed automatically based on recording_data
                 })
 
                 _logger.info(f"Recording data saved to database for message {self.id}")
