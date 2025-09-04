@@ -444,12 +444,15 @@ class GHLLocationContact(models.Model):
     def run_ai_analysis(self):
         """Run AI analysis for this specific contact using real AI service"""
         import logging
+        import time
         _logger = logging.getLogger(__name__)
         
         try:
-            # Set status to processing
-            self.ai_analysis_status = 'processing'
-            self.ai_analysis_error = ''
+            # Set status to processing with retry logic
+            self._update_contact_with_retry({
+                'ai_analysis_status': 'processing',
+                'ai_analysis_error': ''
+            })
             
             # Get the automation template for this contact's location
             automation_template = self.location_id.automation_template_id
@@ -470,12 +473,14 @@ class GHLLocationContact(models.Model):
             # Generate AI analysis using the location's API key
             ai_result = self._generate_ai_analysis_with_api_key(self.location_id.openai_api_key, contact_data, automation_template)
             
-            # Update contact fields with AI results
-            self._update_contact_with_ai_results(ai_result, automation_template)
+            # Update contact fields with AI results using retry logic
+            self._update_contact_with_ai_results_with_retry(ai_result, automation_template)
             
-            # Update status to completed
-            self.ai_analysis_status = 'completed'
-            self.ai_analysis_date = fields.Datetime.now()
+            # Update status to completed with retry logic
+            self._update_contact_with_retry({
+                'ai_analysis_status': 'completed',
+                'ai_analysis_date': fields.Datetime.now()
+            })
             
             _logger.info(f"AI analysis completed successfully for contact {self.id}")
             
@@ -490,8 +495,11 @@ class GHLLocationContact(models.Model):
             
         except Exception as e:
             _logger.error(f"Error running AI analysis for contact {self.id}: {str(e)}")
-            self.ai_analysis_status = 'failed'
-            self.ai_analysis_error = str(e)
+            # Update status to failed with retry logic
+            self._update_contact_with_retry({
+                'ai_analysis_status': 'failed',
+                'ai_analysis_error': str(e)
+            })
             return {
                 'success': False,
                 'error': str(e)
@@ -2129,3 +2137,74 @@ IMPORTANT: Return ONLY the JSON object. Do not wrap it in markdown code blocks (
             # Set fallback values
             self.ai_sales_grade = 'no_grade'
             self.ai_sales_reasoning = f'<div style="color: #dc2626;"><h4>Update Error</h4><p>Failed to update contact with AI sales grade results: {str(e)}</p></div>'
+
+    def _update_contact_with_retry(self, update_data, max_retries=3):
+        """Update contact with retry logic to handle concurrent update errors"""
+        import logging
+        import time
+        _logger = logging.getLogger(__name__)
+        
+        for attempt in range(max_retries):
+            try:
+                # Re-fetch the contact from database to get latest version
+                contact = self.env['ghl.location.contact'].sudo().browse(self.id)
+                if not contact.exists():
+                    raise Exception(f"Contact {self.id} no longer exists")
+                
+                # Update the fields on the fresh record
+                for field, value in update_data.items():
+                    setattr(contact, field, value)
+                
+                # Force a flush to ensure the update is applied
+                self.env.flush_all()
+                
+                _logger.info(f"Successfully updated contact {self.id} on attempt {attempt + 1}")
+                return True
+                
+            except Exception as e:
+                if "could not serialize access due to concurrent update" in str(e) and attempt < max_retries - 1:
+                    # Wait with exponential backoff before retrying
+                    wait_time = (2 ** attempt) * 0.1  # 0.1s, 0.2s, 0.4s
+                    _logger.warning(f"Concurrent update error for contact {self.id}, retrying in {wait_time}s (attempt {attempt + 1}/{max_retries})")
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    _logger.error(f"Failed to update contact {self.id} after {attempt + 1} attempts: {str(e)}")
+                    raise e
+        
+        return False
+
+    def _update_contact_with_ai_results_with_retry(self, ai_result, automation_template=None, max_retries=3):
+        """Update contact with AI results using retry logic to handle concurrent update errors"""
+        import logging
+        import time
+        _logger = logging.getLogger(__name__)
+        
+        for attempt in range(max_retries):
+            try:
+                # Re-fetch the contact from database to get latest version
+                contact = self.env['ghl.location.contact'].sudo().browse(self.id)
+                if not contact.exists():
+                    raise Exception(f"Contact {self.id} no longer exists")
+                
+                # Call the original update method on the fresh record
+                contact._update_contact_with_ai_results(ai_result, automation_template)
+                
+                # Force a flush to ensure the update is applied
+                self.env.flush_all()
+                
+                _logger.info(f"Successfully updated contact {self.id} with AI results on attempt {attempt + 1}")
+                return True
+                
+            except Exception as e:
+                if "could not serialize access due to concurrent update" in str(e) and attempt < max_retries - 1:
+                    # Wait with exponential backoff before retrying
+                    wait_time = (2 ** attempt) * 0.1  # 0.1s, 0.2s, 0.4s
+                    _logger.warning(f"Concurrent update error for contact {self.id} AI results, retrying in {wait_time}s (attempt {attempt + 1}/{max_retries})")
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    _logger.error(f"Failed to update contact {self.id} with AI results after {attempt + 1} attempts: {str(e)}")
+                    raise e
+        
+        return False

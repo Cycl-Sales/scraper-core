@@ -14,11 +14,23 @@ interface CallVolumeChartProps {
 
 type ChartView = "location" | "user" | "direction";
 
-function CustomTooltip({ active, payload }: any) {
+function CustomTooltip({ active, payload, label }: any) {
   if (active && payload && payload.length) {
+    const data = payload[0].payload;
     return (
-      <div className="bg-slate-900 border border-slate-700 rounded-md px-4 py-2 text-blue-400 text-lg font-semibold shadow">
-        Calls: {payload[0].value}
+      <div className="bg-slate-800 border border-slate-600 rounded-lg p-3 shadow-lg min-w-[200px]">
+        <p className="text-white font-medium mb-2">{label}</p>
+        <div className="space-y-1 text-sm">
+          <p className="text-blue-400">
+            <span className="text-slate-300">Calls:</span> {payload[0].value}
+          </p>
+          <p className="text-green-400">
+            <span className="text-slate-300">Total Duration:</span> {data.totalDuration?.toFixed(1)}s
+          </p>
+          <p className="text-yellow-400">
+            <span className="text-slate-300">Avg Duration:</span> {data.avgDuration?.toFixed(1)}s
+          </p>
+        </div>
       </div>
     );
   }
@@ -122,7 +134,7 @@ export default function CallVolumeChart({ data, rawData, loading = false }: Call
   // Show empty state if no data
   if (!callData || callData.length === 0) {
     return (
-      <Card className="bg-slate-800 border-slate-700">
+      <Card className="bg-slate-800 border-slate-700 h-100" >
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-lg font-semibold text-white">Call Volume by Location</CardTitle>
           <Button variant="ghost" size="sm" className="text-slate-400 hover:text-white">
@@ -170,29 +182,35 @@ export default function CallVolumeChart({ data, rawData, loading = false }: Call
           <MoreHorizontal className="w-4 h-4" />
         </Button>
       </CardHeader>
-      <CardContent className="flex-1">
-        <ResponsiveContainer width="100%" height={400}>
-          <BarChart data={callData}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-            <XAxis 
-              dataKey="location"
-              stroke="#94a3b8"
-              fontSize={12}
-            />
-            <YAxis 
-              stroke="#94a3b8"
-              fontSize={12}
-            />
-            <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(59, 130, 246, 0.1)' }} />
-            <Bar 
-              dataKey="volume"
-              fill="#3b82f6"
-              radius={[6, 6, 0, 0]}
-            >
-              <LabelList dataKey="volume" position="top" fill="#3b82f6" fontSize={16} fontWeight={700} />
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
+      <CardContent className="flex-1 min-h-0">
+        <div className="h-full min-h-[300px] max-h-[500px]">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={callData} margin={{ top: 20, right: 30, left: 20, bottom: 80 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+              <XAxis 
+                dataKey="location"
+                stroke="#94a3b8"
+                fontSize={10}
+                angle={-45}
+                textAnchor="end"
+                height={100}
+                interval={0}
+              />
+              <YAxis 
+                stroke="#94a3b8"
+                fontSize={12}
+              />
+              <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(59, 130, 246, 0.1)' }} />
+              <Bar 
+                dataKey="volume"
+                fill="#3b82f6"
+                radius={[6, 6, 0, 0]}
+              >
+                <LabelList dataKey="volume" position="top" fill="#3b82f6" fontSize={12} fontWeight={700} />
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
       </CardContent>
     </Card>
   );

@@ -728,8 +728,8 @@ export default function Analytics() {
           /* Calls Section with Charts and Table */
           <div className="space-y-6">
             {/* Analytics Charts */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div className="h-full">
+            <div className="grid grid-cols-1 lg:grid-cols-10 gap-6">
+              <div className="lg:col-span-7 h-full">
                 {callVolumeLoading ? (
                   <div className="bg-slate-800 border-slate-700 rounded-lg p-6 h-full flex items-center justify-center">
                     <div className="text-slate-400">Loading call volume data...</div>
@@ -738,7 +738,7 @@ export default function Analytics() {
                   <CallVolumeChart rawData={callVolumeData || undefined} loading={callVolumeLoading} />
                 )}
               </div>
-              <div className="h-full">
+              <div className="lg:col-span-3 h-full">
                 {engagementLoading ? (
                   <div className="bg-slate-800 border-slate-700 rounded-lg p-6 h-full flex items-center justify-center">
                     <div className="text-slate-400">Loading engagement data...</div>

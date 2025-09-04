@@ -559,7 +559,7 @@ export default function CallDetails() {
         </div>
         {/* Charts Row */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6 items-stretch">
-          <div className="lg:col-span-2 flex flex-col h-[420px]">
+          <div className="lg:col-span-2 flex flex-col h-[550px]">
             <div className="h-full flex flex-col">
               <CallVolumeChart 
                 rawData={callVolumeData || undefined} 
@@ -567,7 +567,7 @@ export default function CallDetails() {
               />
             </div>
           </div>
-          <div className="lg:col-span-1 flex flex-col h-[420px]">
+          <div className="lg:col-span-1 flex flex-col h-[550px]">
             <div className="h-full flex flex-col">
               <EngagementChart 
                 rawData={engagementData || undefined} 

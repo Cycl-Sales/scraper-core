@@ -18,9 +18,18 @@ const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'
 
 function CustomTooltip({ active, payload }: any) {
   if (active && payload && payload.length) {
+    const data = payload[0].payload;
     return (
-      <div className="bg-slate-900 border border-slate-700 rounded-md px-4 py-2 text-blue-400 text-lg font-semibold shadow">
-        {payload[0].name}: {payload[0].value}%
+      <div className="bg-slate-800 border border-slate-600 rounded-lg p-3 shadow-lg min-w-[200px]">
+        <p className="text-white font-medium mb-2">{payload[0].name}</p>
+        <div className="space-y-1 text-sm">
+          <p className="text-blue-400">
+            <span className="text-slate-300">Percentage:</span> {payload[0].value}%
+          </p>
+          <p className="text-green-400">
+            <span className="text-slate-300">Count:</span> {data.count}
+          </p>
+        </div>
       </div>
     );
   }
@@ -31,6 +40,16 @@ export default function EngagementChart({ data, rawData, loading = false }: Enga
   const [engagementData, setEngagementData] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [chartView, setChartView] = useState<ChartView>("location");
+
+  // Get chart title based on current view
+  const getChartTitle = () => {
+    switch (chartView) {
+      case 'location': return 'Engagement by Source';
+      case 'user': return 'Engagement by User';
+      case 'direction': return 'Engagement by Direction';
+      default: return 'Engagement by Source';
+    }
+  };
 
   // Process raw data based on selected view
   const processDataForView = (rawCallData: any[], view: ChartView) => {
@@ -150,16 +169,6 @@ export default function EngagementChart({ data, rawData, loading = false }: Enga
     );
   }
 
-
-  const getChartTitle = () => {
-    switch (chartView) {
-      case 'location': return 'Engagement by Source';
-      case 'user': return 'Engagement by User';
-      case 'direction': return 'Engagement by Direction';
-      default: return 'Engagement by Source';
-    }
-  };
-
   return (
     <Card className="bg-slate-800 border-slate-700 h-full flex flex-col">
       <CardHeader className="flex flex-row items-center justify-between">
@@ -180,36 +189,49 @@ export default function EngagementChart({ data, rawData, loading = false }: Enga
           <MoreHorizontal className="w-4 h-4" />
         </Button>
       </CardHeader>
-      <CardContent className="flex-1">
-        <ResponsiveContainer width="100%" height={400}>
-          <PieChart>
-            <Pie
-              data={engagementData}
-              cx="50%"
-              cy="50%"
-              labelLine={false}
-              label={({ percent }) => percent > 0.05 ? `${Math.round(percent * 100)}%` : ''}
-              outerRadius={80}
-              fill="#8884d8"
-              dataKey="percentage"
-              minAngle={5}
-            >
-              {engagementData.map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-              ))}
-            </Pie>
-            <Tooltip content={<CustomTooltip />} />
-            <Legend 
-              verticalAlign="bottom" 
-              height={36}
-              wrapperStyle={{
-                fontSize: '12px',
-                lineHeight: '14px',
-                paddingTop: '10px'
-              }}
-            />
-          </PieChart>
-        </ResponsiveContainer>
+      <CardContent className="flex-1 flex flex-col">
+        <div className="flex-1">
+          <ResponsiveContainer width="100%" height={300}>
+            <PieChart>
+              <Pie
+                data={engagementData}
+                cx="50%"
+                cy="50%"
+                labelLine={false}
+                label={({ percent }) => percent > 0.05 ? `${Math.round(percent * 100)}%` : ''}
+                outerRadius={70}
+                fill="#8884d8"
+                dataKey="percentage"
+                minAngle={5}
+              >
+                {engagementData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                ))}
+              </Pie>
+              <Tooltip content={<CustomTooltip />} />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+        
+        {/* Custom 2-column left-aligned legend */}
+        <div className="mt-4 flex-shrink-0">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+            {engagementData.map((entry, index) => (
+              <div key={index} className="flex items-center gap-2 text-slate-300">
+                <div 
+                  className="w-3 h-3 rounded-sm flex-shrink-0" 
+                  style={{ backgroundColor: COLORS[index % COLORS.length] }}
+                />
+                <span className="truncate" title={entry.name}>
+                  {entry.name}
+                </span>
+                <span className="text-slate-400 ml-auto">
+                  {entry.percentage}%
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
       </CardContent>
     </Card>
   );

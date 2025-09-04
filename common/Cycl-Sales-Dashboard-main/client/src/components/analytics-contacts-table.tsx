@@ -1975,21 +1975,45 @@ export default function AnalyticsContactsTable({ loading = false, locationId, se
                         case "Speed to Lead":
                           return <TableCell key={col} className="whitespace-nowrap px-3 py-2"></TableCell>;
                         case "Touch Summary":
-                          // Filter for outbound touches only - this would need backend support for proper filtering
-                          // For now, we'll show the current data but this should be modified to show only outbound touches
+                          const touchSummaryData = parseTouchSummary(row.touchSummary ?? '');
+                          const isNoTouches = touchSummaryData.length === 1 && touchSummaryData[0].text === 'no_touches';
+                          
                           return <TableCell key={col} className="whitespace-nowrap px-3 py-2">
-                            <div className="flex flex-row flex-wrap gap-1 items-center">
-                              {parseTouchSummary(row.touchSummary ?? '').map((chip, index) => (
-                                <span
-                                  key={index}
-                                  className={`inline-flex items-center gap-2 px-2 py-0.5 rounded-md border ${chip.border} ${chip.textColor} font-medium tracking-tight h-7 text-[11px] flex-shrink-0`}
-                                  style={{ borderWidth: 1 }}
-                                >
-                                  <span className={chip.iconColor}>{chip.icon}</span>
-                                  {chip.text}
-                                </span>
-                              ))}
-                            </div>
+                            {isNoTouches ? (
+                              <span className="inline-flex items-center gap-2 px-2 py-0.5 rounded-md border border-slate-600 text-slate-400 font-medium tracking-tight h-7 text-[11px]">
+                                <span className="text-slate-400">&#10005;</span>
+                                No Touches
+                              </span>
+                            ) : (
+                              <Popover>
+                                <PopoverTrigger asChild>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="bg-blue-800 border-blue-600 text-blue-300 hover:bg-blue-700 px-3 py-1 rounded-md text-xs font-medium"
+                                  >
+                                    Show Touch Summary
+                                  </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-80 p-3 bg-slate-800 border-slate-700 text-slate-200">
+                                  <div className="space-y-2">
+                                    <div className="font-medium text-white">Touch Summary</div>
+                                    <div className="flex flex-wrap gap-1">
+                                      {touchSummaryData.map((chip, index) => (
+                                        <span
+                                          key={index}
+                                          className={`inline-flex items-center gap-2 px-2 py-0.5 rounded-md border ${chip.border} ${chip.textColor} font-medium tracking-tight h-7 text-[11px] bg-transparent`}
+                                          style={{ borderWidth: 1 }}
+                                        >
+                                          <span className={chip.iconColor}>{chip.icon}</span>
+                                          {chip.text}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </div>
+                                </PopoverContent>
+                              </Popover>
+                            )}
                           </TableCell>;
                         case "Engagement Summary":
                           const formatEngagementType = (type: string) => {
@@ -1997,39 +2021,40 @@ export default function AnalyticsContactsTable({ loading = false, locationId, se
                             return type.replace(/^TYPE_/, '').replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, l => l.toUpperCase());
                           };
                           
+                          const hasEngagementData = Array.isArray(row.engagementSummary) && row.engagementSummary.length > 0 && 
+                            !(row.engagementSummary.length === 1 && row.engagementSummary[0].type === "No Engagement");
+                          
                           return <TableCell key={col} className="px-3 py-2">
-                            <div className="flex gap-1 flex-nowrap">
-                              {Array.isArray(row.engagementSummary) && row.engagementSummary.length > 0
-                                ? row.engagementSummary.slice(0, 3).map((e, idx) => (
-                                  <span key={idx} className={`inline-flex items-center gap-2 px-2 py-0.5 rounded-md border ${e.color || 'border-slate-500 text-slate-300'} font-medium tracking-tight h-7 text-[11px] whitespace-nowrap flex-shrink-0`} style={{ borderWidth: 1 }}>
-                                    <span>{e.icon || '📄'}</span>
-                                    {e.type === "No Engagement" ? "No Engagement" : `${e.count}x ${formatEngagementType(e.type)}`}
-                                  </span>
-                                ))
-                                : <span className="text-slate-500 text-xs">No engagement</span>}
-                              {Array.isArray(row.engagementSummary) && row.engagementSummary.length > 3 && (
-                                <Popover>
-                                  <PopoverTrigger asChild>
-                                    <span className="inline-flex items-center px-2 py-0.5 rounded-md border border-blue-600 text-blue-300 font-medium text-xs cursor-pointer hover:bg-blue-900/20 whitespace-nowrap flex-shrink-0">
-                                      {row.engagementSummary.length - 3} more
-                                    </span>
-                                  </PopoverTrigger>
-                                  <PopoverContent className="w-80 p-3 bg-slate-800 border-slate-700 text-slate-200">
-                                    <div className="space-y-2">
-                                      <div className="font-medium text-white">All Engagement</div>
-                                      <div className="flex flex-wrap gap-1">
-                                        {row.engagementSummary.map((e, idx) => (
-                                          <span key={idx} className={`inline-flex items-center gap-2 px-2 py-0.5 rounded-md border ${e.color || 'border-slate-500 text-slate-300'} font-medium tracking-tight h-7 text-[11px]`} style={{ borderWidth: 1 }}>
+                            {!hasEngagementData ? (
+                              <span className="text-slate-500 text-xs">No Engagement</span>
+                            ) : (
+                              <Popover>
+                                <PopoverTrigger asChild>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="bg-green-800 border-green-600 text-green-300 hover:bg-green-700 px-3 py-1 rounded-md text-xs font-medium"
+                                  >
+                                    Show Engagement
+                                  </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-80 p-3 bg-slate-800 border-slate-700 text-slate-200">
+                                  <div className="space-y-2">
+                                    <div className="font-medium text-white">Engagement Summary</div>
+                                    <div className="flex flex-wrap gap-1">
+                                      {Array.isArray(row.engagementSummary) && row.engagementSummary.length > 0
+                                        ? row.engagementSummary.map((e, idx) => (
+                                          <span key={idx} className={`inline-flex items-center gap-2 px-2 py-0.5 rounded-md border ${e.color || 'border-slate-500 text-slate-300'} font-medium tracking-tight h-7 text-[11px] bg-transparent`} style={{ borderWidth: 1 }}>
                                             <span>{e.icon || '📄'}</span>
                                             {e.type === "No Engagement" ? "No Engagement" : `${e.count}x ${formatEngagementType(e.type)}`}
                                           </span>
-                                        ))}
-                                      </div>
+                                        ))
+                                        : <span className="text-slate-500 text-xs">No engagement</span>}
                                     </div>
-                                  </PopoverContent>
-                                </Popover>
-                              )}
-                            </div>
+                                  </div>
+                                </PopoverContent>
+                              </Popover>
+                            )}
                           </TableCell>;
                         case "Last Touch Date":
                           return <TableCell key={col} className="whitespace-nowrap px-3 py-2">
