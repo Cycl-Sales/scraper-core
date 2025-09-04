@@ -19,12 +19,14 @@ const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'
 function CustomTooltip({ active, payload }: any) {
   if (active && payload && payload.length) {
     const data = payload[0].payload;
+    // Use the same rounding logic as the pie chart labels
+    const roundedPercentage = Math.round(payload[0].value);
     return (
       <div className="bg-slate-800 border border-slate-600 rounded-lg p-3 shadow-lg min-w-[200px]">
         <p className="text-white font-medium mb-2">{payload[0].name}</p>
         <div className="space-y-1 text-sm">
           <p className="text-blue-400">
-            <span className="text-slate-300">Percentage:</span> {payload[0].value}%
+            <span className="text-slate-300">Percentage:</span> {roundedPercentage}%
           </p>
           <p className="text-green-400">
             <span className="text-slate-300">Count:</span> {data.count}
@@ -96,7 +98,7 @@ export default function EngagementChart({ data, rawData, loading = false }: Enga
 
     return sortedEntries.map(([key, count]) => ({
       name: key,
-      percentage: total > 0 ? Math.round((count / total) * 100) : 0,
+      percentage: total > 0 ? (count / total) * 100 : 0, // Don't round here, let Recharts handle it
       count: count
     }));
   };
@@ -226,7 +228,7 @@ export default function EngagementChart({ data, rawData, loading = false }: Enga
                   {entry.name}
                 </span>
                 <span className="text-slate-400 ml-auto">
-                  {entry.percentage}%
+                  {Math.round(entry.percentage)}%
                 </span>
               </div>
             ))}
