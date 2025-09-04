@@ -136,12 +136,15 @@ class AutomationTemplateController(http.Controller):
             'task_generation_setting_ids': [serialize_task_generation_setting(x) for x in template.task_generation_setting_ids],
         }
 
-    @http.route('/api/automation_template/update', type='json', auth='user', methods=['POST'], csrf=False)
+    @http.route('/api/automation_template/update', type='http', auth='none', methods=['POST', 'OPTIONS'], csrf=False)
     def update_automation_template(self, **kwargs):
         """
         Update or create an automation template for a given location (sub-account).
         Implements copy-on-write pattern: if updating a default template, creates a new location-specific template.
         """
+        if request.httprequest.method == 'OPTIONS':
+            return Response(status=200, headers=get_cors_headers(request))
+        
         print('=== BACKEND UPDATE REQUEST DEBUGGING ===')
         print('Raw request object:', request)
         print('Request method:', request.httprequest.method)
@@ -180,7 +183,8 @@ class AutomationTemplateController(http.Controller):
         if not location_id and not automation_group:
             print('ERROR: location_id or automation_group is required')
             _logger.warning('ERROR: location_id or automation_group is required')
-            return {'error': 'location_id or automation_group is required'}
+            return Response(
+                json.dumps({'error': 'location_id or automation_group is required'}
         
         # Find existing template
         template = False
@@ -195,7 +199,8 @@ class AutomationTemplateController(http.Controller):
             if not installed_location:
                 print(f'WARNING: No installed.location found for GHL location_id: {location_id}')
                 _logger.warning(f'WARNING: No installed.location found for GHL location_id: {location_id}')
-                return {'error': f'No installed location found for location_id: {location_id}'}
+                return Response(
+                json.dumps({'error': f'No installed location found for location_id: {location_id}'}
             
             # Check if the installed location has an automation template directly assigned
             if installed_location.automation_template_id:
@@ -250,7 +255,12 @@ class AutomationTemplateController(http.Controller):
                     'automation_group': automation_group,
                 }
             else:
-                return {'error': 'Cannot create template without location_id or automation_group'}
+                return Response(
+                json.dumps({'error': 'Cannot create template without location_id or automation_group'}),
+                content_type='application/json',
+                status=400,
+                headers=get_cors_headers(request)
+            )
             
             # Create the new template
             template = request.env['automation.template'].sudo().create(new_template_vals)
@@ -277,7 +287,12 @@ class AutomationTemplateController(http.Controller):
                 template_name = f"{automation_group} - Custom Template"
                 template = self._create_group_template(automation_group, template_name)
             else:
-                return {'error': 'Cannot create template without location_id or automation_group'}
+                return Response(
+                json.dumps({'error': 'Cannot create template without location_id or automation_group'}),
+                content_type='application/json',
+                status=400,
+                headers=get_cors_headers(request)
+            )
         
         # Update fields from data (ignore location_id, id, is_default, appId, and all One2many fields)
         one2many_fields = [
@@ -307,7 +322,12 @@ class AutomationTemplateController(http.Controller):
         result = AutomationTemplateController.serialize_template(template)
         print('Returning updated automation template:', result)
         _logger.warning('Returning updated automation template: %s', result)
-        return result
+        return Response(
+            json.dumps(result),
+            content_type='application/json',
+            status=200,
+            headers=get_cors_headers(request)
+        )
 
     def _update_template_settings(self, template, data):
         """
@@ -1108,7 +1128,8 @@ class AutomationTemplateController(http.Controller):
         if not location_id and not automation_group:
             print('ERROR: location_id or automation_group is required')
             _logger.warning('ERROR: location_id or automation_group is required')
-            return {'error': 'location_id or automation_group is required'}
+            return Response(
+                json.dumps({'error': 'location_id or automation_group is required'}
         
         template = False
         if automation_group:
@@ -1215,12 +1236,14 @@ class AutomationTemplateController(http.Controller):
         if not template_id:
             print('ERROR: id is required')
             _logger.warning('ERROR: id is required')
-            return {'error': 'id is required'}
+            return Response(
+                json.dumps({'error': 'id is required'}
         template = request.env['automation.template'].sudo().browse(template_id)
         if not template.exists():
             print('ERROR: template not found')
             _logger.warning('ERROR: template not found')
-            return {'error': 'template not found'}
+            return Response(
+                json.dumps({'error': 'template not found'}
         result = AutomationTemplateController.serialize_template(template)
         print('Returning automation template by id:', result)
         _logger.warning('Returning automation template by id: %s', result)
@@ -1247,7 +1270,8 @@ class AutomationTemplateController(http.Controller):
         except Exception as e:
             print(f'Error cleaning up duplicate templates: {str(e)}')
             _logger.error(f'Error cleaning up duplicate templates: {str(e)}')
-            return {'error': f'Error cleaning up duplicates: {str(e)}'}
+            return Response(
+                json.dumps({'error': f'Error cleaning up duplicates: {str(e)}'}
 
     @http.route('/api/automation_template/list', type='http', auth='none', methods=['POST', 'OPTIONS'], csrf=False)
     def list_automation_templates(self, **kwargs):
@@ -1321,7 +1345,8 @@ class AutomationTemplateController(http.Controller):
         _logger.warning('API CALL: /api/automation_template/fix_location_templates')
         
         if not app_id:
-            return {'error': 'appId is required'}
+            return Response(
+                json.dumps({'error': 'appId is required'}
         
         # Get all installed locations for this app
         app = request.env['cyclsales.application'].sudo().search([
@@ -1330,7 +1355,8 @@ class AutomationTemplateController(http.Controller):
         ], limit=1)
         
         if not app:
-            return {'error': f'No active application found for appId: {app_id}'}
+            return Response(
+                json.dumps({'error': f'No active application found for appId: {app_id}'}
         
         locations = request.env['installed.location'].sudo().search([
             ('application_ids', 'in', app.id),
