@@ -2577,65 +2577,66 @@ class InstalledLocationController(http.Controller):
             )
 
     def _compute_touch_summary_for_contact(self, contact):
-        """Compute touch summary for a contact - OUTBOUND touches only (from our side)"""
+        """Compute touch summary for a contact - OUTBOUND touches only (from our side)
+        Always fetches fresh data from GHL API to ensure real-time accuracy
+        """
         import logging
         _logger = logging.getLogger(__name__)
         
         try:
-            # First check if we have messages in the database
+            # Always try to fetch fresh messages from GHL API first
+            _logger.info(f"Fetching fresh messages from GHL API for contact {contact.external_id}")
+            
+            # Get conversations for this contact
+            conversations = request.env['ghl.contact.conversation'].sudo().search([
+                ('contact_id', '=', contact.id)
+            ])
+            
+            if conversations:
+                # Get the app access token
+                app = request.env['cyclsales.application'].sudo().search([
+                    ('is_active', '=', True)
+                ], limit=1)
+                
+                if app and app.access_token:
+                    # Get location token using the contact's actual location ID
+                    from odoo.addons.web_scraper.models.ghl_api_utils import get_location_token
+                    company_id = 'Ipg8nKDPLYKsbtodR6LN'
+                    contact_location_id = contact.location_id.location_id if contact.location_id else None
+                    if not contact_location_id:
+                        _logger.warning(f"No location ID found for contact {contact.name}")
+                        # continue
+                    location_token = get_location_token(app.access_token, company_id, contact_location_id)
+                    
+                    if location_token:
+                        # Force fetch fresh messages for all conversations
+                        for conversation in conversations:
+                            if conversation.ghl_id:
+                                try:
+                                    _logger.info(f"Fetching fresh messages for conversation {conversation.ghl_id}")
+                                    message_result = request.env['ghl.contact.message'].sudo().fetch_messages_for_conversation(
+                                        conversation_id=conversation.ghl_id,
+                                        access_token=location_token,
+                                        location_id=contact.location_id.id,
+                                        contact_id=contact.id,
+                                        limit=100  # Fetch more messages to get accurate counts
+                                    )
+                                    if message_result.get('success'):
+                                        _logger.info(f"Successfully fetched fresh messages for conversation {conversation.ghl_id}")
+                                    else:
+                                        _logger.warning(f"Failed to fetch fresh messages for conversation {conversation.ghl_id}: {message_result.get('error')}")
+                                except Exception as e:
+                                    _logger.error(f"Error fetching fresh messages for conversation {conversation.ghl_id}: {str(e)}")
+            
+            # Now get messages from database (should be fresh after API calls)
             messages = request.env['ghl.contact.message'].sudo().search([
                 ('contact_id', '=', contact.id)
             ])
 
-            # If no messages in database, try to fetch them from GHL API
+            # If still no messages after fresh fetch, return no_touches
             if not messages:
-                _logger.info(f"No messages found for contact {contact.id}, attempting to fetch from GHL API")
-                
-                # Get conversations for this contact
-                conversations = request.env['ghl.contact.conversation'].sudo().search([
-                    ('contact_id', '=', contact.id)
-                ])
-                
-                if not conversations:
-                    _logger.info(f"No conversations found for contact {contact.id}")
-                    return 'no_touches'
-                
-                # Try to fetch messages for the most recent conversation
-                latest_conversation = conversations[0]
-                if latest_conversation.ghl_id:
-                    # Get the app access token
-                    app = request.env['cyclsales.application'].sudo().search([
-                        ('is_active', '=', True)
-                    ], limit=1)
-                    
-                    if app and app.access_token:
-                        # Get location token
-                        from .ghl_api_utils import get_location_token
-                        company_id = 'Ipg8nKDPLYKsbtodR6LN'
-                        location_token = get_location_token(app.access_token, company_id, contact.location_id.location_id)
-                        
-                        if location_token:
-                            # Fetch messages for this conversation
-                            message_result = request.env['ghl.contact.message'].sudo().fetch_messages_for_conversation(
-                                conversation_id=latest_conversation.ghl_id,
-                                access_token=location_token,
-                                location_id=contact.location_id.id,
-                                contact_id=contact.id,
-                                limit=100  # Fetch more messages to get accurate counts
-                            )
-                            
-                            if message_result.get('success'):
-                                _logger.info(f"Successfully fetched messages for contact {contact.id}")
-                                # Refresh messages from database
-                                messages = request.env['ghl.contact.message'].sudo().search([
-                                    ('contact_id', '=', contact.id)
-                                ])
-                            else:
-                                _logger.warning(f"Failed to fetch messages for contact {contact.id}: {message_result.get('error')}")
-                        else:
-                            _logger.warning(f"Failed to get location token for contact {contact.id}")
-                    else:
-                        _logger.warning(f"No valid access token found for contact {contact.id}")
+                _logger.info(f"No messages found for contact {contact.id} after fresh GHL API fetch")
+                return 'no_touches'
 
             # Filter for OUTBOUND messages only (from our side)
             outbound_messages = messages.filtered(lambda m: m.direction == 'outbound')
@@ -2698,67 +2699,65 @@ class InstalledLocationController(http.Controller):
         return None
 
     def _compute_engagement_summary_for_contact(self, contact):
-        """Compute engagement summary for a contact - ALL touches (both inbound and outbound)"""
+        """Compute engagement summary for a contact - ALL touches (both inbound and outbound)
+        Always fetches fresh data from GHL API to ensure real-time accuracy
+        """
         import logging
         _logger = logging.getLogger(__name__)
         
         try:
-            # Get all messages for this contact
+            # Always try to fetch fresh messages from GHL API first (same as touch summary)
+            _logger.info(f"Fetching fresh messages from GHL API for engagement summary - contact {contact.external_id}")
+            
+            # Get conversations for this contact
+            conversations = request.env['ghl.contact.conversation'].sudo().search([
+                ('contact_id', '=', contact.id)
+            ])
+            
+            if conversations:
+                # Get the app access token
+                app = request.env['cyclsales.application'].sudo().search([
+                    ('is_active', '=', True)
+                ], limit=1)
+                
+                if app and app.access_token:
+                    # Get location token using the contact's actual location ID
+                    from odoo.addons.web_scraper.models.ghl_api_utils import get_location_token
+                    company_id = 'Ipg8nKDPLYKsbtodR6LN'
+                    contact_location_id = contact.location_id.location_id if contact.location_id else None
+                    if not contact_location_id:
+                        _logger.warning(f"No location ID found for contact {contact.name}")
+                        # continue
+                    location_token = get_location_token(app.access_token, company_id, contact_location_id)
+                    
+                    if location_token:
+                        # Force fetch fresh messages for all conversations
+                        for conversation in conversations:
+                            if conversation.ghl_id:
+                                try:
+                                    _logger.info(f"Fetching fresh messages for engagement - conversation {conversation.ghl_id}")
+                                    message_result = request.env['ghl.contact.message'].sudo().fetch_messages_for_conversation(
+                                        conversation_id=conversation.ghl_id,
+                                        access_token=location_token,
+                                        location_id=contact.location_id.id,
+                                        contact_id=contact.id,
+                                        limit=100  # Fetch more messages to get accurate counts
+                                    )
+                                    if message_result.get('success'):
+                                        _logger.info(f"Successfully fetched fresh messages for engagement - conversation {conversation.ghl_id}")
+                                    else:
+                                        _logger.warning(f"Failed to fetch fresh messages for engagement - conversation {conversation.ghl_id}: {message_result.get('error')}")
+                                except Exception as e:
+                                    _logger.error(f"Error fetching fresh messages for engagement - conversation {conversation.ghl_id}: {str(e)}")
+            
+            # Now get all messages from database (should be fresh after API calls)
             messages = request.env['ghl.contact.message'].sudo().search([
                 ('contact_id', '=', contact.id)
             ])
 
-            # If no messages in database, try to fetch them from GHL API (same logic as touch summary)
+            # If no messages after fresh fetch, return empty array
             if not messages:
-                _logger.info(f"No messages found for contact {contact.id}, attempting to fetch from GHL API")
-                
-                # Get conversations for this contact
-                conversations = request.env['ghl.contact.conversation'].sudo().search([
-                    ('contact_id', '=', contact.id)
-                ])
-                
-                if not conversations:
-                    _logger.info(f"No conversations found for contact {contact.id}")
-                    return []
-                
-                # Try to fetch messages for the most recent conversation
-                latest_conversation = conversations[0]
-                if latest_conversation.ghl_id:
-                    # Get the app access token
-                    app = request.env['cyclsales.application'].sudo().search([
-                        ('is_active', '=', True)
-                    ], limit=1)
-                    
-                    if app and app.access_token:
-                        # Get location token
-                        from .ghl_api_utils import get_location_token
-                        company_id = 'Ipg8nKDPLYKsbtodR6LN'
-                        location_token = get_location_token(app.access_token, company_id, contact.location_id.location_id)
-                        
-                        if location_token:
-                            # Fetch messages for this conversation
-                            message_result = request.env['ghl.contact.message'].sudo().fetch_messages_for_conversation(
-                                conversation_id=latest_conversation.ghl_id,
-                                access_token=location_token,
-                                location_id=contact.location_id.id,
-                                contact_id=contact.id,
-                                limit=100  # Fetch more messages to get accurate counts
-                            )
-                            
-                            if message_result.get('success'):
-                                _logger.info(f"Successfully fetched messages for contact {contact.id}")
-                                # Refresh messages from database
-                                messages = request.env['ghl.contact.message'].sudo().search([
-                                    ('contact_id', '=', contact.id)
-                                ])
-                            else:
-                                _logger.warning(f"Failed to fetch messages for contact {contact.id}: {message_result.get('error')}")
-                        else:
-                            _logger.warning(f"Failed to get location token for contact {contact.id}")
-                    else:
-                        _logger.warning(f"No valid access token found for contact {contact.id}")
-
-            if not messages:
+                _logger.info(f"No messages found for contact {contact.id} after fresh GHL API fetch")
                 return []
 
             # Group ALL messages by type and count them (both inbound and outbound)
@@ -2853,6 +2852,217 @@ class InstalledLocationController(http.Controller):
         }
         return color_mapping.get(message_type, 'border-slate-500 text-slate-300')
 
+    def _trigger_ghl_sync_for_contacts(self, contacts, access_token, company_id, location_id, app_id):
+        """
+        Trigger GHL API sync for contacts to ensure fresh data
+        This method forces fresh data fetching from Go High Level API
+        """
+        import threading
+        import time
+        from datetime import datetime
+        
+        _logger.info(f"Starting GHL API sync for {len(contacts)} contacts")
+        
+        def sync_contacts_background():
+            try:
+                # Get location token for GHL API calls
+                from odoo.addons.web_scraper.models.ghl_api_utils import get_location_token
+                location_token = get_location_token(access_token, company_id, location_id)
+                
+                if not location_token:
+                    _logger.error("Failed to get location token for GHL sync")
+                    return
+                
+                _logger.info(f"Got location token, starting sync for {len(contacts)} contacts")
+                
+                for contact in contacts:
+                    try:
+                        _logger.info(f"Syncing contact {contact.name} (ID: {contact.id}, External ID: {contact.external_id}) from GHL API")
+                        
+                        # First, check if we have conversations for this contact
+
+                        existing_conversations = request.env['ghl.contact.conversation'].sudo().search([
+                            ('contact_id', '=', contact.id)
+                        ])
+                        _logger.info(f"Contact {contact.name} has {len(existing_conversations)} existing conversations")
+                        
+                        # Get the correct location ID for this contact
+                        contact_location_id = contact.location_id.location_id if contact.location_id else location_id
+                        
+                        # Sync conversations and messages for this contact using correct parameter order
+                        conversation_result = request.env['ghl.contact.conversation'].sudo().sync_conversations_for_contact_with_location_token(
+                            location_token, contact_location_id, contact.external_id
+                        )
+                        
+                        _logger.info(f"Conversation sync result for {contact.name}: {conversation_result}")
+                        
+                        if conversation_result.get('success'):
+                            _logger.info(f"Successfully synced conversations for contact {contact.name}")
+                            
+                            # Check messages after sync
+                            all_messages = request.env['ghl.contact.message'].sudo().search([
+                                ('contact_id', '=', contact.id)
+                            ])
+                            _logger.info(f"Contact {contact.name} now has {len(all_messages)} messages after sync")
+                            
+                            # Sync tasks for this contact
+                            try:
+                                request.env['ghl.contact.task'].sync_contact_tasks_from_ghl(
+                                    contact.id, location_token, location_id, company_id
+                                )
+                                _logger.info(f"Successfully synced tasks for contact {contact.name}")
+                            except Exception as task_error:
+                                _logger.error(f"Error syncing tasks for contact {contact.name}: {str(task_error)}")
+                        else:
+                            _logger.warning(f"Failed to sync conversations for contact {contact.name}: {conversation_result.get('error')}")
+                            
+                    except Exception as contact_error:
+                        _logger.error(f"Error syncing contact {contact.name}: {str(contact_error)}")
+                        import traceback
+                        _logger.error(f"Full traceback: {traceback.format_exc()}")
+                        continue
+                
+                _logger.info(f"Completed GHL API sync for {len(contacts)} contacts")
+                
+            except Exception as e:
+                _logger.error(f"Error in background GHL sync: {str(e)}")
+                import traceback
+                _logger.error(f"Full traceback: {traceback.format_exc()}")
+        
+        # Start background sync in a separate thread
+        sync_thread = threading.Thread(target=sync_contacts_background, daemon=True)
+        sync_thread.start()
+        
+        _logger.info("GHL API sync started in background thread")
+
+    @http.route('/api/sync-contact-data', type='http', auth='none', methods=['POST', 'OPTIONS'], csrf=False)
+    def sync_contact_data(self, **kwargs):
+        """
+        Manual endpoint to force sync data for a specific contact from GHL API
+        """
+        _logger.info(f"sync_contact_data called with kwargs: {kwargs}")
+        if request.httprequest.method == 'OPTIONS':
+            return Response(status=200, headers=get_cors_headers(request))
+
+        try:
+            data = json.loads(request.httprequest.data.decode('utf-8'))
+            contact_id = data.get('contact_id')
+            location_id = data.get('location_id')
+            app_id = data.get('app_id') or kwargs.get('appId')
+            
+            if not contact_id or not location_id:
+                return Response(
+                    json.dumps({'success': False, 'error': 'contact_id and location_id are required'}),
+                    content_type='application/json',
+                    status=400,
+                    headers=get_cors_headers(request)
+                )
+            
+            if not app_id:
+                return Response(
+                    json.dumps({'success': False, 'error': 'app_id is required'}),
+                    content_type='application/json',
+                    status=400,
+                    headers=get_cors_headers(request)
+                )
+
+            # Get the contact
+            contact = request.env['ghl.location.contact'].sudo().search([
+                ('id', '=', contact_id)
+            ], limit=1)
+            
+            if not contact:
+                return Response(
+                    json.dumps({'success': False, 'error': 'Contact not found'}),
+                    content_type='application/json',
+                    status=404,
+                    headers=get_cors_headers(request)
+                )
+
+            # Get app access token using the correct app_id
+            app = request.env['cyclsales.application'].sudo().search([
+                ('app_id', '=', app_id),
+                ('is_active', '=', True)
+            ], limit=1)
+            
+            if not app or not app.access_token:
+                return Response(
+                    json.dumps({'success': False, 'error': f'No valid access token found for app_id: {app_id}'}),
+                    content_type='application/json',
+                    status=400,
+                    headers=get_cors_headers(request)
+                )
+
+            # Get company_id from agency token
+            agency_token = request.env['ghl.agency.token'].sudo().search([], order='create_date desc', limit=1)
+            if not agency_token:
+                return Response(
+                    json.dumps({'success': False, 'error': 'No agency token found'}),
+                    content_type='application/json',
+                    status=400,
+                    headers=get_cors_headers(request)
+                )
+            
+            company_id = agency_token.company_id
+            _logger.info(f"Using company_id from agency token: {company_id}")
+            _logger.info(f"Agency token details: company_id={agency_token.company_id}, access_token={agency_token.access_token[:20] if agency_token.access_token else 'None'}...")
+            
+            # Get location token
+            from odoo.addons.web_scraper.models.ghl_api_utils import get_location_token
+            _logger.info(f"Getting location token for app_id: {app_id}, company_id: {company_id}, location_id: {location_id}")
+            _logger.info(f"Using app access_token: {app.access_token[:20]}...")
+            location_token = get_location_token(app.access_token, company_id, location_id)
+            _logger.info(f"Location token result: {location_token[:20] if location_token else 'None'}...")
+            
+            if not location_token:
+                return Response(
+                    json.dumps({'success': False, 'error': 'Failed to get location token'}),
+                    content_type='application/json',
+                    status=400,
+                    headers=get_cors_headers(request)
+                )
+
+            _logger.info(f"Manually syncing data for contact {contact.name} (ID: {contact.id}, External ID: {contact.external_id})")
+
+            # Get the correct location ID for this contact
+            contact_location_id = contact.location_id.location_id if contact.location_id else location_id
+            _logger.info(f"Using location ID: {contact_location_id} for contact {contact.name} (requested location_id: {location_id})")
+            
+            # Sync conversations and messages using the correct parameter order
+            conversation_result = request.env['ghl.contact.conversation'].sudo().sync_conversations_for_contact_with_location_token(
+                location_token, contact_location_id, contact.external_id
+            )
+
+            # Check messages after sync
+            all_messages = request.env['ghl.contact.message'].sudo().search([
+                ('contact_id', '=', contact.id)
+            ])
+
+            _logger.info(f"Manual sync completed for {contact.name}: {len(all_messages)} messages found")
+
+            return Response(
+                json.dumps({
+                    'success': True,
+                    'message': f'Successfully synced data for {contact.name}',
+                    'conversation_sync': conversation_result,
+                    'messages_found': len(all_messages)
+                }),
+                content_type='application/json',
+                status=200,
+                headers=get_cors_headers(request)
+            )
+
+        except Exception as e:
+            _logger.error(f"Error in sync_contact_data: {str(e)}")
+            import traceback
+            _logger.error(f"Full traceback: {traceback.format_exc()}")
+            return Response(
+                json.dumps({'success': False, 'error': str(e)}),
+                content_type='application/json',
+                status=500,
+                headers=get_cors_headers(request)
+            )
+
     def _compute_last_message_for_contact(self, contact):
         """Compute last message for a contact on-the-fly"""
         # First try to get from existing messages
@@ -2878,8 +3088,10 @@ class InstalledLocationController(http.Controller):
     @http.route('/api/location-contacts-optimized', type='http', auth='none', methods=['GET', 'OPTIONS'], csrf=False)
     def get_location_contacts_optimized(self, **kwargs):
         """
-        Optimized endpoint that returns basic contact data immediately and fetches detailed data in background
-        Only fetches data for the contacts currently being displayed
+        Optimized endpoint that returns basic contact data immediately and fetches fresh data from GHL API in background
+        - Returns contact names from Odoo immediately
+        - Triggers GHL API sync for fresh data in background
+        - Ensures real-time data from Go High Level
         """
         _logger.info(f"get_location_contacts_optimized called with kwargs: {kwargs}")
         if request.httprequest.method == 'OPTIONS':
@@ -3069,14 +3281,18 @@ class InstalledLocationController(http.Controller):
             for contact in contacts:
                 _logger.info(f"Contact {contact.id} (external_id: {contact.external_id}) - AI fields in DB: status='{contact.ai_status}', summary='{contact.ai_summary}', quality='{contact.ai_quality_grade}', sales='{contact.ai_sales_grade}'")
 
-            # STEP 3: Return basic data immediately
+            # STEP 3: Return basic contact data immediately and trigger GHL API sync
             contact_data = []
             contact_ids_for_background = []
+
+            # STEP 3A: Trigger GHL API sync for fresh data in background
+            _logger.info(f"Triggering GHL API sync for {len(contacts)} contacts to ensure fresh data")
+            self._trigger_ghl_sync_for_contacts(contacts, app.access_token, company_id, location_id, app_id)
 
             for contact in contacts:
                 contact_ids_for_background.append(contact.id)
 
-                # Parse basic data
+                # Parse basic data from Odoo (immediate response)
                 engagement_summary = []
                 last_message = []
                 contact_tags = []
@@ -3107,35 +3323,26 @@ class InstalledLocationController(http.Controller):
                     if assigned_user:
                         assigned_user_name = assigned_user.name or f"{assigned_user.first_name or ''} {assigned_user.last_name or ''}".strip()
 
-                # Get basic touch information using compute methods to ensure we have actual data
-                # Compute touch summary on-the-fly
+                # Force fresh data computation from GHL API
+                # These methods will now fetch fresh data from GHL API
                 touch_summary = self._compute_touch_summary_for_contact(contact)
-                
-                # Compute last touch date on-the-fly
                 last_touch_date = self._compute_last_touch_date_for_contact(contact)
-                
-                # Compute last message content on-the-fly
                 last_message_data = self._compute_last_message_content_for_contact(contact)
-                
-                # Compute engagement summary on-the-fly
                 engagement_summary = self._compute_engagement_summary_for_contact(contact)
-                
-                # Compute speed to lead on-the-fly
                 speed_to_lead = self._compute_speed_to_lead_for_contact(contact)
 
                 # Debug: Log the computed field values
-                _logger.info(f"Contact {contact.id} computed field values:")
+                _logger.info(f"Contact {contact.id} computed field values (fresh from GHL):")
                 _logger.info(f"  touch_summary: '{touch_summary}'")
                 _logger.info(f"  last_touch_date: '{last_touch_date}'")
                 _logger.info(f"  last_message_data: '{last_message_data}'")
                 _logger.info(f"  speed_to_lead: '{speed_to_lead}'")
                 _logger.info(f"  engagement_summary: '{engagement_summary}'")
 
-                # Get basic counts (from existing data)
+                # Get fresh counts from GHL API
                 tasks_count = request.env['ghl.contact.task'].sudo().search_count([
                     ('contact_id', '=', contact.id)
                 ])
-                # Refresh conversations count after potential sync
                 conversations_count = request.env['ghl.contact.conversation'].sudo().search_count([
                     ('contact_id', '=', contact.id)
                 ])

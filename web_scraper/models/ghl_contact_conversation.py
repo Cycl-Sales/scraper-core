@@ -472,13 +472,13 @@ class GhlContactConversation(models.Model):
 
                 # Find the installed location and contact records
                 installed_location = self.env['installed.location'].sudo().search([
-                    ('location_id', '=', location_id)
+                    ('location_id', '=', contact_location_id)
                 ], limit=1)
 
                 if not installed_location:
                     return {
                         'success': False,
-                        'message': f'No installed location found for location_id: {location_id}',
+                        'message': f'No installed location found for location_id: {contact_location_id}',
                         'created': 0,
                         'updated': 0,
                         'errors': []
@@ -614,6 +614,25 @@ class GhlContactConversation(models.Model):
                 return None
 
         try:
+            # Find the contact record to get the correct location ID
+            contact_record = self.env['ghl.location.contact'].sudo().search([
+                ('external_id', '=', contact_id)
+            ], limit=1)
+            
+            if not contact_record:
+                _logger.error(f"Contact record not found for external_id: {contact_id}")
+                return {
+                    'success': False,
+                    'message': f'Contact record not found for external_id: {contact_id}',
+                    'created': 0,
+                    'updated': 0,
+                    'errors': []
+                }
+            
+            # Use the contact's actual location ID
+            contact_location_id = contact_record.location_id.location_id if contact_record.location_id else location_id
+            _logger.info(f"Using contact's location ID: {contact_location_id} for contact {contact_id} (passed location_id: {location_id})")
+            
             # Fetch conversations using location token
             url = f"https://services.leadconnectorhq.com/conversations/search?locationId={location_id}&contactId={contact_id}&limit={limit}"
             headers = {
@@ -622,7 +641,7 @@ class GhlContactConversation(models.Model):
                 'Version': '2021-07-28',
             }
 
-            _logger.info(f"Fetching conversations for contact {contact_id} at location {location_id}")
+            _logger.info(f"Fetching conversations for contact {contact_id} at location {contact_location_id}")
             response = requests.get(url, headers=headers)
 
             if response.status_code == 200:
@@ -632,13 +651,13 @@ class GhlContactConversation(models.Model):
 
                 # Find the installed location and contact records
                 installed_location = self.env['installed.location'].sudo().search([
-                    ('location_id', '=', location_id)
+                    ('location_id', '=', contact_location_id)
                 ], limit=1)
 
                 if not installed_location:
                     return {
                         'success': False,
-                        'message': f'No installed location found for location_id: {location_id}',
+                        'message': f'No installed location found for location_id: {contact_location_id}',
                         'created': 0,
                         'updated': 0,
                         'errors': []

@@ -388,12 +388,15 @@ export default function AnalyticsContactsTable({ loading = false, locationId, se
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchTimeout, setSearchTimeout] = useState<NodeJS.Timeout | null>(null);
   const [isSearching, setIsSearching] = useState(false);
+  const [lastRefreshTime, setLastRefreshTime] = useState<Date | null>(null);
+  const [isAutoRefreshing, setIsAutoRefreshing] = useState(false);
 
   // --- New state for detailed data loading ---
 
 
   // AI Analysis state
   const [aiAnalysisLoading, setAiAnalysisLoading] = useState<{ [key: string]: boolean }>({});
+  const [syncDataLoading, setSyncDataLoading] = useState<{ [key: string]: boolean }>({});
 
   // AI Summary Dialog state
   const [aiSummaryDialog, setAiSummaryDialog] = useState<{
@@ -526,6 +529,24 @@ export default function AnalyticsContactsTable({ loading = false, locationId, se
       .finally(() => setContactsLoading(false));
   }, [locationId, page, rowsPerPage, selectedUser]);
 
+  // Real-time auto-refresh effect
+  useEffect(() => {
+    if (!locationId || isSearching) {
+      return; // Don't auto-refresh if we're searching
+    }
+
+    // Set up auto-refresh every 30 seconds
+    const refreshInterval = setInterval(() => {
+      console.log('Auto-refreshing contacts data...');
+      fetchContacts(true); // Pass true to indicate this is an auto-refresh
+    }, 30000); // 30 seconds
+
+    // Cleanup interval on unmount or when dependencies change
+    return () => {
+      clearInterval(refreshInterval);
+    };
+  }, [locationId, selectedUser, isSearching]); // Re-run when these change
+
   // Cleanup polling intervals when component unmounts or locationId changes - DISABLED
   // useEffect(() => {
   //   return () => {
@@ -636,19 +657,26 @@ export default function AnalyticsContactsTable({ loading = false, locationId, se
   };
 
   // Function to fetch normal contacts (without search)
-  const fetchContacts = async () => {
+  const fetchContacts = async (isAutoRefresh = false) => {
     if (!locationId) return;
     
-    setContactsLoading(true);
+    if (isAutoRefresh) {
+      setIsAutoRefreshing(true);
+    } else {
+      setContactsLoading(true);
+    }
     setIsSearching(false);
+    
     try {
-      const response = await fetch(`${PROD_BASE_URL}/api/location-contacts-optimized?location_id=${locationId}&page=${page}&limit=${rowsPerPage}&appId=${CYCLSALES_APP_ID}${selectedUser ? `&selected_user=${encodeURIComponent(selectedUser)}` : ''}`);
+      const response = await fetch(`${PROD_BASE_URL}/api/location-contacts-optimized?location_id=${locationId}&page=${page}&limit=${rowsPerPage}&appId=${CYCLSALES_APP_ID}${selectedUser ? `&selected_user=${encodeURIComponent(selectedUser)}` : ''}&_t=${Date.now()}`);
       const data = await response.json();
       
       if (data.success) {
         setContactsData(data.contacts || []);
         setTotalContacts(data.total_contacts || 0);
         setHasMore(data.has_more || false);
+        setLastRefreshTime(new Date());
+        console.log('Contacts data refreshed successfully');
       } else {
         setContactsData([]);
         setTotalContacts(0);
@@ -660,7 +688,11 @@ export default function AnalyticsContactsTable({ loading = false, locationId, se
       setTotalContacts(0);
       setHasMore(false);
     } finally {
-      setContactsLoading(false);
+      if (isAutoRefresh) {
+        setIsAutoRefreshing(false);
+      } else {
+        setContactsLoading(false);
+      }
     }
   };
 
@@ -788,6 +820,64 @@ export default function AnalyticsContactsTable({ loading = false, locationId, se
       });
     } finally {
       setAiAnalysisLoading(prev => ({ ...prev, [contact.id]: false }));
+    }
+  };
+
+  const handleSyncContactData = async (contact: any) => {
+    if (syncDataLoading[contact.id]) return;
+
+    setSyncDataLoading(prev => ({ ...prev, [contact.id]: true }));
+
+    try {
+      const response = await fetch(`${PROD_BASE_URL}/api/sync-contact-data`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contact_id: contact.id,
+          location_id: locationId,
+          app_id: CYCLSALES_APP_ID
+        })
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        toast({
+          title: "Data Sync Complete",
+          description: `Successfully synced data for ${contact.name}. Found ${result.messages_found} messages.`,
+        });
+        
+        // Add a small delay to ensure the backend has processed the changes
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        // Refresh the contacts data to show updated information
+        const refreshResponse = await fetch(`${PROD_BASE_URL}/api/location-contacts-optimized?location_id=${locationId}&page=${page}&limit=${rowsPerPage}&appId=${CYCLSALES_APP_ID}${selectedUser ? `&selected_user=${encodeURIComponent(selectedUser)}` : ''}&_t=${Date.now()}`);
+        const refreshData = await refreshResponse.json();
+
+        if (refreshData.success) {
+          console.log('Refreshed contacts data after sync:', refreshData.contacts);
+          setContactsData(refreshData.contacts || []);
+        } else {
+          console.error('Failed to refresh contacts data after sync:', refreshData);
+        }
+      } else {
+        toast({
+          title: "Data Sync Failed",
+          description: result.error || "Failed to sync data from GHL. Please try again.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error('Error syncing contact data:', error);
+      toast({
+        title: "Error",
+        description: "An error occurred while syncing data. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setSyncDataLoading(prev => ({ ...prev, [contact.id]: false }));
     }
   };
 
@@ -1128,7 +1218,26 @@ export default function AnalyticsContactsTable({ loading = false, locationId, se
       </div> */}
       {/* Header with title, search bar, filter, and customize columns button */}
       <div className="flex items-center justify-between px-4 pt-4 pb-2">
-        <span className="text-lg font-semibold text-white">Contacts</span>
+        <div className="flex items-center gap-3">
+          <span className="text-lg font-semibold text-white">Contacts</span>
+          {/* Real-time status indicator */}
+          <div className="flex items-center gap-2">
+            {isAutoRefreshing && (
+              <div className="flex items-center gap-1 px-2 py-1 bg-blue-900/30 border border-blue-700 rounded-md">
+                <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
+                <span className="text-blue-300 text-xs">Updating...</span>
+              </div>
+            )}
+            {lastRefreshTime && (
+              <div className="flex items-center gap-1 px-2 py-1 bg-slate-800 border border-slate-700 rounded-md">
+                <div className="w-2 h-2 bg-green-400 rounded-full"></div>
+                <span className="text-slate-300 text-xs">
+                  Updated {format(lastRefreshTime, 'HH:mm:ss')}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
         <div className="flex gap-2 items-center">
           {/* Search Bar */}
           <div className="relative">
@@ -1326,6 +1435,20 @@ export default function AnalyticsContactsTable({ loading = false, locationId, se
               </div>
             </PopoverContent>
           </Popover>
+          {/* Manual Refresh Button */}
+          <Button 
+            variant="outline" 
+            className="flex gap-2 items-center bg-slate-900 text-slate-200 border-slate-700 px-4 py-1.5 h-9 text-sm font-medium hover:bg-slate-800"
+            onClick={() => fetchContacts(false)}
+            disabled={contactsLoading || isAutoRefreshing}
+          >
+            <div className={`w-4 h-4 ${isAutoRefreshing ? 'animate-spin' : ''}`}>
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            </div>
+            Refresh
+          </Button>
           {/* Customize Columns Button (existing) */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -2092,6 +2215,20 @@ export default function AnalyticsContactsTable({ loading = false, locationId, se
                                   <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-500"></div>
                                 ) : (
                                   <Zap className="w-3 h-3" />
+                                )}
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className={`text-slate-400 hover:text-white p-1 h-6 w-6 ${syncDataLoading[row.id] ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                onClick={() => handleSyncContactData(row)}
+                                disabled={syncDataLoading[row.id]}
+                                title="Sync Data from GHL"
+                              >
+                                {syncDataLoading[row.id] ? (
+                                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-green-500"></div>
+                                ) : (
+                                  <Activity className="w-3 h-3" />
                                 )}
                               </Button>
                             </div>

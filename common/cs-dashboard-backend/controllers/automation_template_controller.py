@@ -3,6 +3,7 @@ from odoo import http
 from odoo.http import request, Response
 import json
 import logging
+from .cors_utils import get_cors_headers
 _logger = logging.getLogger(__name__)
 
 class AutomationTemplateController(http.Controller):
@@ -1058,12 +1059,15 @@ class AutomationTemplateController(http.Controller):
             print(f'Cleaned up {len(templates_to_delete)} duplicate templates for automation group {automation_group}')
             _logger.info(f'Cleaned up {len(templates_to_delete)} duplicate templates for automation group {automation_group}')
 
-    @http.route('/api/automation_template/get', type='json', auth='user', methods=['POST'], csrf=False)
+    @http.route('/api/automation_template/get', type='http', auth='none', methods=['POST', 'OPTIONS'], csrf=False)
     def get_automation_template(self, **kwargs):
         """
         Fetch the automation template for a given location or automation group.
         Expects JSON body with 'location_id' or 'automation_group'.
         """
+        if request.httprequest.method == 'OPTIONS':
+            return Response(status=200, headers=get_cors_headers(request))
+        
         print('=== BACKEND REQUEST DEBUGGING ===')
         print('Raw request object:', request)
         print('Request method:', request.httprequest.method)
@@ -1171,16 +1175,31 @@ class AutomationTemplateController(http.Controller):
                 result = AutomationTemplateController.serialize_template(default_template)
                 print('Returning default automation template data:', result)
                 _logger.info('Returning default automation template data: %s', result)
-                return result
+                return Response(
+                    json.dumps(result),
+                    content_type='application/json',
+                    status=200,
+                    headers=get_cors_headers(request)
+                )
             else:
                 print('No default template found, returning empty result')
                 _logger.warning('No default template found, returning empty result')
-                return {}
+                return Response(
+                    json.dumps({}),
+                    content_type='application/json',
+                    status=200,
+                    headers=get_cors_headers(request)
+                )
         
         result = AutomationTemplateController.serialize_template(template)
         print('Returning automation template data:', result)
         _logger.info('Returning automation template data: %s', result)
-        return result 
+        return Response(
+            json.dumps(result),
+            content_type='application/json',
+            status=200,
+            headers=get_cors_headers(request)
+        ) 
 
     @http.route('/api/automation_template/get_by_id', type='json', auth='user', methods=['POST'], csrf=False)
     def get_automation_template_by_id(self, **kwargs):
@@ -1230,11 +1249,14 @@ class AutomationTemplateController(http.Controller):
             _logger.error(f'Error cleaning up duplicate templates: {str(e)}')
             return {'error': f'Error cleaning up duplicates: {str(e)}'}
 
-    @http.route('/api/automation_template/list', type='json', auth='user', methods=['POST'], csrf=False)
+    @http.route('/api/automation_template/list', type='http', auth='none', methods=['POST', 'OPTIONS'], csrf=False)
     def list_automation_templates(self, **kwargs):
         """
         List all automation templates (id and name only).
         """
+        if request.httprequest.method == 'OPTIONS':
+            return Response(status=200, headers=get_cors_headers(request))
+        
         data = getattr(request, 'jsonrequest', {}) or {}
         app_id = data.get('appId')
         
@@ -1279,7 +1301,12 @@ class AutomationTemplateController(http.Controller):
         } for t in templates]
         print('Returning template list:', data)
         _logger.warning('Returning template list: %s', data)
-        return {'templates': data} 
+        return Response(
+            json.dumps({'templates': data}),
+            content_type='application/json',
+            status=200,
+            headers=get_cors_headers(request)
+        ) 
 
     @http.route('/api/automation_template/fix_location_templates', type='json', auth='user', methods=['POST'], csrf=False)
     def fix_location_templates(self, **kwargs):
