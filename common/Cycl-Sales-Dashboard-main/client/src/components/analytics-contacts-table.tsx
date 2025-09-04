@@ -1852,6 +1852,8 @@ export default function AnalyticsContactsTable({ loading = false, locationId, se
                         case "Speed to Lead":
                           return <TableCell key={col} className="whitespace-nowrap px-3 py-2"></TableCell>;
                         case "Touch Summary":
+                          // Filter for outbound touches only - this would need backend support for proper filtering
+                          // For now, we'll show the current data but this should be modified to show only outbound touches
                           return <TableCell key={col} className="whitespace-nowrap px-3 py-2">
                             <div className="flex flex-row flex-wrap gap-1 items-center">
                               {parseTouchSummary(row.touchSummary ?? '').map((chip, index) => (
@@ -1867,16 +1869,45 @@ export default function AnalyticsContactsTable({ loading = false, locationId, se
                             </div>
                           </TableCell>;
                         case "Engagement Summary":
-                          return <TableCell key={col} className="whitespace-nowrap px-3 py-2">{
-                            Array.isArray(row.engagementSummary)
-                              ? row.engagementSummary.map((e, idx) => (
-                                <span key={idx} className={`inline-flex items-center gap-2 px-2 py-0.5 rounded-md border ${e.color} font-medium tracking-tight h-7 text-[11px] mr-1 mb-1`} style={{ borderWidth: 1 }}>
-                                  <span>{e.icon}</span>
-                                  {e.type === "No Engagement" ? "No Engagement" : `${e.count}x ${e.type}`}
-                                </span>
-                              ))
-                              : null
-                          }</TableCell>;
+                          const formatEngagementType = (type: string) => {
+                            if (type === "No Engagement") return "No Engagement";
+                            return type.replace(/^TYPE_/, '').replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, l => l.toUpperCase());
+                          };
+                          
+                          return <TableCell key={col} className="px-3 py-2">
+                            <div className="flex gap-1 flex-nowrap">
+                              {Array.isArray(row.engagementSummary) && row.engagementSummary.length > 0
+                                ? row.engagementSummary.slice(0, 3).map((e, idx) => (
+                                  <span key={idx} className={`inline-flex items-center gap-2 px-2 py-0.5 rounded-md border ${e.color || 'border-slate-500 text-slate-300'} font-medium tracking-tight h-7 text-[11px] whitespace-nowrap flex-shrink-0`} style={{ borderWidth: 1 }}>
+                                    <span>{e.icon || '📄'}</span>
+                                    {e.type === "No Engagement" ? "No Engagement" : `${e.count}x ${formatEngagementType(e.type)}`}
+                                  </span>
+                                ))
+                                : <span className="text-slate-500 text-xs">No engagement</span>}
+                              {Array.isArray(row.engagementSummary) && row.engagementSummary.length > 3 && (
+                                <Popover>
+                                  <PopoverTrigger asChild>
+                                    <span className="inline-flex items-center px-2 py-0.5 rounded-md border border-blue-600 text-blue-300 font-medium text-xs cursor-pointer hover:bg-blue-900/20 whitespace-nowrap flex-shrink-0">
+                                      {row.engagementSummary.length - 3} more
+                                    </span>
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-80 p-3 bg-slate-800 border-slate-700 text-slate-200">
+                                    <div className="space-y-2">
+                                      <div className="font-medium text-white">All Engagement</div>
+                                      <div className="flex flex-wrap gap-1">
+                                        {row.engagementSummary.map((e, idx) => (
+                                          <span key={idx} className={`inline-flex items-center gap-2 px-2 py-0.5 rounded-md border ${e.color || 'border-slate-500 text-slate-300'} font-medium tracking-tight h-7 text-[11px]`} style={{ borderWidth: 1 }}>
+                                            <span>{e.icon || '📄'}</span>
+                                            {e.type === "No Engagement" ? "No Engagement" : `${e.count}x ${formatEngagementType(e.type)}`}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  </PopoverContent>
+                                </Popover>
+                              )}
+                            </div>
+                          </TableCell>;
                         case "Last Touch Date":
                           return <TableCell key={col} className="whitespace-nowrap px-3 py-2">
                             {row.lastTouchDate ? (
@@ -1913,56 +1944,51 @@ export default function AnalyticsContactsTable({ loading = false, locationId, se
                           return <TableCell key={col} className="whitespace-nowrap px-3 py-2">
                             {row.lastMessage ? (
                               <div className="flex items-center gap-2">
-                                <div className="flex-1 min-w-0">
-                                  <div className="text-xs text-slate-200 truncate max-w-[200px]" title={row.lastMessage.body}>
-                                    {row.lastMessage.body}
-                                  </div>
-                                  <div className="flex items-center gap-1 mt-1 flex-wrap">
-                                    {/* Message Direction */}
-                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs font-medium ${
-                                      (row.lastMessage as any).direction === 'outbound' 
-                                        ? 'border-teal-500 text-teal-300' 
-                                        : 'border-orange-500 text-orange-300'
-                                    }`}>
-                                      {(row.lastMessage as any).direction === 'outbound' ? '↗' : '↙'} {(row.lastMessage as any).direction === 'outbound' ? 'Outbound' : 'Inbound'}
+                                <div className="flex items-center gap-1 flex-nowrap">
+                                  {/* Message Direction */}
+                                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs font-medium whitespace-nowrap ${
+                                    (row.lastMessage as any).direction === 'outbound' 
+                                      ? 'border-teal-500 text-teal-300' 
+                                      : 'border-orange-500 text-orange-300'
+                                  }`}>
+                                    {(row.lastMessage as any).direction === 'outbound' ? '↗' : '↙'} {(row.lastMessage as any).direction === 'outbound' ? 'Outbound' : 'Inbound'}
+                                  </span>
+                                  
+                                  {/* Message Type */}
+                                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs font-medium whitespace-nowrap ${
+                                    row.lastMessage.type?.includes('SMS') ? 'border-green-500 text-green-300' :
+                                    row.lastMessage.type?.includes('EMAIL') ? 'border-blue-500 text-blue-300' :
+                                    row.lastMessage.type?.includes('CALL') ? 'border-purple-500 text-purple-300' :
+                                    row.lastMessage.type?.includes('CHAT') ? 'border-orange-500 text-orange-300' :
+                                    row.lastMessage.type?.includes('VOICEMAIL') ? 'border-pink-500 text-pink-300' :
+                                    'border-slate-600 text-slate-300'
+                                  }`}>
+                                    {row.lastMessage.type?.includes('SMS') ? '💬' : 
+                                     row.lastMessage.type?.includes('EMAIL') ? '✉️' : 
+                                     row.lastMessage.type?.includes('CALL') ? '📞' : 
+                                     row.lastMessage.type?.includes('CHAT') ? '💭' : 
+                                     row.lastMessage.type?.includes('VOICEMAIL') ? '🎙️' : 
+                                     '📄'} {row.lastMessage.typeLabel || row.lastMessage.type?.replace('TYPE_', '')}
+                                  </span>
+                                  
+                                  {/* Message Source */}
+                                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs font-medium whitespace-nowrap ${
+                                    (row.lastMessage as any).source === 'API' ? 'border-yellow-500 text-yellow-300' :
+                                    (row.lastMessage as any).source === 'Automated' ? 'border-purple-500 text-purple-300' :
+                                    (row.lastMessage as any).source === 'Manual' ? 'border-blue-500 text-blue-300' :
+                                    'border-slate-600 text-slate-300'
+                                  }`}>
+                                    {(row.lastMessage as any).source === 'API' ? '&lt;&gt;' : 
+                                     (row.lastMessage as any).source === 'Automated' ? '▶️' : 
+                                     (row.lastMessage as any).source === 'Manual' ? '👤' : 
+                                     '📋'} {(row.lastMessage as any).source || 'Unknown'}
+                                  </span>
+                                  
+                                  {row.lastMessage.unread_count > 0 && (
+                                    <span className="inline-flex items-center justify-center w-4 h-4 text-xs bg-red-500 text-white rounded-full flex-shrink-0">
+                                      {row.lastMessage.unread_count}
                                     </span>
-                                    
-                                    {/* Message Type */}
-                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs font-medium ${
-                                      row.lastMessage.type?.includes('SMS') ? 'border-green-500 text-green-300' :
-                                      row.lastMessage.type?.includes('EMAIL') ? 'border-blue-500 text-blue-300' :
-                                      row.lastMessage.type?.includes('CALL') ? 'border-purple-500 text-purple-300' :
-                                      row.lastMessage.type?.includes('CHAT') ? 'border-orange-500 text-orange-300' :
-                                      row.lastMessage.type?.includes('VOICEMAIL') ? 'border-pink-500 text-pink-300' :
-                                      'border-slate-600 text-slate-300'
-                                    }`}>
-                                      {row.lastMessage.type?.includes('SMS') ? '💬' : 
-                                       row.lastMessage.type?.includes('EMAIL') ? '✉️' : 
-                                       row.lastMessage.type?.includes('CALL') ? '📞' : 
-                                       row.lastMessage.type?.includes('CHAT') ? '💭' : 
-                                       row.lastMessage.type?.includes('VOICEMAIL') ? '🎙️' : 
-                                       '📄'} {row.lastMessage.typeLabel || row.lastMessage.type?.replace('TYPE_', '')}
-                                    </span>
-                                    
-                                    {/* Message Source */}
-                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs font-medium ${
-                                      (row.lastMessage as any).source === 'API' ? 'border-yellow-500 text-yellow-300' :
-                                      (row.lastMessage as any).source === 'Automated' ? 'border-purple-500 text-purple-300' :
-                                      (row.lastMessage as any).source === 'Manual' ? 'border-blue-500 text-blue-300' :
-                                      'border-slate-600 text-slate-300'
-                                    }`}>
-                                      {(row.lastMessage as any).source === 'API' ? '&lt;&gt;' : 
-                                       (row.lastMessage as any).source === 'Automated' ? '▶️' : 
-                                       (row.lastMessage as any).source === 'Manual' ? '👤' : 
-                                       '📋'} {(row.lastMessage as any).source || 'Unknown'}
-                                    </span>
-                                    
-                                    {row.lastMessage.unread_count > 0 && (
-                                      <span className="inline-flex items-center justify-center w-4 h-4 text-xs bg-red-500 text-white rounded-full">
-                                        {row.lastMessage.unread_count}
-                                      </span>
-                                    )}
-                                  </div>
+                                  )}
                                 </div>
                                 <Popover>
                                   <PopoverTrigger asChild>
@@ -2006,7 +2032,36 @@ export default function AnalyticsContactsTable({ loading = false, locationId, se
                         case "Opportunities":
                           return <TableCell key={col} className="whitespace-nowrap px-3 py-2 text-slate-300">{row.opportunities}</TableCell>;
                         case "Contact Tags":
-                          return <TableCell key={col} className="whitespace-nowrap px-3 py-2">{row.contactTags.map((tag: any) => <span key={tag} className="inline-flex items-center px-2 py-0.5 rounded-md border border-slate-600 text-slate-300 font-medium text-xs mr-1 mb-1">{tag}</span>)}</TableCell>;
+                          return <TableCell key={col} className="px-3 py-2">
+                            <div className="flex gap-1 flex-nowrap">
+                              {row.contactTags.slice(0, 3).map((tag: any) => (
+                                <span key={tag} className="inline-flex items-center px-2 py-0.5 rounded-md border border-slate-600 text-slate-300 font-medium text-xs whitespace-nowrap flex-shrink-0">
+                                  {tag}
+                                </span>
+                              ))}
+                              {row.contactTags.length > 3 && (
+                                <Popover>
+                                  <PopoverTrigger asChild>
+                                    <span className="inline-flex items-center px-2 py-0.5 rounded-md border border-blue-600 text-blue-300 font-medium text-xs cursor-pointer hover:bg-blue-900/20 whitespace-nowrap flex-shrink-0">
+                                      {row.contactTags.length - 3} more
+                                    </span>
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-80 p-3 bg-slate-800 border-slate-700 text-slate-200">
+                                    <div className="space-y-2">
+                                      <div className="font-medium text-white">All Tags</div>
+                                      <div className="flex flex-wrap gap-1">
+                                        {row.contactTags.map((tag: any) => (
+                                          <span key={tag} className="inline-flex items-center px-2 py-0.5 rounded-md border border-slate-600 text-slate-300 font-medium text-xs">
+                                            {tag}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  </PopoverContent>
+                                </Popover>
+                              )}
+                            </div>
+                          </TableCell>;
                         case "View Calls":
                           return <TableCell key={col} className="whitespace-nowrap px-3 py-2"><button className="text-blue-400 hover:underline flex items-center gap-1 font-medium bg-transparent border-none cursor-pointer" onClick={() => setLocation(`/call-details?contact_id=${(row as any).id}&contact=${encodeURIComponent(row.name)}&date=${encodeURIComponent(row.dateCreated)}&tags=${encodeURIComponent(Array.isArray(row.contactTags) ? row.contactTags.join(',') : '')}`)}>View <ArrowUpRight className="w-4 h-4" /></button></TableCell>;
                         case "Date Created":

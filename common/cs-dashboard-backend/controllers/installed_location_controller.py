@@ -2577,7 +2577,7 @@ class InstalledLocationController(http.Controller):
             )
 
     def _compute_touch_summary_for_contact(self, contact):
-        """Compute touch summary for a contact on-the-fly by fetching messages from GHL API"""
+        """Compute touch summary for a contact - OUTBOUND touches only (from our side)"""
         import logging
         _logger = logging.getLogger(__name__)
         
@@ -2637,11 +2637,17 @@ class InstalledLocationController(http.Controller):
                     else:
                         _logger.warning(f"No valid access token found for contact {contact.id}")
 
-            # Count messages by type
+            # Filter for OUTBOUND messages only (from our side)
+            outbound_messages = messages.filtered(lambda m: m.direction == 'outbound')
+            
+            _logger.info(f"Touch summary: {len(messages)} total messages, {len(outbound_messages)} outbound messages for contact {contact.id}")
+            
+            # Count outbound messages by type
             message_counts = {}
-            for message in messages:
+            for message in outbound_messages:
                 message_type = message.message_type or 'UNKNOWN'
                 message_counts[message_type] = message_counts.get(message_type, 0) + 1
+                _logger.info(f"Outbound message type: {message_type}, count: {message_counts[message_type]}")
 
             # Create touch summary string in the format expected by frontend: "3 SMS, 1 PHONE CALL"
             touch_parts = []
@@ -2651,7 +2657,7 @@ class InstalledLocationController(http.Controller):
                 touch_parts.append(f"{count} {type_name}")
 
             result = ', '.join(touch_parts) if touch_parts else 'no_touches'
-            _logger.info(f"Touch summary for contact {contact.id}: {result}")
+            _logger.info(f"Touch summary (outbound only) for contact {contact.id}: {result}")
             return result
             
         except Exception as e:
@@ -2692,32 +2698,95 @@ class InstalledLocationController(http.Controller):
         return None
 
     def _compute_engagement_summary_for_contact(self, contact):
-        """Compute engagement summary for a contact on-the-fly"""
-        # Get all messages for this contact
-        messages = request.env['ghl.contact.message'].sudo().search([
-            ('contact_id', '=', contact.id)
-        ])
-
-        if not messages:
-            return []
-
-        # Group messages by type and count them
-        engagement_data = []
-        message_counts = {}
+        """Compute engagement summary for a contact - ALL touches (both inbound and outbound)"""
+        import logging
+        _logger = logging.getLogger(__name__)
         
-        for message in messages:
-            message_type = message.message_type or 'UNKNOWN'
-            message_counts[message_type] = message_counts.get(message_type, 0) + 1
+        try:
+            # Get all messages for this contact
+            messages = request.env['ghl.contact.message'].sudo().search([
+                ('contact_id', '=', contact.id)
+            ])
 
-        # Convert to the format expected by frontend
-        for msg_type, count in message_counts.items():
-            engagement_data.append({
-                'type': msg_type,
-                'count': count,
-                'icon': self._get_engagement_icon(msg_type)
-            })
+            # If no messages in database, try to fetch them from GHL API (same logic as touch summary)
+            if not messages:
+                _logger.info(f"No messages found for contact {contact.id}, attempting to fetch from GHL API")
+                
+                # Get conversations for this contact
+                conversations = request.env['ghl.contact.conversation'].sudo().search([
+                    ('contact_id', '=', contact.id)
+                ])
+                
+                if not conversations:
+                    _logger.info(f"No conversations found for contact {contact.id}")
+                    return []
+                
+                # Try to fetch messages for the most recent conversation
+                latest_conversation = conversations[0]
+                if latest_conversation.ghl_id:
+                    # Get the app access token
+                    app = request.env['cyclsales.application'].sudo().search([
+                        ('is_active', '=', True)
+                    ], limit=1)
+                    
+                    if app and app.access_token:
+                        # Get location token
+                        from .ghl_api_utils import get_location_token
+                        company_id = 'Ipg8nKDPLYKsbtodR6LN'
+                        location_token = get_location_token(app.access_token, company_id, contact.location_id.location_id)
+                        
+                        if location_token:
+                            # Fetch messages for this conversation
+                            message_result = request.env['ghl.contact.message'].sudo().fetch_messages_for_conversation(
+                                conversation_id=latest_conversation.ghl_id,
+                                access_token=location_token,
+                                location_id=contact.location_id.id,
+                                contact_id=contact.id,
+                                limit=100  # Fetch more messages to get accurate counts
+                            )
+                            
+                            if message_result.get('success'):
+                                _logger.info(f"Successfully fetched messages for contact {contact.id}")
+                                # Refresh messages from database
+                                messages = request.env['ghl.contact.message'].sudo().search([
+                                    ('contact_id', '=', contact.id)
+                                ])
+                            else:
+                                _logger.warning(f"Failed to fetch messages for contact {contact.id}: {message_result.get('error')}")
+                        else:
+                            _logger.warning(f"Failed to get location token for contact {contact.id}")
+                    else:
+                        _logger.warning(f"No valid access token found for contact {contact.id}")
 
-        return engagement_data
+            if not messages:
+                return []
+
+            # Group ALL messages by type and count them (both inbound and outbound)
+            engagement_data = []
+            message_counts = {}
+            
+            _logger.info(f"Processing {len(messages)} messages for engagement summary for contact {contact.id}")
+            
+            for message in messages:
+                message_type = message.message_type or 'UNKNOWN'
+                message_counts[message_type] = message_counts.get(message_type, 0) + 1
+                _logger.info(f"Message type: {message_type}, direction: {message.direction}, count: {message_counts[message_type]}")
+
+            # Convert to the format expected by frontend
+            for msg_type, count in message_counts.items():
+                engagement_data.append({
+                    'type': msg_type,
+                    'count': count,
+                    'icon': self._get_engagement_icon(msg_type),
+                    'color': self._get_engagement_color(msg_type)
+                })
+
+            _logger.info(f"Engagement summary (all touches) for contact {contact.id}: {len(engagement_data)} types - {engagement_data}")
+            return engagement_data
+            
+        except Exception as e:
+            _logger.error(f"Error computing engagement summary for contact {contact.id}: {str(e)}")
+            return []
 
     def _compute_speed_to_lead_for_contact(self, contact):
         """Compute speed to lead for a contact on-the-fly"""
@@ -2768,8 +2837,21 @@ class InstalledLocationController(http.Controller):
             'TYPE_OPPORTUNITY': '💰',
         }
         return icon_mapping.get(message_type, '📄')
-        # For now, return empty string
-        return ''
+
+    def _get_engagement_color(self, message_type):
+        """Get color for engagement type"""
+        color_mapping = {
+            'TYPE_SMS': 'border-green-500 text-green-300',
+            'TYPE_CALL': 'border-blue-500 text-blue-300',
+            'TYPE_EMAIL': 'border-purple-500 text-purple-300',
+            'TYPE_WEBCHAT': 'border-orange-500 text-orange-300',
+            'TYPE_FACEBOOK': 'border-blue-600 text-blue-300',
+            'TYPE_WHATSAPP': 'border-green-600 text-green-300',
+            'TYPE_REVIEW': 'border-yellow-500 text-yellow-300',
+            'TYPE_APPOINTMENT': 'border-indigo-500 text-indigo-300',
+            'TYPE_OPPORTUNITY': 'border-emerald-500 text-emerald-300',
+        }
+        return color_mapping.get(message_type, 'border-slate-500 text-slate-300')
 
     def _compute_last_message_for_contact(self, contact):
         """Compute last message for a contact on-the-fly"""
