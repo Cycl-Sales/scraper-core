@@ -2878,9 +2878,6 @@ class InstalledLocationController(http.Controller):
                 for contact in contacts:
                     try:
                         _logger.info(f"Syncing contact {contact.name} (ID: {contact.id}, External ID: {contact.external_id}) from GHL API")
-                        
-                        # First, check if we have conversations for this contact
-
                         existing_conversations = request.env['ghl.contact.conversation'].sudo().search([
                             ('contact_id', '=', contact.id)
                         ])

@@ -303,30 +303,66 @@ class DashboardController(http.Controller):
 
     @http.route('/api/dashboard/analytics/call-volume', type='http', auth='none', methods=['GET'], csrf=False)
     def get_call_volume_analytics(self, **kwargs):
-        """Get call volume analytics data"""
+        """Get raw call data for analytics"""
         try:
-            location_id = kwargs.get('locationId', 'demo-location')
+            location_id = kwargs.get('locationId', 'location_id')
 
-            # Get contacts by source for analytics
-            contacts = request.env['ghl.contact'].sudo().search([('location_id', '=', location_id)])
+            # If no specific location or demo location, get all call records
+            if not location_id or location_id == 'demo-location':
+                domain = [('message_type', '=', 'TYPE_CALL')]
+            else:
+                domain = [
+                    ('location_id.location_id', '=', location_id),
+                    ('message_type', '=', 'TYPE_CALL')
+                ]
 
-            # Group by source
-            source_counts = {}
-            for contact in contacts:
-                source = contact.source or 'other'
-                source_counts[source] = source_counts.get(source, 0) + 1
+            # Get call messages by location for analytics (same data source as call table)
+            call_messages = request.env['ghl.contact.message'].sudo().search(domain)
+            _logger.info(f"Found {len(call_messages)} call messages for analytics with domain: {domain}")
 
-            # Format data for charts
-            analytics_data = []
-            for source, count in source_counts.items():
-                analytics_data.append({
-                    'location': source.title(),
-                    'volume': count,
-                    'date': datetime.now().isoformat()
-                })
+            # Return raw call data for frontend processing
+            raw_data = []
+            for call in call_messages:
+                # Calculate duration from transcript if meta_id.call_duration is not available
+                calculated_duration = None
+                if call.meta_id and call.meta_id.call_duration:
+                    calculated_duration = call.meta_id.call_duration
+                else:
+                    # Try to calculate from transcript data
+                    transcript_records = request.env['ghl.contact.message.transcript'].sudo().search([
+                        ('message_id', '=', call.id)
+                    ])
+                    if transcript_records:
+                        calculated_duration = sum(t.duration for t in transcript_records if t.duration)
+                
+                # Get user name from user_id
+                user_name = None
+                if call.user_id:
+                    try:
+                        user_name = call.user_id.name if hasattr(call.user_id, 'name') else str(call.user_id)
+                    except:
+                        user_name = str(call.user_id)
+                
+                call_data = {
+                    'id': call.id,
+                    'direction': call.direction,
+                    'user_id': user_name,
+                    'date_added': call.date_added.isoformat() if call.date_added else None,
+                    'meta': {
+                        'call_duration': calculated_duration
+                    },
+                    'contact_id': {
+                        'id': call.contact_id.id if call.contact_id else None,
+                        'source': call.contact_id.source if call.contact_id and call.contact_id.source else 'Unknown Source',
+                        'name': call.contact_id.name if call.contact_id else None
+                    } if call.contact_id else None
+                }
+                raw_data.append(call_data)
+                _logger.info(f"Call data: {call_data}")
 
+            _logger.info(f"Returning {len(raw_data)} call records for analytics")
             return Response(
-                json.dumps(analytics_data),
+                json.dumps(raw_data),
                 content_type='application/json',
                 headers=get_cors_headers(request)
             )
@@ -342,31 +378,66 @@ class DashboardController(http.Controller):
 
     @http.route('/api/dashboard/analytics/engagement', type='http', auth='none', methods=['GET'], csrf=False)
     def get_engagement_analytics(self, **kwargs):
-        """Get engagement analytics data"""
+        """Get raw call data for engagement analytics"""
         try:
             location_id = kwargs.get('locationId', 'demo-location')
 
-            # Get contacts by source for engagement analysis
-            contacts = request.env['ghl.contact'].sudo().search([('location_id', '=', location_id)])
+            # If no specific location or demo location, get all call records
+            if not location_id or location_id == 'demo-location':
+                domain = [('message_type', '=', 'TYPE_CALL')]
+            else:
+                domain = [
+                    ('location_id.location_id', '=', location_id),
+                    ('message_type', '=', 'TYPE_CALL')
+                ]
 
-            # Calculate engagement percentages by source
-            total_contacts = len(contacts)
-            source_counts = {}
-            for contact in contacts:
-                source = contact.source or 'other'
-                source_counts[source] = source_counts.get(source, 0) + 1
+            # Get call messages by location for engagement analysis (same data source as call table)
+            call_messages = request.env['ghl.contact.message'].sudo().search(domain)
+            _logger.info(f"Found {len(call_messages)} call messages for engagement analytics with domain: {domain}")
 
-            engagement_data = []
-            for source, count in source_counts.items():
-                percentage = (count / total_contacts * 100) if total_contacts > 0 else 0
-                engagement_data.append({
-                    'userName': source.title(),
-                    'percentage': f"{percentage:.2f}",
-                    'date': datetime.now().isoformat()
-                })
-            print(engagement_data)
+            # Return raw call data for frontend processing
+            raw_data = []
+            for call in call_messages:
+                # Calculate duration from transcript if meta_id.call_duration is not available
+                calculated_duration = None
+                if call.meta_id and call.meta_id.call_duration:
+                    calculated_duration = call.meta_id.call_duration
+                else:
+                    # Try to calculate from transcript data
+                    transcript_records = request.env['ghl.contact.message.transcript'].sudo().search([
+                        ('message_id', '=', call.id)
+                    ])
+                    if transcript_records:
+                        calculated_duration = sum(t.duration for t in transcript_records if t.duration)
+                
+                # Get user name from user_id
+                user_name = None
+                if call.user_id:
+                    try:
+                        user_name = call.user_id.name if hasattr(call.user_id, 'name') else str(call.user_id)
+                    except:
+                        user_name = str(call.user_id)
+                
+                call_data = {
+                    'id': call.id,
+                    'direction': call.direction,
+                    'user_id': user_name,
+                    'date_added': call.date_added.isoformat() if call.date_added else None,
+                    'meta': {
+                        'call_duration': calculated_duration
+                    },
+                    'contact_id': {
+                        'id': call.contact_id.id if call.contact_id else None,
+                        'source': call.contact_id.source if call.contact_id and call.contact_id.source else 'Unknown Source',
+                        'name': call.contact_id.name if call.contact_id else None
+                    } if call.contact_id else None
+                }
+                raw_data.append(call_data)
+                _logger.info(f"Engagement call data: {call_data}")
+
+            _logger.info(f"Returning {len(raw_data)} call records for engagement analytics")
             return Response(
-                json.dumps(engagement_data),
+                json.dumps(raw_data),
                 content_type='application/json',
                 headers=get_cors_headers(request)
             )

@@ -57,12 +57,16 @@ export function useUpdateContact() {
   return useApiCall(dashboardAPI.updateContact.bind(dashboardAPI));
 }
 
-export function useCallVolumeAnalytics() {
-  return useApiCall(dashboardAPI.getCallVolumeAnalytics.bind(dashboardAPI));
+export function useCallVolumeAnalytics(startDate?: string, endDate?: string) {
+  return useApiCall((start?: string, end?: string) => 
+    dashboardAPI.getCallVolumeAnalytics(start || startDate, end || endDate)
+  );
 }
 
-export function useEngagementAnalytics() {
-  return useApiCall(dashboardAPI.getEngagementAnalytics.bind(dashboardAPI));
+export function useEngagementAnalytics(startDate?: string, endDate?: string) {
+  return useApiCall((start?: string, end?: string) => 
+    dashboardAPI.getEngagementAnalytics(start || startDate, end || endDate)
+  );
 }
 
 export function usePipelineAnalytics() {

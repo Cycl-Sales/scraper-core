@@ -169,14 +169,17 @@ export class DashboardAPI {
   }
 
   // Analytics
-  async getCallVolumeAnalytics(): Promise<any[]> {
+  async getCallVolumeAnalytics(startDate?: string, endDate?: string): Promise<any[]> {
     try {
-      const response = await apiClient.get('/api/dashboard/analytics/call-volume', {
-        params: { 
-          locationId: this.locationId,
-          appId: CYCLSALES_APP_ID
-        }
-      });
+      const params: any = { 
+        locationId: this.locationId,
+        appId: CYCLSALES_APP_ID
+      };
+      
+      if (startDate) params.startDate = startDate;
+      if (endDate) params.endDate = endDate;
+      
+      const response = await apiClient.get('/api/dashboard/analytics/call-volume', { params });
       return response.data;
     } catch (error) {
       console.error('Error fetching call volume analytics:', error);
@@ -184,14 +187,17 @@ export class DashboardAPI {
     }
   }
 
-  async getEngagementAnalytics(): Promise<any[]> {
+  async getEngagementAnalytics(startDate?: string, endDate?: string): Promise<any[]> {
     try {
-      const response = await apiClient.get('/api/dashboard/analytics/engagement', {
-        params: { 
-          locationId: this.locationId,
-          appId: CYCLSALES_APP_ID
-        }
-      });
+      const params: any = { 
+        locationId: this.locationId,
+        appId: CYCLSALES_APP_ID
+      };
+      
+      if (startDate) params.startDate = startDate;
+      if (endDate) params.endDate = endDate;
+      
+      const response = await apiClient.get('/api/dashboard/analytics/engagement', { params });
       return response.data;
     } catch (error) {
       console.error('Error fetching engagement analytics:', error);

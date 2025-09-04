@@ -2,6 +2,8 @@ import { useState, useEffect } from "react";
 import TopNavigation from "@/components/top-navigation";
 import AnalyticsContactsTable from "@/components/analytics-contacts-table";
 import CallDetailsTable from "@/components/call-details-table";
+import CallVolumeChart from "@/components/charts/call-volume-chart";
+import EngagementChart from "@/components/charts/engagement-chart";
 import { Button } from "@/components/ui/button";
 import { Calendar as CalendarIcon, Filter, Share2, User, Users, ChevronDown, RefreshCw } from "lucide-react";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
@@ -10,6 +12,7 @@ import { format } from "date-fns";
 import type { DateRange } from "react-day-picker";
 import { CYCLSALES_APP_ID, PROD_BASE_URL } from "@/lib/constants";
 import { useSubAccount } from "@/contexts/SubAccountContext";
+import { useCallVolumeAnalytics, useEngagementAnalytics } from "@/hooks/use-api";
 
 // Filter options
 const aiStatusOptions = [
@@ -118,6 +121,27 @@ export default function Analytics() {
   const [availableLocations, setAvailableLocations] = useState<any[]>([]);
   const [locationsLoading, setLocationsLoading] = useState(false);
   const [locationSelectorOpen, setLocationSelectorOpen] = useState(false);
+
+  // Analytics hooks for charts
+  const { 
+    data: callVolumeData, 
+    loading: callVolumeLoading, 
+    error: callVolumeError, 
+    execute: loadCallVolume 
+  } = useCallVolumeAnalytics(
+    dateRange.from?.toISOString().split('T')[0], 
+    dateRange.to?.toISOString().split('T')[0]
+  );
+  
+  const { 
+    data: engagementData, 
+    loading: engagementLoading, 
+    error: engagementError, 
+    execute: loadEngagement 
+  } = useEngagementAnalytics(
+    dateRange.from?.toISOString().split('T')[0], 
+    dateRange.to?.toISOString().split('T')[0]
+  );
   
   // Filter state
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -216,6 +240,32 @@ export default function Analytics() {
       setLocationName("");
     }
   }, [locationId]);
+
+  // Load analytics data when date range changes
+  useEffect(() => {
+    if (!dateRange.from || !dateRange.to) return;
+    
+    const loadAnalyticsData = async () => {
+      try {
+        console.log('Loading analytics data for date range:', dateRange.from, 'to', dateRange.to);
+        await Promise.all([
+          loadCallVolume(),
+          loadEngagement()
+        ]);
+      } catch (error) {
+        console.error("Failed to load analytics data:", error);
+      }
+    };
+    loadAnalyticsData();
+  }, [dateRange.from, dateRange.to]);
+
+  // Debug analytics data
+  useEffect(() => {
+    console.log('Analytics Page - Call Volume Data:', callVolumeData);
+    console.log('Analytics Page - Engagement Data:', engagementData);
+    console.log('Analytics Page - Call Volume Loading:', callVolumeLoading);
+    console.log('Analytics Page - Engagement Loading:', engagementLoading);
+  }, [callVolumeData, engagementData, callVolumeLoading, engagementLoading]);
 
   // Function to refresh contacts with fresh data
   const refreshContacts = async () => {
@@ -675,38 +725,63 @@ export default function Analytics() {
             )}
           </div>
         ) : (
-          /* Calls Table Section */
-          <div className="bg-slate-900 rounded-2xl p-6 shadow-lg">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <span className="text-lg font-semibold text-white">Calls</span>
-                <div className="flex items-center gap-2 px-3 py-1 bg-slate-800 border border-slate-700 rounded-md">
-                  <div className="w-2 h-2 bg-slate-400 rounded-full"></div>
-                  <span className="text-slate-300 text-sm">Showing call data for this location</span>
-                </div>
+          /* Calls Section with Charts and Table */
+          <div className="space-y-6">
+            {/* Analytics Charts */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="h-full">
+                {callVolumeLoading ? (
+                  <div className="bg-slate-800 border-slate-700 rounded-lg p-6 h-full flex items-center justify-center">
+                    <div className="text-slate-400">Loading call volume data...</div>
+                  </div>
+                ) : (
+                  <CallVolumeChart rawData={callVolumeData || undefined} loading={callVolumeLoading} />
+                )}
               </div>
-              <div className="flex items-center gap-2">
-                <Button 
-                  variant="outline" 
-                  className="flex gap-2 items-center bg-slate-800 text-slate-200 border-slate-700"
-                  onClick={() => window.location.reload()}
-                  disabled={refreshing}
-                >
-                  <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-                  Refresh Calls
-                </Button>
-                <Button variant="outline" className="flex gap-2 items-center bg-slate-800 text-slate-200 border-slate-700">
-                  <Filter className="w-4 h-4" />
-                  Call Filters
-                </Button>
+              <div className="h-full">
+                {engagementLoading ? (
+                  <div className="bg-slate-800 border-slate-700 rounded-lg p-6 h-full flex items-center justify-center">
+                    <div className="text-slate-400">Loading engagement data...</div>
+                  </div>
+                ) : (
+                  <EngagementChart rawData={engagementData || undefined} loading={engagementLoading} />
+                )}
               </div>
             </div>
-            <CallDetailsTable 
-              loading={contactsLoading} 
-              locationId={locationId || ""} 
-              selectedUser={selectedUserExternalId || selectedUser} 
-              activeFilters={activeFilters} 
-            />
+
+            {/* Calls Table Section */}
+            <div className="bg-slate-900 rounded-2xl p-6 shadow-lg">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <span className="text-lg font-semibold text-white">Calls</span>
+                  <div className="flex items-center gap-2 px-3 py-1 bg-slate-800 border border-slate-700 rounded-md">
+                    <div className="w-2 h-2 bg-slate-400 rounded-full"></div>
+                    <span className="text-slate-300 text-sm">Showing call data for this location</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button 
+                    variant="outline" 
+                    className="flex gap-2 items-center bg-slate-800 text-slate-200 border-slate-700"
+                    onClick={() => window.location.reload()}
+                    disabled={refreshing}
+                  >
+                    <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+                    Refresh Calls
+                  </Button>
+                  <Button variant="outline" className="flex gap-2 items-center bg-slate-800 text-slate-200 border-slate-700">
+                    <Filter className="w-4 h-4" />
+                    Call Filters
+                  </Button>
+                </div>
+              </div>
+              <CallDetailsTable 
+                loading={contactsLoading} 
+                locationId={locationId || ""} 
+                selectedUser={selectedUserExternalId || selectedUser} 
+                activeFilters={activeFilters} 
+              />
+            </div>
           </div>
         )}
       </main>

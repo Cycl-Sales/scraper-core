@@ -10,6 +10,8 @@ import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { CYCLSALES_APP_ID, PROD_BASE_URL } from "@/lib/constants";
 import { useSubAccount } from "@/contexts/SubAccountContext";
+import { useCallVolumeAnalytics, useEngagementAnalytics } from "@/hooks/use-api";
+import type { DateRange } from "react-day-picker";
 
 function useQuery() {
   return new URLSearchParams(window.location.search);
@@ -89,6 +91,33 @@ export default function CallDetails() {
   // Removed unused date query param
   const tags = parseTags(query.get("tags"));
 
+  // Date range state for analytics - temporarily expanded to include the September call
+  const [dateRange, setDateRange] = useState<DateRange>({ 
+    from: new Date("2025-05-01"), 
+    to: new Date("2025-09-30") 
+  });
+
+  // Analytics hooks
+  const { 
+    data: callVolumeData, 
+    loading: callVolumeLoading, 
+    error: callVolumeError, 
+    execute: loadCallVolume 
+  } = useCallVolumeAnalytics(
+    dateRange.from?.toISOString().split('T')[0], 
+    dateRange.to?.toISOString().split('T')[0]
+  );
+  
+  const { 
+    data: engagementData, 
+    loading: engagementLoading, 
+    error: engagementError, 
+    execute: loadEngagement 
+  } = useEngagementAnalytics(
+    dateRange.from?.toISOString().split('T')[0], 
+    dateRange.to?.toISOString().split('T')[0]
+  );
+
   // State for call messages
   const [callMessages, setCallMessages] = useState<any[]>([]);
   const [contactData, setContactData] = useState<any>(null);
@@ -99,6 +128,33 @@ export default function CallDetails() {
   const [activeTab, setActiveTab] = useState("calls");
   const [transcriptDialogOpen, setTranscriptDialogOpen] = useState(false);
   const [selectedCallDetails, setSelectedCallDetails] = useState<any>(null);
+
+  // Load analytics data when component mounts or date range changes
+  useEffect(() => {
+    // Only load if we have valid date range
+    if (!dateRange.from || !dateRange.to) return;
+    
+    const loadAnalyticsData = async () => {
+      try {
+        console.log('Loading analytics data for date range:', dateRange.from, 'to', dateRange.to);
+        await Promise.all([
+          loadCallVolume(),
+          loadEngagement()
+        ]);
+      } catch (error) {
+        console.error("Failed to load analytics data:", error);
+      }
+    };
+    loadAnalyticsData();
+  }, [dateRange.from, dateRange.to]); // Removed function dependencies to prevent infinite loops
+
+  // Debug analytics data
+  useEffect(() => {
+    console.log('Call Volume Data:', callVolumeData);
+    console.log('Engagement Data:', engagementData);
+    console.log('Call Volume Loading:', callVolumeLoading);
+    console.log('Engagement Loading:', engagementLoading);
+  }, [callVolumeData, engagementData, callVolumeLoading, engagementLoading]);
   const [summaryDialogOpen, setSummaryDialogOpen] = useState(false);
   const [selectedCallSummary, setSelectedCallSummary] = useState<any>(null);
   // Removed unused loadingCallDetails state
@@ -505,12 +561,18 @@ export default function CallDetails() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6 items-stretch">
           <div className="lg:col-span-2 flex flex-col h-[420px]">
             <div className="h-full flex flex-col">
-              <CallVolumeChart />
+              <CallVolumeChart 
+                rawData={callVolumeData || undefined} 
+                loading={callVolumeLoading}
+              />
             </div>
           </div>
           <div className="lg:col-span-1 flex flex-col h-[420px]">
             <div className="h-full flex flex-col">
-              <EngagementChart />
+              <EngagementChart 
+                rawData={engagementData || undefined} 
+                loading={engagementLoading}
+              />
             </div>
           </div>
         </div>
