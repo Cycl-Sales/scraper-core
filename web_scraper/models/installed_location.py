@@ -484,6 +484,9 @@ class InstalledLocation(models.Model):
             f"https://services.leadconnectorhq.com/oauth/installedLocations?"
             f"limit={limit}&isInstalled=true&companyId={company_id}&appId={app_id}"
         )
+        _logger.info(f"Calling GHL API URL: {url}")
+        _logger.info(f"Using app_id: {app_id}, company_id: {company_id}")
+        
         headers = {
             'Accept': 'application/json',
             'Authorization': f'Bearer {access_token}',
@@ -491,16 +494,24 @@ class InstalledLocation(models.Model):
         }
         try:
             response = requests.get(url, headers=headers)
+            _logger.info(f"GHL API response status: {response.status_code}")
             print(response.json())
             print('123123')
             if response.status_code == 200:
                 data = response.json()
+                _logger.info(f"GHL API response data: {data}")
+                _logger.info(f"Number of locations returned: {len(data.get('locations', []))}")
+                
                 # Update count and install_to_future_locations on a dummy record (or all records)
                 count = data.get('count')
                 install_to_future = data.get('installToFutureLocations')
+                _logger.info(f"Count: {count}, Install to future: {install_to_future}")
                 for loc in data.get('locations', []):
+                    location_id_from_api = loc.get('_id')
+                    _logger.info(f"Processing location from GHL API: {location_id_from_api}")
+                    
                     vals = {
-                        'location_id': loc.get('_id'),
+                        'location_id': location_id_from_api,
                         'name': loc.get('name'),
                         'address': loc.get('address'),
                         'is_installed': loc.get('isInstalled', False),
@@ -508,12 +519,18 @@ class InstalledLocation(models.Model):
                         'count': count,
                         'install_to_future_locations': install_to_future,
                     }
-                    rec = self.sudo().search([('location_id', '=', vals['location_id']), ('app_id', '=', app_id)],
-                                             limit=1)
+                    _logger.info(f"Location values: {vals}")
+                    
+                    # Search for existing record by location_id only (not by app_id)
+                    rec = self.sudo().search([('location_id', '=', vals['location_id'])], limit=1)
+                    _logger.info(f"Found existing record: {rec}")
+                    
                     if rec:
                         rec.write(vals)
+                        _logger.info(f"Updated existing location record: {location_id_from_api}")
                     else:
                         rec = self.sudo().create(vals)
+                        _logger.info(f"Created new location record: {location_id_from_api}")
                     
                     # Only fetch details if explicitly requested
                     if fetch_details:
