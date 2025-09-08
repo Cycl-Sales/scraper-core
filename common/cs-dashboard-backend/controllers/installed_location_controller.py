@@ -3177,6 +3177,9 @@ class InstalledLocationController(http.Controller):
             # Calculate how many contacts we need for the requested page
             contacts_needed = page * limit
 
+            # Initialize result variable with default values
+            result = {'success': True, 'created_count': 0, 'updated_count': 0}
+
             # Only fetch from GHL API if we don't have enough contacts AND it's a reasonable amount
             if current_contact_count < contacts_needed and contacts_needed <= 1000:  # Limit to prevent processing too many
                 _logger.info(f"Need {contacts_needed} contacts, have {current_contact_count}. Fetching only the specific page from GHL API...")
@@ -3189,6 +3192,8 @@ class InstalledLocationController(http.Controller):
                     _logger.error(f"fetch_location_contacts_lazy error: {result.get('error')}")
                     # Don't return error, just continue with what we have in the database
                     _logger.warning("Continuing with existing database contacts despite API fetch failure")
+                    # Reset result to default values
+                    result = {'success': True, 'created_count': 0, 'updated_count': 0}
             else:
                 if current_contact_count >= contacts_needed:
                     _logger.info(f"Already have {current_contact_count} contacts, sufficient for page {page}")
