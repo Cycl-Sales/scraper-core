@@ -415,7 +415,7 @@ class GhlContactMessage(models.Model):
                 existing = self.sudo().search([('ghl_id', '=', ghl_id)], limit=1)
                 if existing:
                     # Use retry mechanism for message updates to prevent serialization failures
-                    if self.__class__._update_message_with_retry(self.env, existing, vals):
+                    if _update_message_with_retry(self.env, existing, vals):
                         updated_count += 1
                         message_rec = existing
                     else:
@@ -436,7 +436,7 @@ class GhlContactMessage(models.Model):
                                 existing_msg = self.sudo().search([('ghl_id', '=', ghl_id)], limit=1)
                                 if existing_msg:
                                     # Use retry mechanism for message updates to prevent serialization failures
-                                    if self.__class__._update_message_with_retry(self.env, existing_msg, vals):
+                                    if _update_message_with_retry(self.env, existing_msg, vals):
                                         updated_count += 1
                                         message_rec = existing_msg
                                         _logger.info(f"Updated existing message {ghl_id} after duplicate detection")
@@ -1287,59 +1287,59 @@ class GhlContactMessageMeta(models.Model):
 
         return self.create(vals)
 
-    @classmethod
-    def _update_message_with_retry(cls, env, message, update_data, max_retries=3):
-        """
-        Update message with retry mechanism to handle concurrent update errors.
-        Uses individual transactions to prevent bulk UPDATE conflicts.
-        
-        Args:
-            message: The message record to update
-            update_data: Dictionary of fields to update
-            max_retries: Maximum number of retry attempts (default: 3)
-        
-        Returns:
-            bool: True if update was successful, False otherwise
-        """
-        import time
-        import logging
-        from odoo import api, SUPERUSER_ID
-        _logger = logging.getLogger(__name__)
-        
-        for attempt in range(max_retries):
-            try:
-                # Use a separate transaction for each message update to prevent bulk UPDATE
-                with env.registry.cursor() as new_cr:
-                    new_env = api.Environment(new_cr, SUPERUSER_ID, {})
-                    
-                    # Re-fetch the message from database to get latest version
-                    fresh_message = new_env['ghl.contact.message'].sudo().browse(message.id)
-                    if not fresh_message.exists():
-                        _logger.warning(f"Message {message.id} no longer exists")
-                        return False
-                    
-                    # Perform the update on the fresh record
-                    fresh_message.write(update_data)
-                    
-                    # Commit the individual transaction
-                    new_cr.commit()
-                    
-                    _logger.info(f"Successfully updated message {message.id} on attempt {attempt + 1}")
-                    return True
+def _update_message_with_retry(env, message, update_data, max_retries=3):
+    """
+    Update message with retry mechanism to handle concurrent update errors.
+    Uses individual transactions to prevent bulk UPDATE conflicts.
+    
+    Args:
+        env: Odoo environment
+        message: The message record to update
+        update_data: Dictionary of fields to update
+        max_retries: Maximum number of retry attempts (default: 3)
+    
+    Returns:
+        bool: True if update was successful, False otherwise
+    """
+    import time
+    import logging
+    from odoo import api, SUPERUSER_ID
+    _logger = logging.getLogger(__name__)
+    
+    for attempt in range(max_retries):
+        try:
+            # Use a separate transaction for each message update to prevent bulk UPDATE
+            with env.registry.cursor() as new_cr:
+                new_env = api.Environment(new_cr, SUPERUSER_ID, {})
                 
-            except Exception as e:
-                error_str = str(e)
-                if ("could not serialize access due to concurrent update" in error_str or 
-                    "transaction is aborted" in error_str or
-                    "deadlock detected" in error_str) and attempt < max_retries - 1:
-                    
-                    # Wait with exponential backoff before retrying
-                    wait_time = (2 ** attempt) * 0.1  # 0.1s, 0.2s, 0.4s
-                    _logger.warning(f"Concurrent update error for message {message.id}, retrying in {wait_time}s (attempt {attempt + 1}/{max_retries})")
-                    time.sleep(wait_time)
-                    continue
-                else:
-                    _logger.error(f"Failed to update message {message.id} after {attempt + 1} attempts: {error_str}")
+                # Re-fetch the message from database to get latest version
+                fresh_message = new_env['ghl.contact.message'].sudo().browse(message.id)
+                if not fresh_message.exists():
+                    _logger.warning(f"Message {message.id} no longer exists")
                     return False
-        
-        return False
+                
+                # Perform the update on the fresh record
+                fresh_message.write(update_data)
+                
+                # Commit the individual transaction
+                new_cr.commit()
+                
+                _logger.info(f"Successfully updated message {message.id} on attempt {attempt + 1}")
+                return True
+            
+        except Exception as e:
+            error_str = str(e)
+            if ("could not serialize access due to concurrent update" in error_str or 
+                "transaction is aborted" in error_str or
+                "deadlock detected" in error_str) and attempt < max_retries - 1:
+                
+                # Wait with exponential backoff before retrying
+                wait_time = (2 ** attempt) * 0.1  # 0.1s, 0.2s, 0.4s
+                _logger.warning(f"Concurrent update error for message {message.id}, retrying in {wait_time}s (attempt {attempt + 1}/{max_retries})")
+                time.sleep(wait_time)
+                continue
+            else:
+                _logger.error(f"Failed to update message {message.id} after {attempt + 1} attempts: {error_str}")
+                return False
+    
+    return False
