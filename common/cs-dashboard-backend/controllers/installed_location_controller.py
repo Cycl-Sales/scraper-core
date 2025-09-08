@@ -14,7 +14,6 @@ class InstalledLocationController(http.Controller):
     def _get_app_id_from_request(self, kwargs):
         """Helper method to get app_id from request parameters with fallback"""
         app_id = kwargs.get('appId') or '6867d1537079188afca5013c'  # Default fallback
-        _logger.info(f"Using app_id: {app_id}")
         return app_id
 
     @http.route('/api/installed-locations', type='http', auth='none', methods=['GET', 'OPTIONS'], csrf=False)
@@ -22,8 +21,6 @@ class InstalledLocationController(http.Controller):
         """
         Fast version that returns cached data immediately and triggers background sync
         """
-        _logger.info(f"InstalledLocationController.get_installed_locations called with kwargs: {kwargs}")
-
         # Handle preflight OPTIONS request
         if request.httprequest.method == 'OPTIONS':
             return Response(
@@ -33,11 +30,9 @@ class InstalledLocationController(http.Controller):
 
         # Get app_id from parameters or use default
         app_id = kwargs.get('appId', '6867d1537079188afca5013c')
-        _logger.info(f"Using app_id: {app_id}")
 
         # Hardcode company_id
         company_id = 'Ipg8nKDPLYKsbtodR6LN'
-        _logger.info(f"Using hardcoded company_id: {company_id}")
 
         # Capture database name before starting background thread
         dbname = request.env.cr.dbname
@@ -67,22 +62,17 @@ class InstalledLocationController(http.Controller):
                     config = env['res.config.settings'].sudo().search([], limit=1)
                     if not config:
                         config = env['res.config.settings'].sudo().create({})
-                        _logger.info("Created new res.config.settings record for sync status tracking.")
                     config.write({
                         'ghl_locations_sync_status': 'in_progress',
                         'ghl_locations_sync_started': datetime.now(),
                         'ghl_locations_sync_app_id': app_id
                     })
-                    _logger.info(f"Set sync status to in_progress on config id={config.id}")
                     cr.commit()
             except Exception as e:
                 _logger.error(f"Error setting sync status: {str(e)}")
 
             for attempt in range(max_retries):
                 try:
-                    _logger.info(
-                        f"Starting background sync for installed locations with app_id: {app_id} (attempt {attempt + 1})")
-
                     # Get the registry and create a new environment with a fresh cursor
                     registry = Registry(current_dbname)
                     with registry.cursor() as cr:
@@ -91,30 +81,24 @@ class InstalledLocationController(http.Controller):
 
                         # Call the fetch_installed_locations function from the model
                         installed_location_model = env['installed.location'].sudo()
-                        _logger.info(f"Calling fetch_installed_locations with company_id={company_id}, app_id={app_id}")
                         result = installed_location_model.fetch_installed_locations(
                             company_id=company_id,
                             app_id=app_id,
                             limit=500
                         )
-                        _logger.info(f"Background fetch_installed_locations result: {result}")
 
                         # Update sync status to "completed"
                         config = env['res.config.settings'].sudo().search([], limit=1)
                         if not config:
                             config = env['res.config.settings'].sudo().create({})
-                            _logger.info(
-                                "Created new res.config.settings record for sync status tracking (completed phase).")
                         config.write({
                             'ghl_locations_sync_status': 'completed',
                             'ghl_locations_sync_completed': datetime.now(),
                             'ghl_locations_sync_result': str(result.get('success', False))
                         })
-                        _logger.info(f"Set sync status to completed on config id={config.id}")
 
                         # Commit the transaction
                         cr.commit()
-                        _logger.info(f"Background sync completed successfully on attempt {attempt + 1}")
                         break  # Success, exit retry loop
 
                 except Exception as e:
@@ -123,7 +107,6 @@ class InstalledLocationController(http.Controller):
                     # If it's a concurrency error, wait and retry
                     if "concurrent update" in str(e) or "transaction is aborted" in str(e):
                         if attempt < max_retries - 1:  # Don't sleep on last attempt
-                            _logger.info(f"Concurrency error detected, retrying in {retry_delay} seconds...")
                             time.sleep(retry_delay)
                             retry_delay *= 2  # Exponential backoff
                         else:
@@ -136,13 +119,10 @@ class InstalledLocationController(http.Controller):
                                     config = env['res.config.settings'].sudo().search([], limit=1)
                                     if not config:
                                         config = env['res.config.settings'].sudo().create({})
-                                        _logger.info(
-                                            "Created new res.config.settings record for sync status tracking (failed phase).")
                                     config.write({
                                         'ghl_locations_sync_status': 'failed',
                                         'ghl_locations_sync_error': str(e)
                                     })
-                                    _logger.info(f"Set sync status to failed on config id={config.id}")
                             except Exception as update_error:
                                 _logger.error(f"Error updating sync status to failed: {str(update_error)}")
                     else:
@@ -256,7 +236,6 @@ class InstalledLocationController(http.Controller):
         """
         Fresh data endpoint that forces immediate sync and returns updated data
         """
-        _logger.info(f"InstalledLocationController.get_installed_locations_fresh called with kwargs: {kwargs}")
 
         # Handle preflight OPTIONS request
         if request.httprequest.method == 'OPTIONS':
@@ -360,7 +339,6 @@ class InstalledLocationController(http.Controller):
         """
         Get the current sync status for installed locations
         """
-        _logger.info(f"get_installed_locations_sync_status called with kwargs: {kwargs}")
 
         # Handle preflight OPTIONS request
         if request.httprequest.method == 'OPTIONS':
@@ -479,7 +457,6 @@ class InstalledLocationController(http.Controller):
 
     @http.route('/api/get-location-users', type='http', auth='none', methods=['GET', 'OPTIONS'], csrf=False)
     def get_location_users(self, **kwargs):
-        _logger.info(f"get_location_users called with kwargs: {kwargs}")
         if request.httprequest.method == 'OPTIONS':
             return Response(status=200, headers=get_cors_headers(request))
         location_id = kwargs.get('location_id')
@@ -560,7 +537,6 @@ class InstalledLocationController(http.Controller):
 
     @http.route('/api/location-users', type='http', auth='none', methods=['GET', 'OPTIONS'], csrf=False)
     def get_location_users_from_db(self, **kwargs):
-        _logger.info(f"get_location_users_from_db called with kwargs: {kwargs}")
         if request.httprequest.method == 'OPTIONS':
             return Response(status=200, headers=get_cors_headers(request))
 
@@ -626,7 +602,6 @@ class InstalledLocationController(http.Controller):
 
     @http.route('/api/get-location-contacts', type='http', auth='none', methods=['GET', 'OPTIONS'], csrf=False)
     def get_location_contacts(self, **kwargs):
-        _logger.info(f"get_location_contacts called with kwargs: {kwargs}")
         if request.httprequest.method == 'OPTIONS':
             return Response(status=200, headers=get_cors_headers(request))
         location_id = kwargs.get('location_id')
@@ -764,7 +739,6 @@ class InstalledLocationController(http.Controller):
         2. Triggers background sync for fresh data
         3. Uses optimized database queries
         """
-        _logger.info(f"get_location_contacts_fast called with kwargs: {kwargs}")
         if request.httprequest.method == 'OPTIONS':
             return Response(status=200, headers=get_cors_headers(request))
         import json
@@ -1146,7 +1120,6 @@ class InstalledLocationController(http.Controller):
 
     @http.route('/api/location-contacts', type='http', auth='none', methods=['GET', 'OPTIONS'], csrf=False)
     def get_location_contacts_from_db(self, **kwargs):
-        _logger.info(f"get_location_contacts_from_db called with kwargs: {kwargs}")
         if request.httprequest.method == 'OPTIONS':
             return Response(status=200, headers=get_cors_headers(request))
 
@@ -1493,13 +1466,11 @@ class InstalledLocationController(http.Controller):
         """
         Get the total number of contacts for a location using the /contacts/search endpoint
         """
-        _logger.info(f"get_location_contacts_count called with kwargs: {kwargs}")
         if request.httprequest.method == 'OPTIONS':
             return Response(status=200, headers=get_cors_headers(request))
 
         location_id = kwargs.get('location_id')
         selected_user = kwargs.get('selected_user', '')  # Add support for user filtering
-        _logger.info(f"location_id param: {location_id}, selected_user: {selected_user}")
         if not location_id:
             _logger.error("Missing location_id param")
             return Response(
@@ -1658,14 +1629,12 @@ class InstalledLocationController(http.Controller):
         Fetch contacts for a location using lazy loading (10 contacts at a time)
         MODIFIED: Always fetches fresh data from GHL API and syncs all contact details
         """
-        _logger.info(f"get_location_contacts_lazy called with kwargs: {kwargs}")
         if request.httprequest.method == 'OPTIONS':
             return Response(status=200, headers=get_cors_headers(request))
 
         location_id = kwargs.get('location_id')
         page = int(kwargs.get('page', 1))
         limit = int(kwargs.get('limit', 10))
-        _logger.info(f"location_id param: {location_id}, page: {page}, limit: {limit}")
         if not location_id:
             _logger.error("Missing location_id param")
             return Response(
@@ -1949,7 +1918,6 @@ class InstalledLocationController(http.Controller):
         """
         Get detailed contact information including tasks, conversations, and opportunities
         """
-        _logger.info(f"get_contact_details called with kwargs: {kwargs}")
         if request.httprequest.method == 'OPTIONS':
             return Response(status=200, headers=get_cors_headers(request))
 
@@ -2226,7 +2194,6 @@ class InstalledLocationController(http.Controller):
         """
         Update touch information for all contacts that have messages
         """
-        _logger.info(f"update_touch_information called with kwargs: {kwargs}")
         if request.httprequest.method == 'OPTIONS':
             return Response(status=200, headers=get_cors_headers(request))
 
@@ -2262,7 +2229,6 @@ class InstalledLocationController(http.Controller):
         """
         Trigger background sync of detailed contact data (tasks, conversations) for a location
         """
-        _logger.info(f"sync_contact_details_background called with kwargs: {kwargs}")
         if request.httprequest.method == 'OPTIONS':
             return Response(status=200, headers=get_cors_headers(request))
 
@@ -2967,7 +2933,6 @@ class InstalledLocationController(http.Controller):
         """
         Manual endpoint to force sync data for a specific contact from GHL API
         """
-        _logger.info(f"sync_contact_data called with kwargs: {kwargs}")
         if request.httprequest.method == 'OPTIONS':
             return Response(status=200, headers=get_cors_headers(request))
 
@@ -3125,7 +3090,6 @@ class InstalledLocationController(http.Controller):
         - Triggers GHL API sync for fresh data in background
         - Ensures real-time data from Go High Level
         """
-        _logger.info(f"get_location_contacts_optimized called with kwargs: {kwargs}")
         if request.httprequest.method == 'OPTIONS':
             return Response(status=200, headers=get_cors_headers(request))
 
@@ -3133,7 +3097,6 @@ class InstalledLocationController(http.Controller):
         page = int(kwargs.get('page', 1))
         limit = int(kwargs.get('limit', 10))
         selected_user = kwargs.get('selected_user', '')  # New parameter for user filtering
-        _logger.info(f"location_id param: {location_id}, page: {page}, limit: {limit}, selected_user: {selected_user}")
 
         if not location_id:
             _logger.error("Missing location_id param")
@@ -3281,24 +3244,11 @@ class InstalledLocationController(http.Controller):
 
             _logger.info(f"Total contacts in database (with user filter): {len(all_contacts)}")
 
-            # Log some sample contacts to see what we have
-            for i, contact in enumerate(all_contacts[:10]):
-                _logger.info(
-                    f"Contact {i + 1}: ID={contact.id}, Name='{contact.name}', External_ID='{contact.external_id}', Date_Added='{contact.date_added}', Assigned_To='{contact.assigned_to}'")
 
             # Now get the paginated contacts
-            _logger.info(
-                f"Querying contacts with location_id: {location_id} and user filter: {selected_user if selected_user else 'None'}")
             contacts = request.env['ghl.location.contact'].sudo().search(domain, order='date_added desc', limit=limit,
                                                                          offset=(page - 1) * limit)
 
-            _logger.info(f"Retrieved {len(contacts)} contacts from database for location {location_id}, page {page}")
-            _logger.info(f"Pagination: page={page}, limit={limit}, offset={(page - 1) * limit}")
-
-            # Log the first few contacts to help debug pagination
-            for i, contact in enumerate(contacts[:3]):  # Log first 3 contacts
-                _logger.info(
-                    f"Contact {i + 1} on page {page}: {contact.id} (external_id: {contact.external_id}) - Name: {contact.name}")
 
             # Debug: Check if we have any contacts at all for this location
             if len(contacts) == 0:
@@ -3723,7 +3673,6 @@ class InstalledLocationController(http.Controller):
         GHL API search uses 'contains' operator on firstNameLowerCase and lastNameLowerCase fields
         as per the GHL API documentation.
         """
-        _logger.info(f"search_location_contacts called with kwargs: {kwargs}")
         if request.httprequest.method == 'OPTIONS':
             return Response(status=200, headers=get_cors_headers(request))
 
@@ -4293,7 +4242,6 @@ class InstalledLocationController(http.Controller):
         """
         Check sync status for specific contacts and return detailed data if ready
         """
-        _logger.info(f"get_contact_sync_status called with kwargs: {kwargs}")
         if request.httprequest.method == 'OPTIONS':
             return Response(status=200, headers=get_cors_headers(request))
 
@@ -5955,7 +5903,6 @@ class InstalledLocationController(http.Controller):
         Manual endpoint to trigger full GHL API synchronization for a location
         This ensures all available contacts from GHL are fetched and stored locally
         """
-        _logger.info(f"sync_location_contacts called with kwargs: {kwargs}")
         if request.httprequest.method == 'OPTIONS':
             return Response(status=200, headers=get_cors_headers(request))
 
