@@ -2872,21 +2872,24 @@ class InstalledLocationController(http.Controller):
         import threading
         import time
         from datetime import datetime
-
+        
         _logger.info(f"Starting GHL API sync for {len(contacts)} contacts")
-
+        
+        # Capture database name before starting background thread
+        db_name = request.env.cr.dbname
+        
         def sync_contacts_background():
             try:
                 # Create a new environment for background thread
                 import odoo
                 from odoo import api, SUPERUSER_ID
-
-                # Get the database name from the current request context
-                db_name = request.env.cr.dbname
+                
+                # Use the captured database name
+                current_db_name = db_name
 
                 # Create a new environment for the background thread
                 with api.Environment.manage():
-                    env = api.Environment(odoo.registry(db_name), SUPERUSER_ID, {})
+                    env = api.Environment(odoo.registry(current_db_name), SUPERUSER_ID, {})
 
                     # Get location token for GHL API calls
                     from odoo.addons.web_scraper.models.ghl_api_utils import get_location_token
