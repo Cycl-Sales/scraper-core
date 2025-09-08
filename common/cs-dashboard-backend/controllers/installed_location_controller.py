@@ -3163,80 +3163,48 @@ class InstalledLocationController(http.Controller):
                     headers=get_cors_headers(request)
                 )
 
-            # STEP 1: Ensure we have enough contacts fetched from GHL API to cover the requested page
-            _logger.info(f"Ensuring we have contacts up to page {page} from GHL API for location: {location_id}")
+            # STEP 1: Check if we have enough contacts in the database for the requested page
+            _logger.info(f"Checking if we have enough contacts for page {page} (limit={limit}) from GHL API for location: {location_id}")
 
-            # Check how many contacts we currently have in the database
-            current_contact_count = request.env['ghl.location.contact'].sudo().search_count([
-                ('location_id.location_id', '=', location_id)
-            ])
+            # Build the domain for filtering contacts (same as used later)
+            domain = [('location_id.location_id', '=', location_id)]
+            if selected_user and selected_user.strip():
+                domain.append(('assigned_to', '=', selected_user))
+
+            # Check how many contacts we currently have in the database (with same filter)
+            current_contact_count = request.env['ghl.location.contact'].sudo().search_count(domain)
 
             # Calculate how many contacts we need for the requested page
             contacts_needed = page * limit
 
-            # If we don't have enough contacts, fetch more from GHL API
-            if current_contact_count < contacts_needed:
-                _logger.info(
-                    f"Need {contacts_needed} contacts, have {current_contact_count}. Fetching more from GHL API...")
+            # Only fetch from GHL API if we don't have enough contacts AND it's a reasonable amount
+            if current_contact_count < contacts_needed and contacts_needed <= 1000:  # Limit to prevent processing too many
+                _logger.info(f"Need {contacts_needed} contacts, have {current_contact_count}. Fetching only the specific page from GHL API...")
 
-                # Calculate how many pages we need to fetch
-                pages_to_fetch = (contacts_needed - current_contact_count + limit - 1) // limit
-                start_page = (current_contact_count // limit) + 1
+                # Fetch only the specific page we need, not all pages up to it
+                result = loc.fetch_location_contacts_lazy(company_id, location_id, app.access_token, page=page, limit=limit)
+                _logger.info(f"fetch_location_contacts_lazy result for page {page}: {result}")
 
-                for fetch_page in range(start_page, start_page + pages_to_fetch):
-                    _logger.info(f"Fetching page {fetch_page} from GHL API...")
-                    result = loc.fetch_location_contacts_lazy(company_id, location_id, app.access_token,
-                                                              page=fetch_page, limit=limit)
-
-                    if not result.get('success'):
-                        _logger.error(f"Failed to fetch page {fetch_page}: {result.get('error')}")
-                        break
-
-                    # Check if we got any new contacts
-                    new_contact_count = request.env['ghl.location.contact'].sudo().search_count([
-                        ('location_id.location_id', '=', location_id)
-                    ])
-
-                    if new_contact_count <= current_contact_count:
-                        _logger.info(f"No new contacts fetched on page {fetch_page}, stopping")
-                        break
-
-                    current_contact_count = new_contact_count
-                    _logger.info(f"Now have {current_contact_count} contacts after fetching page {fetch_page}")
+                if not result.get('success'):
+                    _logger.error(f"fetch_location_contacts_lazy error: {result.get('error')}")
+                    # Don't return error, just continue with what we have in the database
+                    _logger.warning("Continuing with existing database contacts despite API fetch failure")
             else:
-                _logger.info(f"Already have {current_contact_count} contacts, sufficient for page {page}")
-
-            # Get the result for the requested page
-            result = loc.fetch_location_contacts_lazy(company_id, location_id, app.access_token, page=page, limit=limit)
-            _logger.info(f"fetch_location_contacts_lazy result for page {page}: {result}")
-
-            if not result.get('success'):
-                _logger.error(f"fetch_location_contacts_lazy error: {result.get('error')}")
-                return Response(
-                    json.dumps({
-                        'success': False,
-                        'error': result.get('error', 'Failed to fetch contacts')
-                    }),
-                    content_type='application/json',
-                    status=500,
-                    headers=get_cors_headers(request)
-                )
+                if current_contact_count >= contacts_needed:
+                    _logger.info(f"Already have {current_contact_count} contacts, sufficient for page {page}")
+                else:
+                    _logger.warning(f"Requested page {page} would require {contacts_needed} contacts, which is too many. Using existing {current_contact_count} contacts.")
+                
+                # For large page requests, just return what we have without API calls
+                _logger.info("Skipping GHL API fetch for large page request to prevent performance issues")
 
             # STEP 2: Get the contacts for the requested page from the database
             # Now that we've ensured we have enough contacts, we can properly paginate
             _logger.info(f"Querying database for page {page} with limit={limit}, offset={(page - 1) * limit}")
 
-            # Build the domain for filtering contacts
-            domain = [('location_id.location_id', '=', location_id)]
-
-            # Add user filtering if selected_user is provided
+            # Add user filtering if selected_user is provided (domain already built above)
             if selected_user and selected_user.strip():
                 _logger.info(f"Filtering contacts by selected user (external_id): {selected_user}")
-
-                # Since the frontend now sends the external_id directly, use it for filtering
-                domain.append(('assigned_to', '=', selected_user))
-
-                # Log the domain for debugging
                 _logger.info(f"Applied user filter domain: {domain}")
 
             # First, let's see what contacts we have in total (with user filter if applicable)
