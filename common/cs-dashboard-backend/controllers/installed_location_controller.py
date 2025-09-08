@@ -2841,8 +2841,9 @@ class InstalledLocationController(http.Controller):
         
         _logger.info(f"Starting GHL API sync for {len(contacts)} contacts")
         
-        # Capture database name before starting background thread
+        # Capture database name and contact IDs before starting background thread
         db_name = request.env.cr.dbname
+        contact_ids = contacts.ids  # Capture IDs to avoid cursor issues
         
         def sync_contacts_background():
             max_retries = 3
@@ -2863,6 +2864,9 @@ class InstalledLocationController(http.Controller):
                     with registry.cursor() as cr:
                         env = api.Environment(cr, SUPERUSER_ID, {})
 
+                        # Re-fetch contacts using the captured IDs to avoid cursor issues
+                        contacts = env['ghl.location.contact'].sudo().browse(contact_ids)
+                        
                         # Get location token for GHL API calls
                         from odoo.addons.web_scraper.models.ghl_api_utils import get_location_token
                         location_token = get_location_token(access_token, company_id, location_id)
@@ -2892,15 +2896,30 @@ class InstalledLocationController(http.Controller):
                                             contact.id, access_token, location_id, company_id
                                         )
                                     except Exception as task_error:
-                                        _logger.error(f"Error syncing tasks for contact {contact.name}: {str(task_error)}")
+                                        # Safely get contact name to avoid cursor issues
+                                        try:
+                                            contact_name = contact.name if hasattr(contact, 'name') else f"Contact ID {contact.id}"
+                                        except:
+                                            contact_name = f"Contact ID {contact.id}"
+                                        _logger.error(f"Error syncing tasks for contact {contact_name}: {str(task_error)}")
                                     
                                     success_count += 1
                                 else:
-                                    _logger.warning(f"Failed to sync conversations for contact {contact.name}: {conversation_result.get('error')}")
+                                    # Safely get contact name to avoid cursor issues
+                                    try:
+                                        contact_name = contact.name if hasattr(contact, 'name') else f"Contact ID {contact.id}"
+                                    except:
+                                        contact_name = f"Contact ID {contact.id}"
+                                    _logger.warning(f"Failed to sync conversations for contact {contact_name}: {conversation_result.get('error')}")
                                     error_count += 1
 
                             except Exception as contact_error:
-                                _logger.error(f"Error syncing contact {contact.name}: {str(contact_error)}")
+                                # Safely get contact name to avoid cursor issues
+                                try:
+                                    contact_name = contact.name if hasattr(contact, 'name') else f"Contact ID {contact.id}"
+                                except:
+                                    contact_name = f"Contact ID {contact.id}"
+                                _logger.error(f"Error syncing contact {contact_name}: {str(contact_error)}")
                                 error_count += 1
                                 continue
 

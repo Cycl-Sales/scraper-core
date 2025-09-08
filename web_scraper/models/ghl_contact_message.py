@@ -415,7 +415,7 @@ class GhlContactMessage(models.Model):
                 existing = self.sudo().search([('ghl_id', '=', ghl_id)], limit=1)
                 if existing:
                     # Use retry mechanism for message updates to prevent serialization failures
-                    if self.env['ghl.contact.message']._update_message_with_retry(self.env, existing, vals):
+                    if self._update_message_with_retry(self.env, existing, vals):
                         updated_count += 1
                         message_rec = existing
                     else:
@@ -436,7 +436,7 @@ class GhlContactMessage(models.Model):
                                 existing_msg = self.sudo().search([('ghl_id', '=', ghl_id)], limit=1)
                                 if existing_msg:
                                     # Use retry mechanism for message updates to prevent serialization failures
-                                    if self.env['ghl.contact.message']._update_message_with_retry(self.env, existing_msg, vals):
+                                    if self._update_message_with_retry(self.env, existing_msg, vals):
                                         updated_count += 1
                                         message_rec = existing_msg
                                         _logger.info(f"Updated existing message {ghl_id} after duplicate detection")
