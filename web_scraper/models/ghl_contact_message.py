@@ -415,7 +415,7 @@ class GhlContactMessage(models.Model):
                 existing = self.sudo().search([('ghl_id', '=', ghl_id)], limit=1)
                 if existing:
                     # Use retry mechanism for message updates to prevent serialization failures
-                    if self._update_message_with_retry(self.env, existing, vals):
+                    if self.__class__._update_message_with_retry(self.env, existing, vals):
                         updated_count += 1
                         message_rec = existing
                     else:
@@ -436,7 +436,7 @@ class GhlContactMessage(models.Model):
                                 existing_msg = self.sudo().search([('ghl_id', '=', ghl_id)], limit=1)
                                 if existing_msg:
                                     # Use retry mechanism for message updates to prevent serialization failures
-                                    if self._update_message_with_retry(self.env, existing_msg, vals):
+                                    if self.__class__._update_message_with_retry(self.env, existing_msg, vals):
                                         updated_count += 1
                                         message_rec = existing_msg
                                         _logger.info(f"Updated existing message {ghl_id} after duplicate detection")
@@ -1287,8 +1287,8 @@ class GhlContactMessageMeta(models.Model):
 
         return self.create(vals)
 
-    @staticmethod
-    def _update_message_with_retry(env, message, update_data, max_retries=3):
+    @classmethod
+    def _update_message_with_retry(cls, env, message, update_data, max_retries=3):
         """
         Update message with retry mechanism to handle concurrent update errors.
         Uses individual transactions to prevent bulk UPDATE conflicts.
