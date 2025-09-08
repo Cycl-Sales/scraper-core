@@ -6437,3 +6437,91 @@ class InstalledLocationController(http.Controller):
         
         _logger.info(f"Safe bulk update completed: {results['success_count']} successful, {len(results['failed_contact_ids'])} failed")
         return results
+
+    def _process_contacts_in_safe_batches(self, contacts, batch_size=5):
+        """
+        Process contacts in small batches with individual transactions to prevent bulk UPDATE conflicts.
+        
+        Args:
+            contacts: List of contact records to process
+            batch_size: Number of contacts to process in each batch (default: 5)
+        
+        Returns:
+            dict: Results with success count and failed contact IDs
+        """
+        import logging
+        _logger = logging.getLogger(__name__)
+        
+        results = {
+            'success_count': 0,
+            'failed_contact_ids': [],
+            'total_processed': 0
+        }
+        
+        # Process contacts in small batches
+        for i in range(0, len(contacts), batch_size):
+            batch = contacts[i:i + batch_size]
+            _logger.info(f"Processing batch {i//batch_size + 1} with {len(batch)} contacts")
+            
+            for contact in batch:
+                try:
+                    # Use individual transaction for each contact
+                    with request.env.registry.cursor() as new_cr:
+                        new_env = api.Environment(new_cr, SUPERUSER_ID, {})
+                        
+                        # Re-fetch the contact to get latest version
+                        fresh_contact = new_env['ghl.location.contact'].sudo().browse(contact.id)
+                        if not fresh_contact.exists():
+                            _logger.warning(f"Contact {contact.id} no longer exists")
+                            results['failed_contact_ids'].append(contact.id)
+                            continue
+                        
+                        # Process the contact (this will include touch info updates)
+                        # We'll call the individual contact processing logic here
+                        self._process_single_contact_safely(fresh_contact, new_env)
+                        
+                        # Commit the individual transaction
+                        new_cr.commit()
+                        results['success_count'] += 1
+                        results['total_processed'] += 1
+                        
+                        _logger.info(f"Successfully processed contact {contact.id}")
+                        
+                except Exception as e:
+                    _logger.error(f"Failed to process contact {contact.id}: {str(e)}")
+                    results['failed_contact_ids'].append(contact.id)
+                    results['total_processed'] += 1
+        
+        _logger.info(f"Batch processing completed: {results['success_count']} successful, {len(results['failed_contact_ids'])} failed")
+        return results
+
+    def _process_single_contact_safely(self, contact, env):
+        """
+        Process a single contact safely within a transaction.
+        This method contains the core contact processing logic.
+        
+        Args:
+            contact: The contact record to process
+            env: The environment to use for database operations
+        """
+        import logging
+        _logger = logging.getLogger(__name__)
+        
+        try:
+            # Compute touch summary with message fetching
+            touch_summary = self._compute_touch_summary_for_contact(contact)
+            last_touch_date = self._compute_last_touch_date_for_contact(contact)
+            last_message_data = self._compute_last_message_for_contact(contact)
+
+            # Update the contact with new touch information
+            contact.write({
+                'touch_summary': touch_summary,
+                'last_touch_date': last_touch_date if last_touch_date else False,
+                'last_message': last_message_data
+            })
+
+            _logger.info(f"Updated touch information for contact {contact.id}: {touch_summary}")
+            
+        except Exception as e:
+            _logger.error(f"Error processing contact {contact.id}: {str(e)}")
+            raise e
