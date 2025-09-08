@@ -2879,66 +2879,82 @@ class InstalledLocationController(http.Controller):
         db_name = request.env.cr.dbname
         
         def sync_contacts_background():
-            try:
-                # Create a new environment for background thread
-                from odoo import api, SUPERUSER_ID
-                from odoo.modules.registry import Registry
-                
-                # Use the captured database name
-                current_db_name = db_name
+            max_retries = 3
+            retry_delay = 1
+            
+            for attempt in range(max_retries):
+                try:
+                    # Create a new environment for background thread
+                    from odoo import api, SUPERUSER_ID
+                    from odoo.modules.registry import Registry
+                    import psycopg2
+                    
+                    # Use the captured database name
+                    current_db_name = db_name
 
-                # Create a new environment for the background thread
-                registry = Registry(current_db_name)
-                with registry.cursor() as cr:
-                    env = api.Environment(cr, SUPERUSER_ID, {})
+                    # Create a new environment for the background thread
+                    registry = Registry(current_db_name)
+                    with registry.cursor() as cr:
+                        env = api.Environment(cr, SUPERUSER_ID, {})
 
-                    # Get location token for GHL API calls
-                    from odoo.addons.web_scraper.models.ghl_api_utils import get_location_token
-                    location_token = get_location_token(access_token, company_id, location_id)
+                        # Get location token for GHL API calls
+                        from odoo.addons.web_scraper.models.ghl_api_utils import get_location_token
+                        location_token = get_location_token(access_token, company_id, location_id)
 
-                    if not location_token:
-                        _logger.error("Failed to get location token for GHL sync")
-                        return
+                        if not location_token:
+                            _logger.error("Failed to get location token for GHL sync")
+                            return
 
-                    success_count = 0
-                    error_count = 0
+                        success_count = 0
+                        error_count = 0
 
-                    for contact in contacts:
-                        try:
-                            # Get the correct location ID for this contact
-                            contact_location_id = contact.location_id.location_id if contact.location_id else location_id
+                        for contact in contacts:
+                            try:
+                                # Get the correct location ID for this contact
+                                contact_location_id = contact.location_id.location_id if contact.location_id else location_id
 
-                            # Sync conversations and messages for this contact
-                            conversation_result = env[
-                                'ghl.contact.conversation'].sudo().sync_conversations_for_contact_with_location_token(
-                                location_token, contact_location_id, contact.external_id
-                            )
+                                # Sync conversations and messages for this contact
+                                conversation_result = env[
+                                    'ghl.contact.conversation'].sudo().sync_conversations_for_contact_with_location_token(
+                                    location_token, contact_location_id, contact.external_id
+                                )
 
-                            if conversation_result.get('success'):
-                                # Sync tasks for this contact
-                                try:
-                                    env['ghl.contact.task'].sync_contact_tasks_from_ghl(
-                                        contact.id, access_token, location_id, company_id
-                                    )
-                                except Exception as task_error:
-                                    _logger.error(f"Error syncing tasks for contact {contact.name}: {str(task_error)}")
-                                
-                                success_count += 1
-                            else:
-                                _logger.warning(f"Failed to sync conversations for contact {contact.name}: {conversation_result.get('error')}")
+                                if conversation_result.get('success'):
+                                    # Sync tasks for this contact
+                                    try:
+                                        env['ghl.contact.task'].sync_contact_tasks_from_ghl(
+                                            contact.id, access_token, location_id, company_id
+                                        )
+                                    except Exception as task_error:
+                                        _logger.error(f"Error syncing tasks for contact {contact.name}: {str(task_error)}")
+                                    
+                                    success_count += 1
+                                else:
+                                    _logger.warning(f"Failed to sync conversations for contact {contact.name}: {conversation_result.get('error')}")
+                                    error_count += 1
+
+                            except Exception as contact_error:
+                                _logger.error(f"Error syncing contact {contact.name}: {str(contact_error)}")
                                 error_count += 1
+                                continue
 
-                        except Exception as contact_error:
-                            _logger.error(f"Error syncing contact {contact.name}: {str(contact_error)}")
-                            error_count += 1
-                            continue
+                        _logger.info(f"GHL API sync completed: {success_count} successful, {error_count} failed out of {len(contacts)} contacts")
+                        return  # Success, exit retry loop
 
-                    _logger.info(f"GHL API sync completed: {success_count} successful, {error_count} failed out of {len(contacts)} contacts")
-
-            except Exception as e:
-                _logger.error(f"Error in background GHL sync: {str(e)}")
-                import traceback
-                _logger.error(f"Full traceback: {traceback.format_exc()}")
+                except (psycopg2.errors.SerializationFailure, psycopg2.errors.DeadlockDetected) as db_error:
+                    if attempt < max_retries - 1:
+                        _logger.warning(f"Database concurrency error (attempt {attempt + 1}/{max_retries}): {str(db_error)}. Retrying in {retry_delay} seconds...")
+                        time.sleep(retry_delay)
+                        retry_delay *= 2  # Exponential backoff
+                        continue
+                    else:
+                        _logger.error(f"Database concurrency error after {max_retries} attempts: {str(db_error)}")
+                        return
+                except Exception as e:
+                    _logger.error(f"Error in background GHL sync: {str(e)}")
+                    import traceback
+                    _logger.error(f"Full traceback: {traceback.format_exc()}")
+                    return  # Don't retry for non-concurrency errors
 
         # Start background sync in a separate thread
         sync_thread = threading.Thread(target=sync_contacts_background, daemon=True)
