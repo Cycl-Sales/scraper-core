@@ -3285,13 +3285,37 @@ class InstalledLocationController(http.Controller):
                     if assigned_user:
                         assigned_user_name = assigned_user.name or f"{assigned_user.first_name or ''} {assigned_user.last_name or ''}".strip()
 
-                # Force fresh data computation from GHL API
+                # Force fresh data computation from GHL API with error handling
                 # These methods will now fetch fresh data from GHL API
-                touch_summary = self._compute_touch_summary_for_contact(contact)
-                last_touch_date = self._compute_last_touch_date_for_contact(contact)
-                last_message_data = self._compute_last_message_content_for_contact(contact)
-                engagement_summary = self._compute_engagement_summary_for_contact(contact)
-                speed_to_lead = self._compute_speed_to_lead_for_contact(contact)
+                try:
+                    touch_summary = self._compute_touch_summary_for_contact(contact)
+                except Exception as e:
+                    _logger.error(f"Error computing touch summary for contact {contact.id}: {str(e)}")
+                    touch_summary = contact.touch_summary or 'No activity'
+                
+                try:
+                    last_touch_date = self._compute_last_touch_date_for_contact(contact)
+                except Exception as e:
+                    _logger.error(f"Error computing last touch date for contact {contact.id}: {str(e)}")
+                    last_touch_date = contact.last_touch_date
+                
+                try:
+                    last_message_data = self._compute_last_message_content_for_contact(contact)
+                except Exception as e:
+                    _logger.error(f"Error computing last message for contact {contact.id}: {str(e)}")
+                    last_message_data = contact.last_message
+                
+                try:
+                    engagement_summary = self._compute_engagement_summary_for_contact(contact)
+                except Exception as e:
+                    _logger.error(f"Error computing engagement summary for contact {contact.id}: {str(e)}")
+                    engagement_summary = []
+                
+                try:
+                    speed_to_lead = self._compute_speed_to_lead_for_contact(contact)
+                except Exception as e:
+                    _logger.error(f"Error computing speed to lead for contact {contact.id}: {str(e)}")
+                    speed_to_lead = 'Unknown'
 
                 # Debug: Log the computed field values
                 _logger.info(f"Contact {contact.id} computed field values (fresh from GHL):")
