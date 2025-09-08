@@ -1,4 +1,4 @@
-from odoo import http
+from odoo import http, api, SUPERUSER_ID
 from odoo.http import request, Response
 import json
 import logging
@@ -1991,15 +1991,15 @@ class InstalledLocationController(http.Controller):
                 except Exception as task_error:
                     _logger.warning(f"Exception syncing tasks for contact {contact.id}: {str(task_error)}")
 
-            # Update touch information for this contact
+            # Update touch information for this contact with retry mechanism
             try:
                 # Compute touch summary with message fetching
                 touch_summary = self._compute_touch_summary_for_contact(contact)
                 last_touch_date = self._compute_last_touch_date_for_contact(contact)
                 last_message_data = self._compute_last_message_for_contact(contact)
 
-                # Update the contact with new touch information
-                contact.write({
+                # Update the contact with new touch information using retry mechanism
+                self._update_contact_touch_info_with_retry(contact, {
                     'touch_summary': touch_summary,
                     'last_touch_date': last_touch_date if last_touch_date else False,
                     'last_message': last_message_data
@@ -2514,8 +2514,8 @@ class InstalledLocationController(http.Controller):
             else:
                 update_vals['last_message'] = ''
 
-            # Update the contact
-            contact.write(update_vals)
+            # Update the contact with retry mechanism
+            self._update_contact_touch_info_with_retry(contact, update_vals)
 
             return Response(
                 json.dumps({
@@ -3439,9 +3439,9 @@ class InstalledLocationController(http.Controller):
                                     if not contact.exists():
                                         continue
 
-                                    # Mark contact as having details fetched first
+                                    # Mark contact as having details fetched first with retry mechanism
                                     try:
-                                        contact.write({'details_fetched': True})
+                                        self._update_contact_touch_info_with_retry(contact, {'details_fetched': True})
                                         cr.commit()
                                     except Exception as write_error:
                                         _logger.error(
@@ -6214,3 +6214,221 @@ class InstalledLocationController(http.Controller):
             _logger.error(f"Error getting filtered contacts count from GHL API: {str(e)}")
             _logger.error(f"Full traceback: {tb}")
             return {'success': False, 'error': str(e), 'traceback': tb}
+
+    def _update_contact_touch_info_with_retry(self, contact, update_data, max_retries=3):
+        """
+        Update contact touch information with retry mechanism to handle concurrent update errors.
+        
+        Args:
+            contact: The contact record to update
+            update_data: Dictionary of fields to update
+            max_retries: Maximum number of retry attempts (default: 3)
+        
+        Returns:
+            bool: True if update was successful, False otherwise
+        """
+        import time
+        import logging
+        _logger = logging.getLogger(__name__)
+        
+        for attempt in range(max_retries):
+            try:
+                # Re-fetch the contact from database to get latest version
+                fresh_contact = request.env['ghl.location.contact'].sudo().browse(contact.id)
+                if not fresh_contact.exists():
+                    _logger.warning(f"Contact {contact.id} no longer exists")
+                    return False
+                
+                # Perform the update on the fresh record
+                fresh_contact.write(update_data)
+                
+                # Force a flush to ensure the update is applied
+                request.env.flush_all()
+                
+                _logger.info(f"Successfully updated contact {contact.id} touch info on attempt {attempt + 1}")
+                return True
+                
+            except Exception as e:
+                error_str = str(e)
+                if ("could not serialize access due to concurrent update" in error_str or 
+                    "transaction is aborted" in error_str or
+                    "deadlock detected" in error_str) and attempt < max_retries - 1:
+                    
+                    # Wait with exponential backoff before retrying
+                    wait_time = (2 ** attempt) * 0.1  # 0.1s, 0.2s, 0.4s
+                    _logger.warning(f"Concurrent update error for contact {contact.id}, retrying in {wait_time}s (attempt {attempt + 1}/{max_retries})")
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    _logger.error(f"Failed to update contact {contact.id} touch info after {attempt + 1} attempts: {error_str}")
+                    # Don't re-raise the exception, just log it and return False
+                    return False
+        
+        return False
+
+    def _bulk_update_contacts_touch_info_with_retry(self, contact_updates, max_retries=3):
+        """
+        Bulk update multiple contacts' touch information with retry mechanism.
+        This reduces the number of individual database operations and helps prevent conflicts.
+        
+        Args:
+            contact_updates: List of tuples (contact_id, update_data)
+            max_retries: Maximum number of retry attempts (default: 3)
+        
+        Returns:
+            dict: Results with success count and failed contact IDs
+        """
+        import time
+        import logging
+        _logger = logging.getLogger(__name__)
+        
+        results = {
+            'success_count': 0,
+            'failed_contact_ids': [],
+            'total_attempts': 0
+        }
+        
+        for attempt in range(max_retries):
+            try:
+                # Group updates by contact ID to avoid duplicates
+                unique_updates = {}
+                for contact_id, update_data in contact_updates:
+                    if contact_id not in unique_updates:
+                        unique_updates[contact_id] = update_data
+                    else:
+                        # Merge update data for the same contact
+                        unique_updates[contact_id].update(update_data)
+                
+                # Perform bulk update
+                contact_ids = list(unique_updates.keys())
+                contacts = request.env['ghl.location.contact'].sudo().browse(contact_ids)
+                
+                # Filter out non-existent contacts
+                existing_contacts = contacts.filtered(lambda c: c.exists())
+                if len(existing_contacts) != len(contact_ids):
+                    missing_ids = set(contact_ids) - set(existing_contacts.ids)
+                    _logger.warning(f"Some contacts no longer exist: {missing_ids}")
+                
+                # Update each contact
+                for contact in existing_contacts:
+                    try:
+                        contact.write(unique_updates[contact.id])
+                        results['success_count'] += 1
+                    except Exception as e:
+                        _logger.error(f"Failed to update contact {contact.id}: {str(e)}")
+                        results['failed_contact_ids'].append(contact.id)
+                
+                # Force a flush to ensure all updates are applied
+                request.env.flush_all()
+                
+                _logger.info(f"Bulk update completed: {results['success_count']} successful, {len(results['failed_contact_ids'])} failed")
+                return results
+                
+            except Exception as e:
+                error_str = str(e)
+                results['total_attempts'] += 1
+                
+                if ("could not serialize access due to concurrent update" in error_str or 
+                    "transaction is aborted" in error_str or
+                    "deadlock detected" in error_str) and attempt < max_retries - 1:
+                    
+                    # Wait with exponential backoff before retrying
+                    wait_time = (2 ** attempt) * 0.2  # 0.2s, 0.4s, 0.8s
+                    _logger.warning(f"Bulk update concurrent error, retrying in {wait_time}s (attempt {attempt + 1}/{max_retries})")
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    _logger.error(f"Bulk update failed after {attempt + 1} attempts: {error_str}")
+                    # Mark all remaining contacts as failed
+                    for contact_id, _ in contact_updates:
+                        if contact_id not in results['failed_contact_ids']:
+                            results['failed_contact_ids'].append(contact_id)
+                    break
+        
+        return results
+
+    def _safe_bulk_update_contacts_with_isolation(self, contact_updates, max_retries=3):
+        """
+        Safely perform bulk updates with proper transaction isolation to prevent serialization failures.
+        This method uses a more conservative approach with smaller batch sizes and proper isolation.
+        
+        Args:
+            contact_updates: List of tuples (contact_id, update_data)
+            max_retries: Maximum number of retry attempts (default: 3)
+        
+        Returns:
+            dict: Results with success count and failed contact IDs
+        """
+        import time
+        import logging
+        _logger = logging.getLogger(__name__)
+        
+        results = {
+            'success_count': 0,
+            'failed_contact_ids': [],
+            'total_attempts': 0
+        }
+        
+        # Process in smaller batches to reduce lock contention
+        batch_size = 10
+        batches = [contact_updates[i:i + batch_size] for i in range(0, len(contact_updates), batch_size)]
+        
+        for batch in batches:
+            for attempt in range(max_retries):
+                try:
+                    # Use a new transaction for each batch
+                    with request.env.registry.cursor() as new_cr:
+                        new_env = api.Environment(new_cr, SUPERUSER_ID, {})
+                        
+                        # Group updates by contact ID
+                        unique_updates = {}
+                        for contact_id, update_data in batch:
+                            if contact_id not in unique_updates:
+                                unique_updates[contact_id] = update_data
+                            else:
+                                unique_updates[contact_id].update(update_data)
+                        
+                        # Get fresh contact records
+                        contact_ids = list(unique_updates.keys())
+                        contacts = new_env['ghl.location.contact'].sudo().browse(contact_ids)
+                        
+                        # Filter existing contacts
+                        existing_contacts = contacts.filtered(lambda c: c.exists())
+                        
+                        # Update each contact individually to avoid bulk lock conflicts
+                        for contact in existing_contacts:
+                            try:
+                                contact.write(unique_updates[contact.id])
+                                results['success_count'] += 1
+                            except Exception as e:
+                                _logger.error(f"Failed to update contact {contact.id} in batch: {str(e)}")
+                                results['failed_contact_ids'].append(contact.id)
+                        
+                        # Commit the batch
+                        new_cr.commit()
+                        _logger.info(f"Successfully processed batch of {len(existing_contacts)} contacts")
+                        break  # Success, move to next batch
+                        
+                except Exception as e:
+                    error_str = str(e)
+                    results['total_attempts'] += 1
+                    
+                    if ("could not serialize access due to concurrent update" in error_str or 
+                        "transaction is aborted" in error_str or
+                        "deadlock detected" in error_str) and attempt < max_retries - 1:
+                        
+                        # Wait with exponential backoff before retrying
+                        wait_time = (2 ** attempt) * 0.3  # 0.3s, 0.6s, 1.2s
+                        _logger.warning(f"Batch update concurrent error, retrying in {wait_time}s (attempt {attempt + 1}/{max_retries})")
+                        time.sleep(wait_time)
+                        continue
+                    else:
+                        _logger.error(f"Batch update failed after {attempt + 1} attempts: {error_str}")
+                        # Mark all contacts in this batch as failed
+                        for contact_id, _ in batch:
+                            if contact_id not in results['failed_contact_ids']:
+                                results['failed_contact_ids'].append(contact_id)
+                        break
+        
+        _logger.info(f"Safe bulk update completed: {results['success_count']} successful, {len(results['failed_contact_ids'])} failed")
+        return results
