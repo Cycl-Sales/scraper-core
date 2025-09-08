@@ -1,4 +1,4 @@
-from odoo import models, fields, api
+from odoo import models, fields, api, SUPERUSER_ID
 import requests
 from odoo.exceptions import ValidationError
 from odoo.tools.translate import _
@@ -2181,20 +2181,24 @@ IMPORTANT: Return ONLY the JSON object. Do not wrap it in markdown code blocks (
         
         for attempt in range(max_retries):
             try:
-                # Re-fetch the contact from database to get latest version
-                contact = self.env['ghl.location.contact'].sudo().browse(self.id)
-                if not contact.exists():
-                    raise Exception(f"Contact {self.id} no longer exists")
-                
-                # Update the fields on the fresh record
-                for field, value in update_data.items():
-                    setattr(contact, field, value)
-                
-                # Force a flush to ensure the update is applied
-                self.env.flush_all()
-                
-                _logger.info(f"Successfully updated contact {self.id} on attempt {attempt + 1}")
-                return True
+                # Use a separate transaction to prevent bulk UPDATE conflicts
+                with self.env.registry.cursor() as new_cr:
+                    new_env = api.Environment(new_cr, SUPERUSER_ID, {})
+                    
+                    # Re-fetch the contact from database to get latest version
+                    contact = new_env['ghl.location.contact'].sudo().browse(self.id)
+                    if not contact.exists():
+                        raise Exception(f"Contact {self.id} no longer exists")
+                    
+                    # Update the fields on the fresh record
+                    for field, value in update_data.items():
+                        setattr(contact, field, value)
+                    
+                    # Commit the individual transaction
+                    new_cr.commit()
+                    
+                    _logger.info(f"Successfully updated contact {self.id} on attempt {attempt + 1}")
+                    return True
                 
             except Exception as e:
                 if "could not serialize access due to concurrent update" in str(e) and attempt < max_retries - 1:
@@ -2217,19 +2221,23 @@ IMPORTANT: Return ONLY the JSON object. Do not wrap it in markdown code blocks (
         
         for attempt in range(max_retries):
             try:
-                # Re-fetch the contact from database to get latest version
-                contact = self.env['ghl.location.contact'].sudo().browse(self.id)
-                if not contact.exists():
-                    raise Exception(f"Contact {self.id} no longer exists")
-                
-                # Call the original update method on the fresh record
-                contact._update_contact_with_ai_results(ai_result, automation_template)
-                
-                # Force a flush to ensure the update is applied
-                self.env.flush_all()
-                
-                _logger.info(f"Successfully updated contact {self.id} with AI results on attempt {attempt + 1}")
-                return True
+                # Use a separate transaction to prevent bulk UPDATE conflicts
+                with self.env.registry.cursor() as new_cr:
+                    new_env = api.Environment(new_cr, SUPERUSER_ID, {})
+                    
+                    # Re-fetch the contact from database to get latest version
+                    contact = new_env['ghl.location.contact'].sudo().browse(self.id)
+                    if not contact.exists():
+                        raise Exception(f"Contact {self.id} no longer exists")
+                    
+                    # Call the original update method on the fresh record
+                    contact._update_contact_with_ai_results(ai_result, automation_template)
+                    
+                    # Commit the individual transaction
+                    new_cr.commit()
+                    
+                    _logger.info(f"Successfully updated contact {self.id} with AI results on attempt {attempt + 1}")
+                    return True
                 
             except Exception as e:
                 if "could not serialize access due to concurrent update" in str(e) and attempt < max_retries - 1:

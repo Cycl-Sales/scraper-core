@@ -6218,6 +6218,7 @@ class InstalledLocationController(http.Controller):
     def _update_contact_touch_info_with_retry(self, contact, update_data, max_retries=3):
         """
         Update contact touch information with retry mechanism to handle concurrent update errors.
+        Uses individual transactions to prevent bulk UPDATE conflicts.
         
         Args:
             contact: The contact record to update
@@ -6233,20 +6234,24 @@ class InstalledLocationController(http.Controller):
         
         for attempt in range(max_retries):
             try:
-                # Re-fetch the contact from database to get latest version
-                fresh_contact = request.env['ghl.location.contact'].sudo().browse(contact.id)
-                if not fresh_contact.exists():
-                    _logger.warning(f"Contact {contact.id} no longer exists")
-                    return False
-                
-                # Perform the update on the fresh record
-                fresh_contact.write(update_data)
-                
-                # Force a flush to ensure the update is applied
-                request.env.flush_all()
-                
-                _logger.info(f"Successfully updated contact {contact.id} touch info on attempt {attempt + 1}")
-                return True
+                # Use a separate transaction for each contact update to prevent bulk UPDATE
+                with request.env.registry.cursor() as new_cr:
+                    new_env = api.Environment(new_cr, SUPERUSER_ID, {})
+                    
+                    # Re-fetch the contact from database to get latest version
+                    fresh_contact = new_env['ghl.location.contact'].sudo().browse(contact.id)
+                    if not fresh_contact.exists():
+                        _logger.warning(f"Contact {contact.id} no longer exists")
+                        return False
+                    
+                    # Perform the update on the fresh record
+                    fresh_contact.write(update_data)
+                    
+                    # Commit the individual transaction
+                    new_cr.commit()
+                    
+                    _logger.info(f"Successfully updated contact {contact.id} touch info on attempt {attempt + 1}")
+                    return True
                 
             except Exception as e:
                 error_str = str(e)
