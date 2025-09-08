@@ -1708,6 +1708,8 @@ IMPORTANT: Return ONLY the JSON object. Do not wrap it in markdown code blocks (
     def update_all_contacts_ai_status(self):
         """Update AI status for all contacts based on their activity"""
         import logging
+        import psycopg2
+        import time
         _logger = logging.getLogger(__name__)
         
         all_contacts = self.search([])
@@ -1715,13 +1717,29 @@ IMPORTANT: Return ONLY the JSON object. Do not wrap it in markdown code blocks (
         
         updated_count = 0
         for contact in all_contacts:
-            try:
-                old_status = contact.ai_status
-                contact.update_ai_status_based_on_activity()
-                if contact.ai_status != old_status:
-                    updated_count += 1
-            except Exception as e:
-                _logger.error(f"Error updating AI status for contact {contact.id}: {str(e)}")
+            max_retries = 3
+            retry_delay = 0.5
+            
+            for attempt in range(max_retries):
+                try:
+                    old_status = contact.ai_status
+                    contact.update_ai_status_based_on_activity()
+                    if contact.ai_status != old_status:
+                        updated_count += 1
+                    break  # Success, exit retry loop
+                    
+                except (psycopg2.errors.SerializationFailure, psycopg2.errors.DeadlockDetected) as db_error:
+                    if attempt < max_retries - 1:
+                        _logger.warning(f"Database concurrency error updating AI status for contact {contact.id} (attempt {attempt + 1}/{max_retries}): {str(db_error)}. Retrying in {retry_delay} seconds...")
+                        time.sleep(retry_delay)
+                        retry_delay *= 2  # Exponential backoff
+                        continue
+                    else:
+                        _logger.error(f"Database concurrency error updating AI status for contact {contact.id} after {max_retries} attempts: {str(db_error)}")
+                        break
+                except Exception as e:
+                    _logger.error(f"Error updating AI status for contact {contact.id}: {str(e)}")
+                    break  # Don't retry for non-concurrency errors
         
         _logger.info(f"Updated AI status for {updated_count} contacts")
         return {
@@ -1733,21 +1751,38 @@ IMPORTANT: Return ONLY the JSON object. Do not wrap it in markdown code blocks (
     def update_touch_information(self):
         """Update touch information and AI status for this contact"""
         import logging
+        import psycopg2
+        import time
         _logger = logging.getLogger(__name__)
         
-        try:
-            # Update existing touch information
-            self._compute_touch_summary()
-            self._compute_last_touch_date()
-            self._compute_last_message_content()
-            
-            # Also update AI status based on activity
-            self.update_ai_status_based_on_activity()
-            
-            _logger.info(f"Updated touch information and AI status for contact {self.id}")
-            
-        except Exception as e:
-            _logger.error(f"Error updating touch information for contact {self.id}: {str(e)}")
+        max_retries = 3
+        retry_delay = 0.5
+        
+        for attempt in range(max_retries):
+            try:
+                # Update existing touch information
+                self._compute_touch_summary()
+                self._compute_last_touch_date()
+                self._compute_last_message_content()
+                
+                # Also update AI status based on activity
+                self.update_ai_status_based_on_activity()
+                
+                _logger.info(f"Updated touch information and AI status for contact {self.id}")
+                return  # Success, exit retry loop
+                
+            except (psycopg2.errors.SerializationFailure, psycopg2.errors.DeadlockDetected) as db_error:
+                if attempt < max_retries - 1:
+                    _logger.warning(f"Database concurrency error updating contact {self.id} (attempt {attempt + 1}/{max_retries}): {str(db_error)}. Retrying in {retry_delay} seconds...")
+                    time.sleep(retry_delay)
+                    retry_delay *= 2  # Exponential backoff
+                    continue
+                else:
+                    _logger.error(f"Database concurrency error updating contact {self.id} after {max_retries} attempts: {str(db_error)}")
+                    return
+            except Exception as e:
+                _logger.error(f"Error updating touch information for contact {self.id}: {str(e)}")
+                return  # Don't retry for non-concurrency errors
 
     def _is_current_ai_status_accurate(self):
         """Check if the current AI status is still accurate based on recent activity"""
