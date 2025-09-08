@@ -17,10 +17,13 @@ class GhlContactMessageController(http.Controller):
             return Response(status=200, headers=get_cors_headers(request))
             
         try:
+            _logger.info(f"Serving recording request for message_id: {message_id}")
+            
             # Get the message record
             message = request.env['ghl.contact.message'].sudo().browse(message_id)
             
             if not message.exists():
+                _logger.error(f"Message {message_id} not found")
                 return Response(
                     'Message not found',
                     status=404,
@@ -28,7 +31,10 @@ class GhlContactMessageController(http.Controller):
                     headers=get_cors_headers(request)
                 )
             
+            _logger.info(f"Message {message_id} found: recording_fetched={message.recording_fetched}, has_recording_data={bool(message.recording_data)}")
+            
             if not message.recording_data or not message.recording_fetched:
+                _logger.warning(f"No recording available for message {message_id}: recording_fetched={message.recording_fetched}, has_data={bool(message.recording_data)}")
                 return Response(
                     'No recording available for this message',
                     status=404,

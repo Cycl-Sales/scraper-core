@@ -1980,9 +1980,9 @@ export default function AnalyticsContactsTable({ loading = false, locationId, se
                           
                           return <TableCell key={col} className="whitespace-nowrap px-3 py-2">
                             {isNoTouches ? (
-                              <span className="inline-flex items-center gap-2 px-2 py-0.5 rounded-md border border-slate-600 text-slate-400 font-medium tracking-tight h-7 text-[11px]">
-                                <span className="text-slate-400">&#10005;</span>
-                                No Touches
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-slate-600 text-slate-400 font-medium tracking-tight h-7 text-[11px] bg-slate-800/50">
+                                <div className="w-1.5 h-1.5 rounded-full bg-slate-500"></div>
+                                No Activity
                               </span>
                             ) : (
                               <Popover>
@@ -1990,19 +1990,23 @@ export default function AnalyticsContactsTable({ loading = false, locationId, se
                                   <Button
                                     variant="outline"
                                     size="sm"
-                                    className="bg-blue-800 border-blue-600 text-blue-300 hover:bg-blue-700 px-3 py-1 rounded-md text-xs font-medium"
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-blue-500/30 text-blue-300 font-medium tracking-tight h-7 text-[11px] bg-gradient-to-r from-blue-600/20 to-blue-700/20 hover:from-blue-600/30 hover:to-blue-700/30 hover:border-blue-400/50 transition-all duration-200"
                                   >
-                                    Show Touch Summary
+                                    <div className="w-1.5 h-1.5 rounded-full bg-blue-400"></div>
+                                    Activity
                                   </Button>
                                 </PopoverTrigger>
-                                <PopoverContent className="w-80 p-3 bg-slate-800 border-slate-700 text-slate-200">
-                                  <div className="space-y-2">
-                                    <div className="font-medium text-white">Touch Summary</div>
+                                <PopoverContent className="w-96 p-4 bg-slate-900/95 border border-slate-700/50 text-slate-200 backdrop-blur-sm shadow-xl">
+                                  <div className="space-y-3">
+                                    <div className="flex items-center gap-2 pb-2 border-b border-slate-700/50">
+                                      <div className="w-2 h-2 rounded-full bg-blue-400"></div>
+                                      <div className="font-semibold text-white">Touch Summary</div>
+                                    </div>
                                     <div className="flex flex-wrap gap-1">
                                       {touchSummaryData.map((chip, index) => (
                                         <span
                                           key={index}
-                                          className={`inline-flex items-center gap-2 px-2 py-0.5 rounded-md border ${chip.border} ${chip.textColor} font-medium tracking-tight h-7 text-[11px] bg-transparent`}
+                                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border ${chip.border} ${chip.textColor} font-medium tracking-tight h-7 text-[11px] bg-slate-800/30 transition-all duration-200 hover:scale-105`}
                                           style={{ borderWidth: 1 }}
                                         >
                                           <span className={chip.iconColor}>{chip.icon}</span>
@@ -2026,30 +2030,37 @@ export default function AnalyticsContactsTable({ loading = false, locationId, se
                           
                           return <TableCell key={col} className="px-3 py-2">
                             {!hasEngagementData ? (
-                              <span className="text-slate-500 text-xs">No Engagement</span>
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-slate-600 text-slate-400 font-medium tracking-tight h-7 text-[11px] bg-slate-800/50">
+                                <div className="w-1.5 h-1.5 rounded-full bg-slate-500"></div>
+                                No Engagement
+                              </span>
                             ) : (
                               <Popover>
                                 <PopoverTrigger asChild>
                                   <Button
                                     variant="outline"
                                     size="sm"
-                                    className="bg-green-800 border-green-600 text-green-300 hover:bg-green-700 px-3 py-1 rounded-md text-xs font-medium"
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-emerald-500/30 text-emerald-300 font-medium tracking-tight h-7 text-[11px] bg-gradient-to-r from-emerald-600/20 to-green-700/20 hover:from-emerald-600/30 hover:to-green-700/30 hover:border-emerald-400/50 transition-all duration-200"
                                   >
-                                    Show Engagement
+                                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-400"></div>
+                                    Engagement
                                   </Button>
                                 </PopoverTrigger>
-                                <PopoverContent className="w-80 p-3 bg-slate-800 border-slate-700 text-slate-200">
-                                  <div className="space-y-2">
-                                    <div className="font-medium text-white">Engagement Summary</div>
+                                <PopoverContent className="w-96 p-4 bg-slate-900/95 border border-slate-700/50 text-slate-200 backdrop-blur-sm shadow-xl">
+                                  <div className="space-y-3">
+                                    <div className="flex items-center gap-2 pb-2 border-b border-slate-700/50">
+                                      <div className="w-2 h-2 rounded-full bg-emerald-400"></div>
+                                      <div className="font-semibold text-white">Engagement Summary</div>
+                                    </div>
                                     <div className="flex flex-wrap gap-1">
                                       {Array.isArray(row.engagementSummary) && row.engagementSummary.length > 0
                                         ? row.engagementSummary.map((e, idx) => (
-                                          <span key={idx} className={`inline-flex items-center gap-2 px-2 py-0.5 rounded-md border ${e.color || 'border-slate-500 text-slate-300'} font-medium tracking-tight h-7 text-[11px] bg-transparent`} style={{ borderWidth: 1 }}>
+                                          <span key={idx} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border ${e.color || 'border-slate-500 text-slate-300'} font-medium tracking-tight h-7 text-[11px] bg-slate-800/30 transition-all duration-200 hover:scale-105`} style={{ borderWidth: 1 }}>
                                             <span>{e.icon || '📄'}</span>
                                             {e.type === "No Engagement" ? "No Engagement" : `${e.count}x ${formatEngagementType(e.type)}`}
                                           </span>
                                         ))
-                                        : <span className="text-slate-500 text-xs">No engagement</span>}
+                                        : <span className="text-slate-500 text-[11px]">No engagement data</span>}
                                     </div>
                                   </div>
                                 </PopoverContent>

@@ -237,6 +237,11 @@ export default function CallTranscriptDialog({ open, onOpenChange, callData, onD
 
   const handleLoadedMetadata = () => {
     if (audioRef) {
+      console.log('Audio metadata loaded:', {
+        duration: audioRef.duration,
+        src: audioRef.src,
+        readyState: audioRef.readyState
+      });
       setDuration(audioRef.duration);
     }
   };
@@ -778,6 +783,17 @@ export default function CallTranscriptDialog({ open, onOpenChange, callData, onD
                     onPlay={() => setIsPlaying(true)}
                     onPause={() => setIsPlaying(false)}
                     onEnded={() => setIsPlaying(false)}
+                    onError={(e) => {
+                      console.error('Audio loading error:', e);
+                      console.error('Audio error details:', {
+                        error: e.currentTarget.error,
+                        src: e.currentTarget.src,
+                        networkState: e.currentTarget.networkState,
+                        readyState: e.currentTarget.readyState
+                      });
+                    }}
+                    onLoadStart={() => console.log('Audio load started:', localRecordingUrl)}
+                    onCanPlay={() => console.log('Audio can play:', localRecordingUrl)}
                     preload="metadata"
                   />
                 )}
