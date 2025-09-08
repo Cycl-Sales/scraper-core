@@ -2900,57 +2900,40 @@ class InstalledLocationController(http.Controller):
                         _logger.error("Failed to get location token for GHL sync")
                         return
 
-                    _logger.info(f"Got location token, starting sync for {len(contacts)} contacts")
+                    success_count = 0
+                    error_count = 0
 
                     for contact in contacts:
                         try:
-                            _logger.info(
-                                f"Syncing contact {contact.name} (ID: {contact.id}, External ID: {contact.external_id}) from GHL API")
-                            existing_conversations = env['ghl.contact.conversation'].sudo().search([
-                                ('contact_id', '=', contact.id)
-                            ])
-                            _logger.info(
-                                f"Contact {contact.name} has {len(existing_conversations)} existing conversations")
-
                             # Get the correct location ID for this contact
                             contact_location_id = contact.location_id.location_id if contact.location_id else location_id
 
-                            # Sync conversations and messages for this contact using correct parameter order
+                            # Sync conversations and messages for this contact
                             conversation_result = env[
                                 'ghl.contact.conversation'].sudo().sync_conversations_for_contact_with_location_token(
                                 location_token, contact_location_id, contact.external_id
                             )
 
-                            _logger.info(f"Conversation sync result for {contact.name}: {conversation_result}")
-
                             if conversation_result.get('success'):
-                                _logger.info(f"Successfully synced conversations for contact {contact.name}")
-
-                                # Check messages after sync
-                                all_messages = env['ghl.contact.message'].sudo().search([
-                                    ('contact_id', '=', contact.id)
-                                ])
-                                _logger.info(f"Contact {contact.name} now has {len(all_messages)} messages after sync")
-
                                 # Sync tasks for this contact
                                 try:
                                     env['ghl.contact.task'].sync_contact_tasks_from_ghl(
-                                        contact.id, location_token, location_id, company_id
+                                        contact.id, access_token, location_id, company_id
                                     )
-                                    _logger.info(f"Successfully synced tasks for contact {contact.name}")
                                 except Exception as task_error:
                                     _logger.error(f"Error syncing tasks for contact {contact.name}: {str(task_error)}")
+                                
+                                success_count += 1
                             else:
-                                _logger.warning(
-                                    f"Failed to sync conversations for contact {contact.name}: {conversation_result.get('error')}")
+                                _logger.warning(f"Failed to sync conversations for contact {contact.name}: {conversation_result.get('error')}")
+                                error_count += 1
 
                         except Exception as contact_error:
                             _logger.error(f"Error syncing contact {contact.name}: {str(contact_error)}")
-                            import traceback
-                            _logger.error(f"Full traceback: {traceback.format_exc()}")
+                            error_count += 1
                             continue
 
-                    _logger.info(f"Completed GHL API sync for {len(contacts)} contacts")
+                    _logger.info(f"GHL API sync completed: {success_count} successful, {error_count} failed out of {len(contacts)} contacts")
 
             except Exception as e:
                 _logger.error(f"Error in background GHL sync: {str(e)}")
