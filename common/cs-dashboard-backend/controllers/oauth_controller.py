@@ -21,58 +21,14 @@ class GHLOAuthController(http.Controller):
         This endpoint receives the authorization code from GHL after user installs the app
         """
         try:
-            # ===== COMPREHENSIVE LOGGING START =====
-            _logger.info("=" * 80)
-            _logger.info("GHL OAUTH CALLBACK - COMPREHENSIVE LOGGING")
-            _logger.info("=" * 80)
-            
-            # Log all request information
-            _logger.info(f"Request Method: {request.httprequest.method}")
-            _logger.info(f"Request URL: {request.httprequest.url}")
-            _logger.info(f"Request Headers: {dict(request.httprequest.headers)}")
-            _logger.info(f"Request Query String: {request.httprequest.query_string}")
-            _logger.info(f"Request Path: {request.httprequest.path}")
-            _logger.info(f"Request Base URL: {request.httprequest.base_url}")
-            _logger.info(f"Request Full Path: {request.httprequest.full_path}")
-            
-            # Log kwargs and params
-            _logger.info(f"Kwargs received: {kwargs}")
-            _logger.info(f"Request params: {request.params}")
-            
-            # Log request data
-            _logger.info(f"Request data (raw): {request.httprequest.data}")
-            _logger.info(f"Request data (decoded): {request.httprequest.data.decode() if request.httprequest.data else 'None'}")
-            
-            # Log form data
-            _logger.info(f"Request form data: {request.httprequest.form}")
-            _logger.info(f"Request files: {request.httprequest.files}")
-            
-            # Log cookies and session
-            _logger.info(f"Request cookies: {request.httprequest.cookies}")
-            _logger.info(f"Session data: {dict(request.session) if hasattr(request, 'session') else 'No session'}")
-            
-            # Log environment variables
-            _logger.info(f"Request environ: {dict(request.httprequest.environ)}")
-            
-            # Parse and log URL parameters
-            parsed_url = urlparse(request.httprequest.url)
-            _logger.info(f"Parsed URL - Scheme: {parsed_url.scheme}")
-            _logger.info(f"Parsed URL - Netloc: {parsed_url.netloc}")
-            _logger.info(f"Parsed URL - Path: {parsed_url.path}")
-            _logger.info(f"Parsed URL - Query: {parsed_url.query}")
-            _logger.info(f"Parsed URL - Fragment: {parsed_url.fragment}")
-            
             # Parse query parameters
-            query_params = parse_qs(parsed_url.query) if parsed_url.query else {}
-            if parsed_url.query:
-                _logger.info(f"Parsed query parameters: {query_params}")
+            query_params = parse_qs(parsed_url.query) if parsed_url.query else {} 
             
             # Try to parse JSON from request data
             json_data = None
             if request.httprequest.data:
                 try:
-                    json_data = json.loads(request.httprequest.data.decode())
-                    _logger.info(f"Parsed JSON from request data: {json_data}")
+                    json_data = json.loads(request.httprequest.data.decode()) 
                 except Exception as e:
                     _logger.info(f"Failed to parse JSON from request data: {e}")
             
@@ -97,16 +53,6 @@ class GHLOAuthController(http.Controller):
             company_id_from_query = query_params.get('companyId', [None])[0] if query_params else None
             app_id_from_query = query_params.get('appId', [None])[0] if query_params else None
             
-            # Log all parameter sources
-            _logger.info("=" * 50)
-            _logger.info("PARAMETER EXTRACTION RESULTS")
-            _logger.info("=" * 50)
-            _logger.info(f"Code - kwargs: {code}, params: {code_from_params}, query: {code_from_query}")
-            _logger.info(f"State - kwargs: {state}, params: {state_from_params}, query: {state_from_query}")
-            _logger.info(f"LocationId - kwargs: {location_id}, params: {location_id_from_params}, query: {location_id_from_query}")
-            _logger.info(f"CompanyId - kwargs: {company_id}, params: {company_id_from_params}, query: {company_id_from_query}")
-            _logger.info(f"AppId - kwargs: {app_id}, params: {app_id_from_params}, query: {app_id_from_query}")
-            
             # Use the first available value for each parameter
             final_code = code or code_from_params or code_from_query
             final_state = state or state_from_params or state_from_query
@@ -114,30 +60,6 @@ class GHLOAuthController(http.Controller):
             final_company_id = company_id or company_id_from_params or company_id_from_query
             final_app_id = app_id or app_id_from_params or app_id_from_query
             
-            _logger.info("=" * 50)
-            _logger.info("FINAL PARAMETER VALUES")
-            _logger.info("=" * 50)
-            _logger.info(f"Final Code: {final_code}")
-            _logger.info(f"Final State: {final_state}")
-            _logger.info(f"Final LocationId: {final_location_id}")
-            _logger.info(f"Final CompanyId: {final_company_id}")
-            _logger.info(f"Final AppId: {final_app_id}")
-            
-            # Also print to console for immediate visibility
-            print("=" * 80)
-            print("GHL OAUTH CALLBACK - COMPREHENSIVE LOGGING")
-            print("=" * 80)
-            print(f"Request Method: {request.httprequest.method}")
-            print(f"Request URL: {request.httprequest.url}")
-            print(f"Kwargs: {kwargs}")
-            print(f"Request params: {request.params}")
-            print(f"Request data: {request.httprequest.data}")
-            print(f"Final Code: {final_code}")
-            print(f"Final State: {final_state}")
-            print(f"Final LocationId: {final_location_id}")
-            print(f"Final CompanyId: {final_company_id}")
-            print(f"Final AppId: {final_app_id}")
-            print("=" * 80)
             
             # ===== COMPREHENSIVE LOGGING END =====
             
@@ -148,15 +70,6 @@ class GHLOAuthController(http.Controller):
             company_id = final_company_id
             app_id = final_app_id
             
-            _logger.info("=" * 50)
-            _logger.info("USING FINAL PARAMETER VALUES")
-            _logger.info("=" * 50)
-            _logger.info(f"Using Code: {code}")
-            _logger.info(f"Using State: {state}")
-            _logger.info(f"Using LocationId: {location_id}")
-            _logger.info(f"Using CompanyId: {company_id}")
-            _logger.info(f"Using AppId: {app_id}")
-            
             # Try to decode state parameter if it exists
             state_data = None
             if state:
@@ -165,20 +78,16 @@ class GHLOAuthController(http.Controller):
                     import json as json_module
                     state_decoded = base64.urlsafe_b64decode(state.encode()).decode()
                     state_data = json_module.loads(state_decoded)
-                    _logger.info(f"Decoded state data: {state_data}")
                     
                     # Extract values from decoded state
                     if not location_id and state_data.get('locationId'):
                         location_id = state_data.get('locationId')
-                        _logger.info(f"Using locationId from decoded state: {location_id}")
                     
                     if not company_id and state_data.get('companyId'):
                         company_id = state_data.get('companyId')
-                        _logger.info(f"Using companyId from decoded state: {company_id}")
                     
                     if not app_id and state_data.get('appId'):
                         app_id = state_data.get('appId')
-                        _logger.info(f"Using appId from decoded state: {app_id}")
                         
                 except Exception as e:
                     _logger.info(f"Failed to decode state parameter: {e}")
@@ -212,30 +121,11 @@ class GHLOAuthController(http.Controller):
                     except Exception as e:
                         _logger.info(f"Failed to parse location ID from request data: {e}")
 
-            _logger.info("=" * 50)
-            _logger.info("FINAL LOCATION ID RESOLUTION")
-            _logger.info("=" * 50)
-            _logger.info(f"Final resolved location_id: {location_id}")
-            _logger.info(f"Final resolved company_id: {company_id}")
-            _logger.info(f"Final resolved app_id: {app_id}")
-
-            # Exchange authorization code for access token
-            _logger.info("=" * 50)
-            _logger.info("STARTING TOKEN EXCHANGE")
-            _logger.info("=" * 50)
-            _logger.info(f"Exchanging code: {code[:10] if code else 'None'}... for token")
-            _logger.info(f"Using app_id: {app_id}")
-            
+           
             token_result = self._exchange_code_for_token(code, app_id)
 
-            _logger.info("=" * 50)
-            _logger.info("TOKEN EXCHANGE RESULT")
-            _logger.info("=" * 50)
-            _logger.info(f"Token result: {token_result}")
             
             if not token_result:
-                _logger.error("Failed to exchange authorization code for access token")
-                _logger.error("Token exchange returned None or empty result")
                 return Response(
                     json.dumps({
                         'error': 'Token exchange failed',
@@ -252,21 +142,8 @@ class GHLOAuthController(http.Controller):
                     headers=get_cors_headers(request)
                 )
 
-            access_token, refresh_token = token_result
-            _logger.info(f"Successfully obtained access token: {access_token[:10] if access_token else 'None'}...")
-            _logger.info(f"Successfully obtained refresh token: {refresh_token[:10] if refresh_token else 'None'}...")
-
-            # If only companyId is present (no locationId), treat as company-level install
-            _logger.info("=" * 50)
-            _logger.info("CHECKING INSTALLATION TYPE")
-            _logger.info("=" * 50)
-            _logger.info(f"Company ID present: {bool(company_id)}")
-            _logger.info(f"Location ID present: {bool(location_id)}")
-            _logger.info(f"State present: {bool(state)}")
-            _logger.info(f"Original kwargs locationId: {kwargs.get('locationId')}")
-            
+            access_token, refresh_token = location_token_result
             if company_id and (not kwargs.get('locationId') and not state):
-                _logger.info("Treating as company-level install")
                 # Store the agency token
                 self._store_ghl_credentials(company_id, access_token, refresh_token, state, app_id)
                 # Fetch and sync all locations for this company
@@ -278,7 +155,6 @@ class GHLOAuthController(http.Controller):
                     'locations': synced_locations,
                     'redirectUrl': self._get_redirect_url(company_id)
                 }
-                _logger.info(f"GHL OAuth completed successfully for company: {company_id}")
                 return Response(
                     json.dumps(success_data),
                     content_type='application/json',
@@ -287,13 +163,6 @@ class GHLOAuthController(http.Controller):
 
             # Otherwise, treat as location-level install
             if not location_id:
-                _logger.info("=" * 50)
-                _logger.info("GHL APP INSTALLATION FLOW DETECTED")
-                _logger.info("=" * 50)
-                _logger.info("No company/location ID in OAuth callback - this is expected for GHL app installations")
-                _logger.info("The company/location information will be provided via webhook events")
-                _logger.info("Storing tokens temporarily and waiting for webhook events...")
-                
                 # For GHL app installations, we need to store the tokens temporarily
                 # and wait for the webhook events to provide the company/location context
                 temp_token_key = f"temp_ghl_tokens_{code}"
@@ -313,7 +182,6 @@ class GHLOAuthController(http.Controller):
                     self._temp_tokens = {}
                 
                 self._temp_tokens[temp_token_key] = temp_tokens
-                _logger.info(f"Stored temporary tokens with key: {temp_token_key}")
                 
                 # Return success response indicating we're waiting for webhook events
                 success_data = {
@@ -323,29 +191,18 @@ class GHLOAuthController(http.Controller):
                     'code': code
                 }
                 
-                _logger.info("GHL OAuth callback completed - waiting for webhook events")
                 return Response(
                     json.dumps(success_data),
                     content_type='application/json',
                     headers=get_cors_headers(request)
                 )
 
-            _logger.info("=" * 50)
-            _logger.info("PROCESSING LOCATION-LEVEL INSTALL")
-            _logger.info("=" * 50)
-            _logger.info(f"OAuth callback - Code: {code[:10] if code else 'None'}..., State: {state}, Location: {location_id}, App: {app_id}")
-
-            # Store the access token and location information
-            _logger.info("Storing GHL credentials...")
             self._store_ghl_credentials(location_id, access_token, refresh_token, state, app_id)
 
             # Get location details from GHL API
-            _logger.info("Getting location info from GHL API...")
             location_info = self._get_location_info(access_token, location_id, app_id)
-            _logger.info(f"Location info received: {location_info}")
 
             # Create or update GHL location record
-            _logger.info("Creating/updating GHL location record...")
             self._create_or_update_location(location_id, location_info, access_token)
 
             # Return success response
@@ -357,12 +214,6 @@ class GHLOAuthController(http.Controller):
                 'redirectUrl': self._get_redirect_url(location_id)
             }
 
-            _logger.info("=" * 50)
-            _logger.info("OAUTH CALLBACK SUCCESSFULLY COMPLETED")
-            _logger.info("=" * 50)
-            _logger.info(f"GHL OAuth completed successfully for location: {location_id}")
-            _logger.info(f"Success data: {success_data}")
-
             return Response(
                 json.dumps(success_data),
                 content_type='application/json',
@@ -370,11 +221,6 @@ class GHLOAuthController(http.Controller):
             )
 
         except Exception as e:
-            _logger.error("=" * 50)
-            _logger.error("OAUTH CALLBACK EXCEPTION")
-            _logger.error("=" * 50)
-            _logger.error(f"Error in GHL OAuth callback: {str(e)}")
-            _logger.error(f"Exception type: {type(e).__name__}")
             import traceback
             _logger.error(f"Full traceback: {traceback.format_exc()}")
             return Response(
@@ -421,7 +267,7 @@ class GHLOAuthController(http.Controller):
             client_secret = cyclsales_app.client_secret
             redirect_uri = f"{request.env['ir.config_parameter'].sudo().get_param('web.base.url')}/api/dashboard/oauth/callback"
 
-            _logger.info(f"Using CyclSales app - Name: {cyclsales_app.name}, Client ID: {client_id[:10]}..., Redirect URI: {redirect_uri}")
+            
 
             if not all([client_id, client_secret]):
                 _logger.error("Missing CyclSales application configuration")
@@ -455,7 +301,6 @@ class GHLOAuthController(http.Controller):
                     'token_expiry': fields.Datetime.now() + timedelta(hours=1),  # Default 1 hour expiry
                 })
                 
-                _logger.info(f"Successfully exchanged code for access token for app: {cyclsales_app.name}")
                 return access_token, refresh_token
             else:
                 _logger.error(f"Token exchange failed: {response.status_code} - {response.text}")

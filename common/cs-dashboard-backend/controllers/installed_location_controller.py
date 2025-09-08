@@ -69,7 +69,7 @@ class InstalledLocationController(http.Controller):
                     })
                     cr.commit()
             except Exception as e:
-                _logger.error(f"Error setting sync status: {str(e)}")
+                _logger.error('Error setting sync status: %s', str(e))
 
             for attempt in range(max_retries):
                 try:
@@ -102,7 +102,7 @@ class InstalledLocationController(http.Controller):
                         break  # Success, exit retry loop
 
                 except Exception as e:
-                    _logger.error(f"Background sync error on attempt {attempt + 1}: {str(e)}")
+                    _logger.error('Background sync error on attempt %d: %s', attempt + 1, str(e))
 
                     # If it's a concurrency error, wait and retry
                     if "concurrent update" in str(e) or "transaction is aborted" in str(e):
@@ -110,7 +110,7 @@ class InstalledLocationController(http.Controller):
                             time.sleep(retry_delay)
                             retry_delay *= 2  # Exponential backoff
                         else:
-                            _logger.error("Max retries reached for background sync")
+                            _logger.error('Max retries reached for background sync')
                             # Set sync status to "failed"
                             try:
                                 registry = Registry(current_dbname)
@@ -124,12 +124,12 @@ class InstalledLocationController(http.Controller):
                                         'ghl_locations_sync_error': str(e)
                                     })
                             except Exception as update_error:
-                                _logger.error(f"Error updating sync status to failed: {str(update_error)}")
+                                _logger.error('Error updating sync status to failed: %s', str(update_error))
                     else:
                         # For non-concurrency errors, don't retry
-                        _logger.error(f"Non-concurrency error, not retrying: {str(e)}")
+                        _logger.error('Non-concurrency error, not retrying: %s', str(e))
                         import traceback
-                        _logger.error(f"Background sync full traceback: {traceback.format_exc()}")
+                        _logger.error('Background sync full traceback: %s', traceback.format_exc())
 
                         # Set sync status to "failed"
                         try:
@@ -145,9 +145,9 @@ class InstalledLocationController(http.Controller):
                                     'ghl_locations_sync_status': 'failed',
                                     'ghl_locations_sync_error': str(e)
                                 })
-                                _logger.info(f"Set sync status to failed on config id={config.id}")
+                                _logger.info('Set sync status to failed on config id=%s', config.id)
                         except Exception as update_error:
-                            _logger.error(f"Error updating sync status to failed: {str(update_error)}")
+                            _logger.error('Error updating sync status to failed: %s', str(update_error))
                         break
 
         # Start background sync thread
@@ -221,7 +221,7 @@ class InstalledLocationController(http.Controller):
             )
 
         except Exception as e:
-            _logger.error(f"Error in fast installed locations endpoint: {str(e)}")
+            _logger.error('Error in fast installed locations endpoint: %s', str(e))
             return Response(
                 json.dumps({
                     'error': f'Error fetching locations: {str(e)}'
@@ -246,24 +246,21 @@ class InstalledLocationController(http.Controller):
 
         # Get app_id from parameters or use default
         app_id = kwargs.get('appId', '6867d1537079188afca5013c')
-        _logger.info(f"Using app_id: {app_id}")
-
+        
         # Hardcode company_id
         company_id = 'Ipg8nKDPLYKsbtodR6LN'
-        _logger.info(f"Using hardcoded company_id: {company_id}")
-
+        
         # Call the fetch_installed_locations function from the model (synchronous)
         installed_location_model = request.env['installed.location'].sudo()
-        _logger.info(f"Calling fetch_installed_locations with company_id={company_id}, app_id={app_id}")
+        _logger.info('Fetching installed locations for app_id: %s', app_id)
         result = installed_location_model.fetch_installed_locations(
             company_id=company_id,
             app_id=app_id,
             limit=500,
             fetch_details=True  # Fetch details for the overview page refresh
         )
-        _logger.info(f"fetch_installed_locations result: {result}")
         if not result.get('success'):
-            _logger.error(f"Failed to fetch installed locations: {result.get('error')}")
+            _logger.error('Failed to fetch installed locations: %s', result.get('error'))
             return Response(
                 json.dumps({'error': result.get('error', 'Failed to fetch installed locations')}),
                 content_type='application/json',
@@ -444,7 +441,7 @@ class InstalledLocationController(http.Controller):
             )
 
         except Exception as e:
-            _logger.error(f"Error getting sync status: {str(e)}")
+            _logger.error('Error getting sync status: %s', str(e))
             return Response(
                 json.dumps({
                     'status': 'error',
@@ -482,7 +479,7 @@ class InstalledLocationController(http.Controller):
 
         # Check if the app is still installed on this location
         if app not in loc.application_ids:
-            _logger.warning(f"App {app.name} is not installed on location {location_id}")
+            _logger.warning('App %s is not installed on location %s', app.name, location_id)
             return Response(
                 json.dumps({
                     'success': False,
@@ -497,7 +494,7 @@ class InstalledLocationController(http.Controller):
 
         # Check if location is marked as installed
         if not loc.is_installed:
-            _logger.warning(f"Location {location_id} is not marked as installed")
+            _logger.warning('Location %s is not marked as installed', location_id)
             return Response(
                 json.dumps({
                     'success': False,
@@ -630,10 +627,8 @@ class InstalledLocationController(http.Controller):
         # Sync GHL tasks for all contacts in this location (fetch from API and update Odoo)
         task_sync_result = request.env['ghl.contact.task'].sudo().sync_all_contact_tasks(access_token, location_id,
                                                                                          company_id)
-        _logger.info(f"[get-location-contacts] GHL contact task sync result: {json.dumps(task_sync_result)}")
-
         # Sync GHL conversations for this location (contact by contact)
-        _logger.info(f"Starting conversation sync for location: {location_id}")
+
         conversation_sync_result = {'success': False, 'message': 'No sync attempted'}
 
         try:
@@ -659,14 +654,13 @@ class InstalledLocationController(http.Controller):
                         total_created += contact_result.get('created_count', 0)
                         total_updated += contact_result.get('updated_count', 0)
                         total_contacts_synced += 1
-                        _logger.info(
-                            f"Conversation sync successful for contact {contact.external_id}: {contact_result}")
+                        
                     else:
-                        _logger.error(
-                            f"Conversation sync failed for contact {contact.external_id}: {contact_result.get('error')}")
+                        _logger.error('Conversation sync failed for contact %s: %s', 
+                                     contact.external_id, contact_result.get('error'))
                 except Exception as contact_error:
-                    _logger.error(
-                        f"Error syncing conversations for contact {contact.external_id}: {str(contact_error)}")
+                    _logger.error('Error syncing conversations for contact %s: %s', 
+                                 contact.external_id, str(contact_error))
 
             conversation_sync_result = {
                 'success': total_contacts_synced > 0,
@@ -676,16 +670,13 @@ class InstalledLocationController(http.Controller):
                 'total_updated': total_updated
             }
 
-            if conversation_sync_result['success']:
-                _logger.info(f"Conversation sync successful: {conversation_sync_result['message']}")
-            else:
-                _logger.error(f"Conversation sync failed: {conversation_sync_result['message']}")
+            if not conversation_sync_result['success']:
+                _logger.error('Conversation sync failed: %s', conversation_sync_result['message'])
         except Exception as e:
-            _logger.error(f"Error during conversation sync: {str(e)}")
+            _logger.error('Error during conversation sync: %s', str(e))
             conversation_sync_result = {'success': False, 'message': f'Sync error: {str(e)}'}
 
         # Sync GHL opportunities for this location
-        _logger.info(f"Starting opportunity sync for location: {location_id}")
         opportunity_sync_result = {'success': False, 'message': 'No sync attempted'}
         try:
             opportunity_sync_result = request.env['ghl.contact.opportunity'].sudo().sync_opportunities_for_location(
@@ -693,12 +684,10 @@ class InstalledLocationController(http.Controller):
                 location_id,
                 company_id
             )
-            if opportunity_sync_result.get('success', False):
-                _logger.info(f"Opportunity sync successful: {opportunity_sync_result}")
-            else:
-                _logger.error(f"Opportunity sync failed: {opportunity_sync_result}")
+            if not opportunity_sync_result.get('success', False):
+                _logger.error('Opportunity sync failed: %s', opportunity_sync_result)
         except Exception as e:
-            _logger.error(f"Error during opportunity sync: {str(e)}")
+            _logger.error('Error during opportunity sync: %s', str(e))
             opportunity_sync_result = {'success': False, 'message': f'Sync error: {str(e)}'}
 
         if result and result.get('success'):
@@ -804,19 +793,18 @@ class InstalledLocationController(http.Controller):
                             'ghl_contacts_sync_location_id': location_id
                         })
                         cr.commit()
-                        _logger.info(f"Set contacts sync status to in_progress for location {location_id}")
+                        _logger.info('Set contacts sync status to in_progress for location %s', location_id)
                         break
                 except Exception as e:
                     if "concurrent update" in str(e) or "serialize access" in str(e):
                         if attempt < max_retries - 1:
-                            _logger.warning(
-                                f"Concurrency error setting in_progress status, retrying in {retry_delay} seconds...")
+                            _logger.warning('Concurrency error setting in_progress status, retrying in %d seconds...', retry_delay)
                             time.sleep(retry_delay)
                             retry_delay *= 2
                         else:
-                            _logger.error("Max retries reached for setting in_progress status")
+                            _logger.error('Max retries reached for setting in_progress status')
                     else:
-                        _logger.error(f"Error setting contacts sync status to in_progress: {str(e)}")
+                        _logger.error('Error setting contacts sync status to in_progress: %s', str(e))
                         break
             try:
                 registry = Registry(dbname)
@@ -828,15 +816,15 @@ class InstalledLocationController(http.Controller):
                         ('is_active', '=', True)
                     ], limit=1)
                     if not app_record or not app_record.access_token:
-                        _logger.error("No valid access token found in background sync")
+                        _logger.error('No valid access token found in background sync')
                         return
                     access_token = app_record.access_token
                     loc_record = env['installed.location'].search([('location_id', '=', location_id)], limit=1)
                     if not loc_record:
-                        _logger.error(f"Location not found in background sync: {location_id}")
+                        _logger.error('Location not found in background sync: %s', location_id)
                         return
                     result = loc_record.fetch_location_contacts(company_id, location_id, access_token)
-                    _logger.info(f"Background contact sync result: {result}")
+                    _logger.info('Background contact sync result: %s', result.get('success', False))
                     cr.commit()
                 # --- Task Sync ---
                 with registry.cursor() as cr:
@@ -844,7 +832,7 @@ class InstalledLocationController(http.Controller):
                     task_result = env['ghl.contact.task'].sync_all_contact_tasks_optimized(
                         access_token, location_id, company_id
                     )
-                    _logger.info(f"Background optimized task sync result: {task_result}")
+                    _logger.info('Background optimized task sync result: %s', task_result.get('success', False))
                     cr.commit()
                 # --- Conversation Sync ---
                 with registry.cursor() as cr:
@@ -852,7 +840,7 @@ class InstalledLocationController(http.Controller):
                     # Per-contact conversation sync is handled elsewhere if needed
                     # If you want to keep the old logic, you can loop here
                     # For now, just log that this step is isolated
-                    _logger.info(f"Background conversation sync step (isolated cursor)")
+                    _logger.info('Background conversation sync step (isolated cursor)')
                     # Example: conv_result = ...
                     cr.commit()
                 # --- Opportunity Sync ---
@@ -861,7 +849,7 @@ class InstalledLocationController(http.Controller):
                     opp_result = env['ghl.contact.opportunity'].sync_opportunities_for_location(
                         access_token, location_id, company_id, max_pages=None
                     )
-                    _logger.info(f"Background opportunity sync result: {opp_result}")
+                    _logger.info('Background opportunity sync result: %s', opp_result.get('success', False))
                     cr.commit()
                 # Set sync status to completed
                 with registry.cursor() as cr:
@@ -882,19 +870,18 @@ class InstalledLocationController(http.Controller):
                         except Exception as e:
                             if "concurrent update" in str(e) or "serialize access" in str(e):
                                 if attempt < max_retries - 1:
-                                    _logger.warning(
-                                        f"Concurrency error on completed, retrying in {retry_delay} seconds...")
+                                    _logger.warning('Concurrency error on completed, retrying in %d seconds...', retry_delay)
                                     time.sleep(retry_delay)
                                     retry_delay *= 2
                                 else:
-                                    _logger.error("Max retries reached for config write (completed phase)")
+                                    _logger.error('Max retries reached for config write (completed phase)')
                             else:
-                                _logger.error(f"Error setting contacts sync status to completed: {str(e)}")
+                                _logger.error('Error setting contacts sync status to completed: %s', str(e))
                                 break
             except Exception as e:
-                _logger.error(f"Background sync error: {str(e)}")
+                _logger.error('Background sync error: %s', str(e))
                 import traceback
-                _logger.error(f"Background sync full traceback: {traceback.format_exc()}")
+                _logger.error('Background sync full traceback: %s', traceback.format_exc())
                 # Now open a NEW cursor/context to write the failed status
                 for attempt in range(3):
                     try:
@@ -913,12 +900,12 @@ class InstalledLocationController(http.Controller):
                     except Exception as update_error:
                         if "concurrent update" in str(update_error) or "serialize access" in str(update_error):
                             if attempt < 2:
-                                _logger.warning(f"Concurrency error on failed, retrying in 2 seconds...")
+                                _logger.warning('Concurrency error on failed, retrying in 2 seconds...')
                                 time.sleep(2)
                             else:
-                                _logger.error("Max retries reached for config write (failed phase)")
+                                _logger.error('Max retries reached for config write (failed phase)')
                         else:
-                            _logger.error(f"Error updating contacts sync status to failed: {str(update_error)}")
+                            _logger.error('Error updating contacts sync status to failed: %s', str(update_error))
                             break
 
         # Start background sync thread
@@ -1107,7 +1094,7 @@ class InstalledLocationController(http.Controller):
             )
 
         except Exception as e:
-            _logger.error(f"Error in fast contacts endpoint: {str(e)}")
+            _logger.error('Error in fast contacts endpoint: %s', str(e))
             return Response(
                 json.dumps({
                     'success': False,
@@ -1134,7 +1121,7 @@ class InstalledLocationController(http.Controller):
             )
 
         # ALWAYS SYNC FRESH DATA FROM GHL API BEFORE RETURNING
-        _logger.info(f"Syncing fresh data from GHL API for location: {location_id}")
+        _logger.info('Syncing fresh data from GHL API for location: %s', location_id)
         app_id = self._get_app_id_from_request(kwargs)
         company_id = 'Ipg8nKDPLYKsbtodR6LN'
         app = request.env['cyclsales.application'].sudo().search([
@@ -1157,7 +1144,7 @@ class InstalledLocationController(http.Controller):
             if loc:
                 # Check if the app is still installed on this location
                 if app not in loc.application_ids:
-                    _logger.warning(f"App {app.name} is not installed on location {location_id}")
+                    _logger.warning('App %s is not installed on location %s', app.name, location_id)
                     return Response(
                         json.dumps({
                             'success': False,
@@ -1172,7 +1159,7 @@ class InstalledLocationController(http.Controller):
 
                 # Check if location is marked as installed
                 if not loc.is_installed:
-                    _logger.warning(f"Location {location_id} is not marked as installed")
+                    _logger.warning('Location %s is not marked as installed', location_id)
                     return Response(
                         json.dumps({
                             'success': False,
@@ -1184,21 +1171,21 @@ class InstalledLocationController(http.Controller):
                         headers=get_cors_headers(request)
                     )
                 # SYNC CONTACTS (fetches from GHL and updates Odoo DB)
-                _logger.info(f"Syncing contacts for location: {location_id}")
+                _logger.info('Syncing contacts for location: %s', location_id)
                 contact_sync_result = loc.fetch_location_contacts(company_id, location_id, access_token)
                 sync_summary['contacts_synced'] = contact_sync_result.get('success', False)
-                _logger.info(f"Contact sync result: {contact_sync_result}")
+                _logger.info('Contact sync result: %s', contact_sync_result.get('success', False))
 
                 # SYNC TASKS FOR ALL CONTACTS
-                _logger.info(f"Syncing tasks for location: {location_id}")
+                _logger.info('Syncing tasks for location: %s', location_id)
                 task_sync_result = request.env['ghl.contact.task'].sudo().sync_all_contact_tasks(access_token,
                                                                                                  location_id,
                                                                                                  company_id)
                 sync_summary['tasks_synced'] = task_sync_result.get('success', False)
-                _logger.info(f"Task sync result: {task_sync_result}")
+                _logger.info('Task sync result: %s', task_sync_result.get('success', False))
 
                 # SYNC CONVERSATIONS FOR ALL CONTACTS
-                _logger.info(f"Syncing conversations for location: {location_id}")
+                _logger.info('Syncing conversations for location: %s', location_id)
                 contacts = request.env['ghl.location.contact'].sudo().search([
                     ('location_id.location_id', '=', location_id)
                 ])
@@ -1507,7 +1494,7 @@ class InstalledLocationController(http.Controller):
 
             # Check if the app is still installed on this location
             if app not in loc.application_ids:
-                _logger.warning(f"App {app.name} is not installed on location {location_id}")
+                _logger.warning('App %s is not installed on location %s', app.name, location_id)
                 return Response(
                     json.dumps({
                         'success': False,
@@ -1522,7 +1509,7 @@ class InstalledLocationController(http.Controller):
 
             # Check if location is marked as installed
             if not loc.is_installed:
-                _logger.warning(f"Location {location_id} is not marked as installed")
+                _logger.warning('Location %s is not marked as installed', location_id)
                 return Response(
                     json.dumps({
                         'success': False,
@@ -1672,7 +1659,7 @@ class InstalledLocationController(http.Controller):
 
             # Check if the app is still installed on this location
             if app not in loc.application_ids:
-                _logger.warning(f"App {app.name} is not installed on location {location_id}")
+                _logger.warning('App %s is not installed on location %s', app.name, location_id)
                 return Response(
                     json.dumps({
                         'success': False,
@@ -1687,7 +1674,7 @@ class InstalledLocationController(http.Controller):
 
             # Check if location is marked as installed
             if not loc.is_installed:
-                _logger.warning(f"Location {location_id} is not marked as installed")
+                _logger.warning('Location %s is not marked as installed', location_id)
                 return Response(
                     json.dumps({
                         'success': False,
@@ -1713,7 +1700,7 @@ class InstalledLocationController(http.Controller):
                 _logger.info(f"Task sync result: {task_sync_result}")
 
                 # SYNC CONVERSATIONS FOR ALL CONTACTS IN THIS LOCATION
-                _logger.info(f"Syncing conversations for location: {location_id}")
+                _logger.info('Syncing conversations for location: %s', location_id)
                 contacts = request.env['ghl.location.contact'].sudo().search([
                     ('location_id.location_id', '=', location_id)
                 ])
@@ -3155,7 +3142,7 @@ class InstalledLocationController(http.Controller):
 
             # Check if the app is still installed on this location
             if app not in loc.application_ids:
-                _logger.warning(f"App {app.name} is not installed on location {location_id}")
+                _logger.warning('App %s is not installed on location %s', app.name, location_id)
                 return Response(
                     json.dumps({
                         'success': False,
@@ -3170,7 +3157,7 @@ class InstalledLocationController(http.Controller):
 
             # Check if location is marked as installed
             if not loc.is_installed:
-                _logger.warning(f"Location {location_id} is not marked as installed")
+                _logger.warning('Location %s is not marked as installed', location_id)
                 return Response(
                     json.dumps({
                         'success': False,
@@ -3442,7 +3429,7 @@ class InstalledLocationController(http.Controller):
                                 ('is_active', '=', True)
                             ], limit=1)
                             if not app_record or not app_record.access_token:
-                                _logger.error("No valid access token found in background sync")
+                                _logger.error('No valid access token found in background sync')
                                 return
                             access_token = app_record.access_token
 
@@ -5988,7 +5975,7 @@ class InstalledLocationController(http.Controller):
                             ], limit=1)
 
                             if not app_record or not app_record.access_token:
-                                _logger.error("No valid access token found in background sync")
+                                _logger.error('No valid access token found in background sync')
                                 return
 
                             # Get location record

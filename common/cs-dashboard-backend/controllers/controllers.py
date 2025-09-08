@@ -318,7 +318,6 @@ class DashboardController(http.Controller):
 
             # Get call messages by location for analytics (same data source as call table)
             call_messages = request.env['ghl.contact.message'].sudo().search(domain)
-            _logger.info(f"Found {len(call_messages)} call messages for analytics with domain: {domain}")
 
             # Return raw call data for frontend processing
             raw_data = []
@@ -358,9 +357,6 @@ class DashboardController(http.Controller):
                     } if call.contact_id else None
                 }
                 raw_data.append(call_data)
-                _logger.info(f"Call data: {call_data}")
-
-            _logger.info(f"Returning {len(raw_data)} call records for analytics")
             return Response(
                 json.dumps(raw_data),
                 content_type='application/json',
@@ -393,7 +389,6 @@ class DashboardController(http.Controller):
 
             # Get call messages by location for engagement analysis (same data source as call table)
             call_messages = request.env['ghl.contact.message'].sudo().search(domain)
-            _logger.info(f"Found {len(call_messages)} call messages for engagement analytics with domain: {domain}")
 
             # Return raw call data for frontend processing
             raw_data = []
@@ -432,10 +427,8 @@ class DashboardController(http.Controller):
                         'name': call.contact_id.name if call.contact_id else None
                     } if call.contact_id else None
                 }
-                raw_data.append(call_data)
-                _logger.info(f"Engagement call data: {call_data}")
-
-            _logger.info(f"Returning {len(raw_data)} call records for engagement analytics")
+                raw_data.append(call_data) 
+ 
             return Response(
                 json.dumps(raw_data),
                 content_type='application/json',

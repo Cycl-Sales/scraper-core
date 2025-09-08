@@ -190,12 +190,10 @@ class CyclSalesVisionAIUsageLog(models.Model):
             log_data['location_id'] = final_location_id
         
         import logging
-        _logger = logging.getLogger(__name__)
-        _logger.info(f"[Usage Log] Creating usage log with data: {log_data}")
+        _logger = logging.getLogger(__name__) 
         
         try:
-            result = self.create(log_data)
-            _logger.info(f"[Usage Log] Successfully created usage log: {result.id}")
+            result = self.create(log_data) 
             return result
         except Exception as e:
             _logger.error(f"[Usage Log] Failed to create usage log: {str(e)}")

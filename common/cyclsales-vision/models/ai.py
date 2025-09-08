@@ -109,23 +109,15 @@ Return only the JSON object, no additional text.""")
                     request_id=f"req_{message_id}_{fields.Datetime.now().strftime('%Y%m%d_%H%M%S')}" if message_id else None
                 )
                 usage_log.write({'status': 'processing'})
-                _logger.info(f"[AI Service] Created usage log entry: {usage_log.id}")
         except Exception as e:
             _logger.error(f"[AI Service] Failed to create usage log: {str(e)}")
             usage_log = None
 
-        _logger.info(f"[AI Service] Generating summary for message_id: {message_id}, contact_id: {contact_id}")
 
         # DEBUG: Log the transcript being passed
         # Limit transcript logging to 100 characters to avoid log flooding
         logged_transcript = transcript[:100] + "..." if transcript and len(transcript) > 100 else transcript
-        _logger.info(f"[AI Service] Transcript received: {logged_transcript}")
-        _logger.info(f"[AI Service] Transcript type: {type(transcript)}")
-        _logger.info(f"[AI Service] Transcript length: {len(transcript) if transcript else 0}")
-        if transcript:
-            _logger.info(f"[AI Service] Transcript preview (first 100 chars): {transcript[:100]}...")
-        else:
-            _logger.warning(f"[AI Service] No transcript provided!")
+
 
         # Get API key from record or system parameters
         api_key = self.api_key or self.env['ir.config_parameter'].sudo().get_param('web_scraper.openai_api_key')
