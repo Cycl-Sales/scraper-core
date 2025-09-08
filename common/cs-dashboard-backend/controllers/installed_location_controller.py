@@ -2881,15 +2881,16 @@ class InstalledLocationController(http.Controller):
         def sync_contacts_background():
             try:
                 # Create a new environment for background thread
-                import odoo
                 from odoo import api, SUPERUSER_ID
+                from odoo.modules.registry import Registry
                 
                 # Use the captured database name
                 current_db_name = db_name
 
                 # Create a new environment for the background thread
-                with api.Environment.manage():
-                    env = api.Environment(odoo.registry(current_db_name), SUPERUSER_ID, {})
+                registry = Registry(current_db_name)
+                with registry.cursor() as cr:
+                    env = api.Environment(cr, SUPERUSER_ID, {})
 
                     # Get location token for GHL API calls
                     from odoo.addons.web_scraper.models.ghl_api_utils import get_location_token
