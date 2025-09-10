@@ -3280,7 +3280,7 @@ class InstalledLocationController(http.Controller):
                     'speed_to_lead': speed_to_lead,
                     'touch_summary': touch_summary,
                     'engagement_summary': engagement_summary,
-                    'last_touch_date': last_touch_date,
+                    'last_touch_date': last_touch_date.isoformat() if hasattr(last_touch_date, 'isoformat') else str(last_touch_date) if last_touch_date else '',
                     'last_message': last_message_data,
                     'total_pipeline_value': contact.total_pipeline_value or 0.0,
                     'opportunities': contact.opportunities or 0,
