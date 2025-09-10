@@ -3497,6 +3497,16 @@ class InstalledLocationController(http.Controller):
             # Calculate if there are more pages
             has_more_pages = (page * limit) < total_contacts_in_db
 
+            # Custom JSON encoder to handle datetime objects
+            import json
+            from datetime import datetime
+            
+            class DateTimeEncoder(json.JSONEncoder):
+                def default(self, obj):
+                    if isinstance(obj, datetime):
+                        return obj.isoformat()
+                    return super().default(obj)
+            
             return Response(
                 json.dumps({
                     'success': True,
@@ -3510,7 +3520,7 @@ class InstalledLocationController(http.Controller):
                     'message': 'Basic data returned. Background sync disabled by default.',
                     'background_sync_started': False,  # Always false now
                     'contacts_syncing': 0  # Always 0 now
-                }),
+                }, cls=DateTimeEncoder),
                 content_type='application/json',
                 status=200,
                 headers=get_cors_headers(request)
