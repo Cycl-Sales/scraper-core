@@ -31,6 +31,7 @@ class GHLOAuthController(http.Controller):
                     json_data = json.loads(request.httprequest.data.decode()) 
                 except Exception as e:
                     # _logger.info(f"Failed to parse JSON from request data: {e}")  # Reduced logging for production
+                    pass  # Silently handle JSON parsing errors
             
             # ===== EXTRACT KEY PARAMETERS =====
             code = kwargs.get('code')
@@ -117,9 +118,10 @@ class GHLOAuthController(http.Controller):
                     try:
                         data = json.loads(request.httprequest.data.decode())
                         location_id = data.get('locationId') or data.get('companyId') or data.get('state')
-                        _logger.info(f"Location ID from request data: {location_id}")
+                        # _logger.info(f"Location ID from request data: {location_id}")  # Reduced logging for production
                     except Exception as e:
-                        _logger.info(f"Failed to parse location ID from request data: {e}")
+                        # _logger.info(f"Failed to parse location ID from request data: {e}")  # Reduced logging for production
+                        pass  # Silently handle parsing errors
 
            
             token_result = self._exchange_code_for_token(code, app_id)
