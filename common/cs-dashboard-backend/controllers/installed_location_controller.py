@@ -2794,9 +2794,11 @@ class InstalledLocationController(http.Controller):
         success_count = 0
         error_count = 0
 
-        # Process each contact synchronously with simple error handling
-        for contact in contacts:
+        # Process each contact sequentially with delays to prevent concurrent updates
+        for i, contact in enumerate(contacts):
             try:
+                _logger.info(f"Processing contact {i+1}/{len(contacts)}: {contact.name}")
+                
                 # Get the correct location ID for this contact
                 contact_location_id = contact.location_id.location_id if contact.location_id else location_id
 
@@ -2816,10 +2818,15 @@ class InstalledLocationController(http.Controller):
                         _logger.error(f"Error syncing tasks for contact {contact.name}: {str(task_error)}")
                     
                     success_count += 1
+                    _logger.info(f"Successfully synced contact {contact.name}")
                     
                 else:
                     _logger.error(f"Failed to sync conversations for contact {contact.name}: {conversation_result.get('message', 'Unknown error')}")
                     error_count += 1
+                    
+                # Add a small delay between contacts to prevent concurrent database updates
+                if i < len(contacts) - 1:  # Don't delay after the last contact
+                    time.sleep(0.5)  # 500ms delay between contacts
                     
             except Exception as contact_error:
                 _logger.error(f"Error syncing contact {contact.name}: {str(contact_error)}")
@@ -3141,8 +3148,11 @@ class InstalledLocationController(http.Controller):
             contact_data = []
             contact_ids_for_background = []
 
-            # STEP 3A: Trigger GHL API sync for fresh data in background
-            self._trigger_ghl_sync_for_contacts(contacts, app.access_token, company_id, location_id, app_id)
+            # STEP 3A: Trigger GHL API sync for fresh data (sequential processing)
+            # Limit to first 5 contacts to prevent overwhelming the system and concurrent updates
+            limited_contacts = contacts[:5] if len(contacts) > 5 else contacts
+            if limited_contacts:
+                self._trigger_ghl_sync_for_contacts(limited_contacts, app.access_token, company_id, location_id, app_id)
 
             for contact in contacts:
                 contact_ids_for_background.append(contact.id)
