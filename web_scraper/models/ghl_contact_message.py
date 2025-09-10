@@ -184,7 +184,6 @@ class GhlContactMessage(models.Model):
 
             if user_record:
                 record.user_id_rel = user_record.id
-                _logger.info(f"Linked message {record.id} to user {user_record.name} (external_id: {record.user_id})")
             else:
                 _logger.warning(f"No user found with external_id: {record.user_id} for message {record.id}")
 
@@ -283,7 +282,6 @@ class GhlContactMessage(models.Model):
                 if last_message_id:
                     params['lastMessageId'] = last_message_id
 
-                # _logger.info(f"Fetching messages for conversation {conversation_id} with params: {params}")  # Reduced logging for production
                 response = requests.get(base_url, headers=headers, params=params, timeout=30)
 
                 if response.status_code != 200:
@@ -297,10 +295,7 @@ class GhlContactMessage(models.Model):
                         'total_messages': 0,
                     }
 
-                # _logger.info(f"Response status: {response.status_code}")  # Reduced logging for production
                 data = response.json()
-                # _logger.info(
-                #     f"Response data type: {type(data)}, keys: {list(data.keys()) if isinstance(data, dict) else 'Not a dict'}")  # Reduced logging for production
 
                 # Handle nested messages structure
                 messages_container = data.get('messages', {})
@@ -314,9 +309,7 @@ class GhlContactMessage(models.Model):
                     next_page = data.get('nextPage', False)
                     last_message_id_from_response = None
 
-                # _logger.info(f"Messages type: {type(messages)}, Found {len(messages)} messages")  # Reduced logging for production
                 if messages:
-                    # _logger.info(f"First message type: {type(messages[0])}, First message ID: {messages[0].get('id')}")  # Reduced logging for production
                     pass
 
                 if not messages:
@@ -440,7 +433,6 @@ class GhlContactMessage(models.Model):
                                     if _update_message_with_retry(self.env, existing_msg, vals):
                                         updated_count += 1
                                         message_rec = existing_msg
-                                        _logger.info(f"Updated existing message {ghl_id} after duplicate detection")
                                     else:
                                         _logger.error(f"Failed to update message {ghl_id} after duplicate detection")
                                         continue
@@ -484,15 +476,12 @@ class GhlContactMessage(models.Model):
                 _logger.error(f"Error processing message {msg_id}: {str(e)}")
                 continue
 
-        # _logger.info(
-        #     f"Returning result: created_count={created_count}, updated_count={updated_count}, total_messages={len(all_messages)}")  # Reduced logging for production
         result = {
             'success': True,
             'created_count': created_count,
             'updated_count': updated_count,
             'total_messages': len(all_messages),
         }
-        _logger.info(f"Result type: {type(result)}, Result: {result}")
         return result
 
     def fetch_recording_url(self, location_id=None, message_id=None, app_id=None):
@@ -565,20 +554,13 @@ class GhlContactMessage(models.Model):
             'Version': '2021-07-28',
         }
 
-        try:
-            _logger.info(f"Fetching recording URL for message {message_id} at location {location_id}")
+        try:        
             response = requests.get(url, headers=headers, timeout=30)
-
-            _logger.info(f"Recording API response status: {response.status_code}")
-            _logger.info(f"Recording API response headers: {dict(response.headers)}")
 
             if response.status_code == 200:
                 # The API returns the audio file directly, not JSON
                 content_type = response.headers.get('Content-Type', '')
                 content_disposition = response.headers.get('Content-Disposition', '')
-
-                _logger.info(
-                    f"Recording API returned audio file: Content-Type={content_type}, Content-Disposition={content_disposition}")
 
                 # Extract filename from content-disposition header
                 filename = "recording.wav"  # default
@@ -600,16 +582,11 @@ class GhlContactMessage(models.Model):
                 with open(file_path, 'wb') as f:
                     f.write(response.content)
 
-                _logger.info(f"Audio file saved to: {file_path}")
 
                 # Save to database - encode binary data as base64 for Odoo Binary field
                 import base64
                 recording_data_b64 = base64.b64encode(response.content).decode('utf-8')
 
-                _logger.info(f"Original response content length: {len(response.content)} bytes")
-                _logger.info(f"Base64 encoded data length: {len(recording_data_b64)} characters")
-                _logger.info(f"Content-Type from API: {content_type}")
-                _logger.info(f"Filename from API: {filename}")
 
                 self.write({
                     'recording_data': recording_data_b64,
@@ -619,14 +596,9 @@ class GhlContactMessage(models.Model):
                     # recording_fetched will be computed automatically based on recording_data
                 })
 
-                _logger.info(f"Recording data saved to database for message {self.id}")
 
                 # Verify the data was saved correctly
                 saved_record = self.env['ghl.contact.message'].browse(self.id)
-                _logger.info(
-                    f"Saved recording_data length: {len(saved_record.recording_data) if saved_record.recording_data else 0}")
-                _logger.info(f"Saved recording_size: {saved_record.recording_size}")
-                _logger.info(f"Saved recording_fetched: {saved_record.recording_fetched}")
 
                 return {
                     'success': True,
@@ -853,8 +825,6 @@ class GhlContactMessage(models.Model):
                     'call_status': 'completed'  # Default status
                 })
                 self.write({'meta_id': meta_record.id})
-
-            _logger.info(f"Updated call duration for message {self.id}: {call_duration} seconds")
             return True
 
         return False
@@ -872,7 +842,6 @@ class GhlContactMessage(models.Model):
         }
         try:
             resp = requests.get(url, headers=headers)
-            _logger.info(f"[GhlContactMessage] fetch_message_single response: {resp.status_code} {resp.text}")
             if resp.status_code != 200:
                 _logger.error(f"Failed to fetch message: {resp.text}")
                 return None
@@ -985,12 +954,10 @@ class GhlContactMessage(models.Model):
                 continue
                 
             if not record.transcript_ids:
-                _logger.info(f"Message {record.id} has no transcript. Attempting to fetch transcript first.")
                 
                 # Call the existing fetch_transcript method
                 try:
                     record.fetch_transcript()
-                    _logger.info(f"Successfully called fetch_transcript for message {record.id}")
                 except Exception as fetch_error:
                     _logger.error(f"Error calling fetch_transcript for message {record.id}: {str(fetch_error)}")
                     raise Exception(f"Failed to fetch transcript: {str(fetch_error)}")
@@ -1109,7 +1076,6 @@ Return ONLY the JSON object, no markdown formatting or code blocks."""
                     'Content-Type': 'application/json'
                 }
                 
-                _logger.info(f"Making OpenAI API call for message {record.id} with {len(transcript_text)} characters of transcript")
                 
                 payload = {
                     'model': 'gpt-4o',
@@ -1143,11 +1109,9 @@ Return ONLY the JSON object, no markdown formatting or code blocks."""
                         json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', ai_response, re.DOTALL)
                         if json_match:
                             json_content = json_match.group(1)
-                            _logger.info(f"Extracted JSON from markdown code block for message {record.id}")
                         else:
                             # Try to parse as direct JSON
                             json_content = ai_response.strip()
-                            _logger.info(f"Attempting to parse direct JSON for message {record.id}")
                         
                         # Clean up any potential whitespace or newlines
                         json_content = json_content.strip()
@@ -1178,9 +1142,6 @@ Return ONLY the JSON object, no markdown formatting or code blocks."""
                         
                         # Update the record
                         record.write(update_vals)
-                        
-                        _logger.info(f"Successfully generated comprehensive AI analysis for message {record.id}")
-                        _logger.info(f"AI Analysis - Overall Score: {analysis.get('overall_score')}, Call Intent: {analysis.get('call_intent')}")
                         
                     except json.JSONDecodeError as e:
                         _logger.error(f"Failed to parse AI response as JSON: {e}")
@@ -1325,7 +1286,6 @@ def _update_message_with_retry(env, message, update_data, max_retries=3):
                 # Commit the individual transaction
                 new_cr.commit()
                 
-                # _logger.info(f"Successfully updated message {message.id} on attempt {attempt + 1}")  # Reduced logging for production
                 return True
             
         except Exception as e:

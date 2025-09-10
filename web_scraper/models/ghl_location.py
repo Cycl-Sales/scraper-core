@@ -59,7 +59,6 @@ class GHLLocation(models.Model):
             }
             try:
                 resp = requests.get(url, headers=headers)
-                _logger.info(f"GHL contacts response for location {rec.location_id}: {resp.status_code} {resp.text}")
             except Exception as e:
                 _logger.error(f"Error calling contacts API for location {rec.location_id}: {e}")
 
@@ -87,8 +86,7 @@ class GHLLocation(models.Model):
         # Check if token is expired
         current_time = Datetime.now()
         token_expiry = agency_token.token_expiry
-        if token_expiry < current_time:
-            _logger.info("GHL agency token has expired, attempting to refresh...")
+        if token_expiry < current_time: 
             refresh_url = "https://services.leadconnectorhq.com/oauth/token"
             refresh_payload = {
                 "client_id": agency_token.company_id,
@@ -108,7 +106,6 @@ class GHLLocation(models.Model):
                     'refresh_token': token_data.get('refresh_token', agency_token.refresh_token),
                     'token_expiry': Datetime.now() + timedelta(seconds=token_data.get('expires_in', 3600))
                 })
-                _logger.info("Successfully refreshed GHL agency token.")
             except Exception as e:
                 _logger.error(f"Failed to refresh GHL agency token: {e}")
                 return
@@ -119,10 +116,8 @@ class GHLLocation(models.Model):
             'Version': '2021-07-28',
             'Authorization': f'Bearer {agency_token.access_token}',
         }
-        _logger.info(f"Requesting {url} with headers: {headers}")
         try:
             resp = requests.get(url, headers=headers, timeout=10)
-            _logger.info(f"Response status: {resp.status_code}, body: {resp.text}")
             resp.raise_for_status()
             data = resp.json()
             for loc in data.get('locations', []):
@@ -132,6 +127,5 @@ class GHLLocation(models.Model):
                     rec = self.sudo().search([('location_id', '=', location_id)], limit=1)
                     if rec:
                         rec.name = name
-                        _logger.info(f"Updated GHL Location {rec.id} name to {name}")
         except Exception as e:
             _logger.error(f"Error syncing installed locations: {e}") 

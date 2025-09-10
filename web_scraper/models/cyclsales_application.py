@@ -252,7 +252,6 @@ class CyclSalesApplication(models.Model):
             'Authorization': f'Bearer {self.access_token}',
         }
         resp = requests.get(url, headers=headers)
-        _logger.info(f"[CyclSalesApplication] Fetch installed locations response: {resp.status_code} {resp.text}")
         if resp.status_code != 200:
             raise ValidationError(_(f"Failed to fetch installed locations: {resp.text}"))
         data = resp.json()

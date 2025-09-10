@@ -117,7 +117,6 @@ class GHLLocationUser(models.Model):
             }
 
             token_resp = requests.post(token_url, headers=headers, data=data)
-            _logger.info(f"Location token response: {token_resp.status_code} {token_resp.text}")
             if token_resp.status_code not in (200, 201):
                 _logger.error(f"Failed to get location token: {token_resp.text}")
                 return {
@@ -142,11 +141,9 @@ class GHLLocationUser(models.Model):
                 'Version': '2021-07-28',
             }
             user_resp = requests.get(user_url, headers=user_headers)
-            _logger.info(f"User API response: {user_resp.status_code} {user_resp.text}")
 
             if user_resp.status_code == 200:
                 user_data = user_resp.json()
-                _logger.info(f"Fetched user data: {user_data}")
 
                 # Step 3: Process and create/update user record
                 try:
@@ -280,11 +277,9 @@ class GHLLocationUser(models.Model):
                     if existing_user:
                         existing_user.write(user_vals)
                         operation = 'updated'
-                        _logger.info(f"Updated user record for external_id: {external_id}")
                     else:
                         self.env['ghl.location.user'].sudo().create(user_vals)
                         operation = 'created'
-                        _logger.info(f"Created user record for external_id: {external_id}")
 
                     return {
                         'success': True,

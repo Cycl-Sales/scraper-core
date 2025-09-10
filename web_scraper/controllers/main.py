@@ -285,8 +285,6 @@ class ZillowPropertyController(http.Controller):
             address = kwargs.get('address', '').strip()
             location = kwargs.get('location', '').strip()
 
-            # Log all incoming parameters
-            logger.info(f"[Zillow Search] All incoming parameters: {json.dumps(kwargs)}")
 
             if not location_id:
                 logger.error("[Zillow Search] locationId is required")
@@ -317,9 +315,7 @@ class ZillowPropertyController(http.Controller):
             elif listing_type == 'sold' or home_status == 'SOLD':
                 status = 'sold'
             else:
-                status = 'forSale'
-
-            logger.info(f"[Zillow Search] Using status: {status}")
+                status = 'forSale'  
 
             all_properties = []
             seen_zpids = set()
@@ -338,14 +334,12 @@ class ZillowPropertyController(http.Controller):
                     rapidapi_params['page'] = kwargs['page']
                 if kwargs.get('page_size'):
                     rapidapi_params['page_size'] = kwargs['page_size']
-                logger.info(f"[Zillow Search] Calling /search for zipcode {zipcode} with params: {rapidapi_params}")
                 for attempt in range(3):  # Try up to 3 times
                     try:
                         response = requests.get(f'https://{api_host}/search', headers=headers, params=rapidapi_params)
                         response.raise_for_status()
                         data = response.json()
                         properties_data = data.get('results', []) if isinstance(data, dict) else []
-                        logger.info(f"[Zillow Search] Found {len(properties_data)} properties for zipcode {zipcode}")
                         # Deduplicate by zpid
                         for prop in properties_data:
                             zpid = prop.get('zpid')
@@ -358,14 +352,9 @@ class ZillowPropertyController(http.Controller):
                             f"[Zillow Search] Error fetching properties for zipcode {zipcode} (attempt {attempt + 1}): {str(e)}",
                             exc_info=True)
                         if attempt < 2:
-                            logger.info(f"[Zillow Search] Waiting 5 seconds before retrying zipcode {zipcode}")
                             time.sleep(5)  # Wait longer if rate limited
-                        else:
-                            logger.info(f"[Zillow Search] Giving up on zipcode {zipcode} after 3 attempts.")
                     # No need to continue if successful
                 time.sleep(1)  # Add a 1-second delay between requests
-
-            logger.info(f"[Zillow Search] Total unique properties found: {len(all_properties)}")
 
             # Create/update properties
             property_ids = self._create_zillow_properties(all_properties, allowed_zipcodes)
@@ -515,13 +504,10 @@ class ZillowPropertyController(http.Controller):
         else:
             base_path = '/homes/for_rent/'
 
-        logger.info(f"[Zillow URL Builder] Using base path: {base_path}")
-
         base_url = f'https://www.zillow.com{base_path}'
         sqs_json = json.dumps(searchQueryState, separators=(',', ':'))
         params = {'searchQueryState': sqs_json}
         final_url = base_url + '?' + urllib.parse.urlencode(params)
-        logger.info(f"[Zillow URL Builder] Final URL: {final_url}")
         return final_url
 
     def _get_rapidapi_keys(self):
@@ -557,16 +543,12 @@ class ZillowPropertyController(http.Controller):
             if not zipcode and allowed_zipcodes:
                 zipcode = allowed_zipcodes[0]
             if zipcode not in allowed_zipcodes:
-                logger.info(
-                    f"Skipping property {property_data.get('zpid')} because zipcode {zipcode} not in allowed_zipcodes {allowed_zipcodes}")
                 continue
             zpid = property_data.get('zpid')
             if not zpid:
-                logger.info(f"Skipping property with missing zpid: {property_data}")
                 continue
             existing_property = request.env['zillow.property'].sudo().search([('zpid', '=', zpid)], limit=1)
             if not existing_property:
-                logger.info(f"Creating property with zpid {zpid}")
                 vals = {
                     'zpid': zpid,
                     'street_address': address_data.get('streetAddress'),
@@ -583,7 +565,6 @@ class ZillowPropertyController(http.Controller):
                 created = request.env['zillow.property'].sudo().create(vals)
                 created_properties.append(created.id)
             else:
-                logger.info(f"Property with zpid {zpid} already exists, skipping creation")
                 created_properties.append(existing_property.id)
         return created_properties
 

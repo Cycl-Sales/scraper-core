@@ -120,13 +120,9 @@ class GhlContactOpportunity(models.Model):
         """
         from .ghl_api_utils import fetch_opportunities_with_pagination
         try:
-            _logger.info(
-                f"Fetching GHL opportunities for location {location_id} with pagination (max_pages: {max_pages})")
             result = fetch_opportunities_with_pagination(access_token, location_id, max_pages)
 
             if result['success']:
-                _logger.info(
-                    f"Successfully fetched {result['total_items']} opportunities from {result['total_pages']} pages")
                 return {
                     'success': True,
                     'opportunities': result['items'],
@@ -162,7 +158,6 @@ class GhlContactOpportunity(models.Model):
             dict: Result with success status and sync details
         """
         try:
-            _logger.info(f"Starting opportunity sync for location {location_id}")
 
             # Validate company_id is provided
             if not company_id:
@@ -174,7 +169,6 @@ class GhlContactOpportunity(models.Model):
                     'errors': ['company_id is required']
                 }
 
-            _logger.info(f"Using company_id: {company_id}")
 
             # Step 1: Get location token using agency token
             location_token_result = self._get_location_token(app_access_token, location_id, company_id)
@@ -230,7 +224,6 @@ class GhlContactOpportunity(models.Model):
             dict: Result with success status and sync details
         """
         try:
-            _logger.info(f"Starting opportunity sync for contact {contact_external_id} in location {location_id}")
             if not company_id:
                 return {
                     'success': False,
@@ -239,7 +232,6 @@ class GhlContactOpportunity(models.Model):
                     'updated': 0,
                     'errors': ['company_id is required']
                 }
-            _logger.info(f"Using company_id: {company_id}")
             # Step 1: Get location token using agency token
             location_token_result = self._get_location_token(app_access_token, location_id, company_id)
             if not location_token_result['success']:
@@ -286,7 +278,6 @@ class GhlContactOpportunity(models.Model):
 
             # Guard: If no opportunities, return early
             if not opportunities_data:
-                _logger.info("No opportunities to process for this contact/location.")
                 return {
                     'success': True,
                     'message': 'No opportunities to process',
@@ -356,7 +347,6 @@ class GhlContactOpportunity(models.Model):
                                     'followers') else '',
                             })
                             updated_count += 1
-                            _logger.info(f"Updated opportunity {ghl_id}")
                         except Exception as update_error:
                             error_msg = f"Error updating opportunity {ghl_id}: {update_error}"
                             errors.append(error_msg)
@@ -424,7 +414,6 @@ class GhlContactOpportunity(models.Model):
                     try:
                         self.sudo().create(opportunity_values)
                         created_count += 1
-                        _logger.info(f"Created opportunity {ghl_id}")
                     except Exception as create_error:
                         # Check if duplicate error
                         if 'duplicate key value violates unique constraint' in str(
@@ -437,7 +426,6 @@ class GhlContactOpportunity(models.Model):
                                 if existing_opp:
                                     existing_opp.write(opportunity_values)
                                     updated_count += 1
-                                    _logger.info(f"Updated existing opportunity {ghl_id} after duplicate detection")
                                 else:
                                     _logger.error(f"Duplicate detected but opportunity {ghl_id} not found for update")
                             except Exception as update_error:
@@ -450,9 +438,7 @@ class GhlContactOpportunity(models.Model):
                 except Exception as e:
                     error_msg = f"Error processing opportunity {opportunity_data.get('id', 'unknown')}: {str(e)}"
                     errors.append(error_msg)
-                    _logger.error(error_msg)
-            _logger.info(
-                f"Opportunity sync completed for location {location_id}: {created_count} created, {updated_count} updated")
+                    _logger.error(error_msg)    
             return {
                 'success': True,
                 'message': f'Successfully synced opportunities: {created_count} created, {updated_count} updated',

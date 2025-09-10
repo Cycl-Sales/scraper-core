@@ -15,7 +15,6 @@ _logger = logging.getLogger(__name__)
 
 def get_all_custom_fields(location_access_token, location_id):
     """Fetches all custom fields for a given location."""
-    _logger.info(f"Fetching all custom fields from GHL for location {location_id}...")
     custom_fields_url = f"https://services.leadconnectorhq.com/locations/{location_id}/customFields"
     headers = {
         'Accept': 'application/json',
@@ -27,7 +26,6 @@ def get_all_custom_fields(location_access_token, location_id):
         resp.raise_for_status()
         data = resp.json()
         fields = data.get('customFields', [])
-        _logger.info(f"Successfully fetched {len(fields)} custom fields.")
 
         field_dict = {}
         for field in fields:
@@ -98,7 +96,6 @@ class ZillowPropertyController(http.Controller):
                     elif isinstance(agent, int):
                         agent_id = agent
                 # if prop.get('id') == 2:
-                _logger.info(f"[DEBUG] Property detail record id=2: {prop.get('id')}")
                 if agent_id:
                     agent_rec = request.env['zillow.property.listing.agent'].sudo().browse(agent_id)
                     if agent_rec.exists():
@@ -127,9 +124,6 @@ class ZillowPropertyController(http.Controller):
                             'write_review_url': agent_rec.write_review_url or '',
                             'is_zpro': agent_rec.is_zpro,
                         }
-                        if prop.get('id') == 2:
-                            _logger.info(
-                                f"[DEBUG] Attached agent info for property id=2: {json.dumps(prop['listingAgent'], default=str)}")
                     else:
                         prop['listingAgent'] = None
                 else:
@@ -166,18 +160,13 @@ class ZillowPropertyController(http.Controller):
         if request.httprequest.method == 'OPTIONS':
             return http.Response(headers=get_cors_headers(request))
         try:
-            _logger.info("=== Starting send_to_cyclsales process ===")
-
             # Get the raw request data
             raw_data = request.httprequest.get_data(as_text=True)
-            _logger.info(f"[REQUEST] Raw request data: {raw_data}")
 
             # Parse the JSON data
             data = json.loads(raw_data)
-            _logger.info(f"[REQUEST] Parsed request data: {data}")
 
             property_ids = data.get('property_ids', [])
-            _logger.info(f"[REQUEST] Received property_ids: {property_ids}")
 
             if not property_ids:
                 _logger.warning("[VALIDATION] No property IDs provided")
@@ -205,7 +194,7 @@ class ZillowPropertyController(http.Controller):
             # Find the GHL location record
             ghl_location = request.env['ghl.location'].sudo().search([('location_id', '=', location_id)], limit=1)
             if not ghl_location:
-                _logger.error(f"[CONFIG] No GHL location found for ID: {location_id}")
+                _logger.error(f"No GHL location found for ID: {location_id}")
                 return http.Response(
                     json.dumps({
                         'success': False,
@@ -217,9 +206,7 @@ class ZillowPropertyController(http.Controller):
                 )
 
             # Fetch properties from zillow.property model
-            _logger.info(f"[FETCH] Attempting to fetch properties with IDs: {property_ids}")
             properties = request.env['zillow.property'].sudo().browse(property_ids)
-            _logger.info(f"[FETCH] Found {len(properties)} properties")
 
             # Get API configuration from system parameters
             ICP = request.env['ir.config_parameter'].sudo()
@@ -227,7 +214,7 @@ class ZillowPropertyController(http.Controller):
             # Get the GHL agency token
             agency_token = request.env['ghl.agency.token'].sudo().search([], limit=1)
             if not agency_token:
-                _logger.error("[CONFIG] No GHL agency token found")
+                _logger.error("No GHL agency token found")
                 return http.Response(
                     json.dumps({
                         'success': False,
@@ -241,10 +228,9 @@ class ZillowPropertyController(http.Controller):
             # Check if token is expired
             current_time = Datetime.now()
             token_expiry = agency_token.token_expiry
-            _logger.info(f"[TOKEN] Current time: {current_time}, Token expiry: {token_expiry}")
 
             if token_expiry < current_time:
-                _logger.error("[CONFIG] GHL agency token has expired")
+                _logger.error("GHL agency token has expired")
                 # Try to refresh the token
                 try:
                     refresh_url = "https://services.leadconnectorhq.com/oauth/token"
@@ -257,7 +243,6 @@ class ZillowPropertyController(http.Controller):
                         'Content-Type': 'application/json'
                     }
 
-                    _logger.info("[TOKEN] Attempting to refresh token...")
                     refresh_response = requests.post(refresh_url, json=refresh_payload, headers=refresh_headers)
 
                     if refresh_response.status_code == 200:
@@ -267,7 +252,6 @@ class ZillowPropertyController(http.Controller):
                             'refresh_token': refresh_data['refresh_token'],
                             'token_expiry': Datetime.now() + timedelta(seconds=refresh_data['expires_in'])
                         })
-                        _logger.info("[TOKEN] Successfully refreshed token")
                     else:
                         _logger.error(f"[TOKEN] Failed to refresh token: {refresh_response.text}")
                         return http.Response(
@@ -293,9 +277,6 @@ class ZillowPropertyController(http.Controller):
 
             agency_access_token = agency_token.access_token
             company_id = agency_token.company_id
-            _logger.info(
-                f"[TOKEN] Using agency token: {agency_access_token[:10]}...{agency_access_token[-10:] if len(agency_access_token) > 20 else ''}")
-            _logger.info(f"[CONFIG] Using GHL agency token for location ID: {location_id}")
 
             # Step 1: Get location access token
             location_token_url = "https://services.leadconnectorhq.com/oauth/locationToken"
@@ -312,8 +293,7 @@ class ZillowPropertyController(http.Controller):
             try:
                 location_token_resp = requests.post(location_token_url, headers=location_token_headers,
                                                     data=location_token_data)
-                _logger.info(
-                    f"[TOKEN] Location token response: {location_token_resp.status_code} {location_token_resp.text}")
+
                 if location_token_resp.status_code not in [200, 201]:
                     return http.Response(
                         json.dumps({
@@ -336,7 +316,7 @@ class ZillowPropertyController(http.Controller):
                         headers=get_cors_headers(request)
                     )
             except Exception as e:
-                _logger.error(f"[TOKEN] Error getting location access token: {str(e)}")
+                _logger.error(f"Error getting location access token: {str(e)}")
                 return http.Response(
                     json.dumps({
                         'success': False,
@@ -352,11 +332,10 @@ class ZillowPropertyController(http.Controller):
 
             all_custom_fields = get_all_custom_fields(location_access_token, location_id)
             if not all_custom_fields:
-                _logger.warning("[CONFIG] Could not fetch custom fields. Proceeding without custom field updates.")
+                _logger.warning("Could not fetch custom fields. Proceeding without custom field updates.")
 
             results = []
             for prop in properties:
-                _logger.info(f"[PROCESS] Processing property ID: {prop.id}")
 
                 # Get property detail
                 detail = request.env['zillow.property.detail'].sudo().search([
@@ -364,7 +343,7 @@ class ZillowPropertyController(http.Controller):
                 ], limit=1)
 
                 if not detail:
-                    _logger.warning(f"[PROCESS] No detail found for property {prop.id}")
+                    _logger.warning(f"No detail found for property {prop.id}")
                     results.append({
                         'property_id': prop.id,
                         'status': 'error',
@@ -372,12 +351,8 @@ class ZillowPropertyController(http.Controller):
                     })
                     continue
 
-                _logger.info(f"[PROCESS] Found property detail ID: {detail.id}")
-
                 # Get agent info
                 agent = detail.listing_agent_id
-                _logger.info(
-                    f"[PROCESS] Agent info for property {prop.id}: {agent.display_name if agent else 'No agent'}")
                 agent_email = detail.agent_email or ''
                 agent_name = detail.agent_name or ''
                 # Prepare the payload according to the new API schema
@@ -400,10 +375,8 @@ class ZillowPropertyController(http.Controller):
                     "companyName": detail.broker_name or '',
                 }
 
-                _logger.info(f"[API] Preparing payload for property {prop.id}: {json.dumps(payload, default=str)}")
 
                 try:
-                    _logger.info(f"[API] Sending request to GHL API for property {prop.id}")
                     headers = {
                         'Accept': 'application/json',
                         'Authorization': f'Bearer {location_access_token.strip()}',
@@ -412,8 +385,6 @@ class ZillowPropertyController(http.Controller):
                     }
 
                     resp = requests.post(api_url, json=payload, headers=headers, timeout=10)
-                    _logger.info(
-                        f"[API] Response for property {prop.id}: Status={resp.status_code}, Body={resp.text}")
 
                     resp_data = {}
                     try:
@@ -446,7 +417,6 @@ class ZillowPropertyController(http.Controller):
                     if resp.status_code in [200, 201] and 'contact' in resp_data:
                         contact_id = resp_data['contact'].get('id')
                         if contact_id and all_custom_fields:
-                            _logger.info(f"[UPDATE] Preparing custom fields for contact {contact_id}")
 
                             field_mapping = {
                                 'property_type': convert_for_radio(detail.home_type),
@@ -477,28 +447,21 @@ class ZillowPropertyController(http.Controller):
                                 update_url = update_contact_url_template.format(contact_id)
                                 update_headers = headers.copy()
 
-                                _logger.info(
-                                    f"[UPDATE] Sending custom field update to {update_url} with payload: {json.dumps(custom_field_payload, default=str)}")
 
                                 update_resp = requests.put(update_url, json=custom_field_payload,
                                                            headers=update_headers, timeout=10)
 
                                 if update_resp.status_code == 200:
-                                    _logger.info(
-                                        f"[UPDATE] Successfully updated custom fields for contact {contact_id}")
+                                    pass    
                                 else:
                                     _logger.error(
                                         f"[UPDATE][ERROR] Failed to update custom fields for contact {contact_id}. Status: {update_resp.status_code}, Response: {update_resp.text}")
-                            else:
-                                _logger.info(f"[UPDATE] No custom fields to update for contact {contact_id}")
 
                     if resp.status_code in [200, 201]:
                         prop.write({
                             'sent_to_ghl_locations': [(4, ghl_location.id)],
                             'last_sent_to_cyclsales': Datetime.now()
                         })
-                        _logger.info(
-                            f"[UPDATE] Marked property {prop.id} as sent to GHL location {ghl_location.id}")
 
                     results.append({
                         'property_id': prop.id,
@@ -514,7 +477,6 @@ class ZillowPropertyController(http.Controller):
                         'response': str(e)
                     })
 
-            _logger.info(f"[COMPLETE] Processed {len(results)} properties")
             return http.Response(
                 json.dumps({
                     'success': True,

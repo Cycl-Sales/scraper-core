@@ -25,14 +25,10 @@ class ZillowPropertyCleanup(models.Model):
                 
                 if not detail:
                     properties_to_delete.append(property.id)
-                    _logger.info(f"Property {property.id} ({property.street_address}) will be deleted - no detail record found")
 
             # Delete the properties in batches to avoid memory issues
             if properties_to_delete:
-                self.env['zillow.property'].browse(properties_to_delete).unlink()
-                _logger.info(f"Successfully deleted {len(properties_to_delete)} properties without detail records")
-            else:
-                _logger.info("No properties found without detail records")
+                self.env['zillow.property'].browse(properties_to_delete).unlink() 
 
         except Exception as e:
             _logger.error(f"Error in cleanup_properties_without_details: {str(e)}")

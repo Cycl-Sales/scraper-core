@@ -133,13 +133,10 @@ class GhlContactConversation(models.Model):
         """
         from .ghl_api_utils import fetch_conversations_with_pagination
         try:
-            _logger.info(f"Fetching conversations for location {location_id} with pagination (max_pages: {max_pages})")
 
             result = fetch_conversations_with_pagination(location_token, location_id, max_pages)
 
             if result['success']:
-                _logger.info(
-                    f"Successfully fetched {result['total_items']} conversations from {result['total_pages']} pages")
                 return {
                     'success': True,
                     'conversations': result['items'],
@@ -183,8 +180,7 @@ class GhlContactConversation(models.Model):
         Returns:
             dict: Result with success status and sync details
         """
-        try:
-            _logger.info(f"Starting conversation sync for location {location_id}")
+        try:    
 
             # Validate company_id is provided
             if not company_id:
@@ -196,7 +192,6 @@ class GhlContactConversation(models.Model):
                     'errors': ['company_id is required']
                 }
 
-            _logger.info(f"Using company_id: {company_id}")
 
             # Step 1: Get location token using agency token
             location_token_result = self._get_location_token(app_access_token, location_id, company_id)
@@ -256,24 +251,15 @@ class GhlContactConversation(models.Model):
                 'locationId': location_id
             }
 
-            _logger.info(f"[Location Token] Getting location token for location {location_id}")
-            _logger.info(f"[Location Token] Company ID: {company_id}")
-            _logger.info(
-                f"[Location Token] App access token: {app_access_token[:20] if app_access_token else 'None'}...")
-            _logger.info(f"[Location Token] Request URL: {url}")
-            _logger.info(f"[Location Token] Request data: {data}")
 
             response = requests.post(url, headers=headers, data=data, timeout=30)
 
-            _logger.info(f"[Location Token] Response status: {response.status_code}")
-            _logger.info(f"[Location Token] Response text: {response.text[:200]}...")
 
             if response.status_code != 201:
                 _logger.error(f"Location token error response: {response.text[:200]}...")
 
             if response.status_code == 201:
                 token_data = response.json()
-                _logger.info(f"[Location Token] Success - token data: {token_data}")
                 return {
                     'success': True,
                     'access_token': token_data.get('access_token'),
@@ -317,7 +303,6 @@ class GhlContactConversation(models.Model):
                     'errors': errors
                 }
 
-            _logger.info(f"Processing {len(conversations_data)} conversations for location {location_id}")
 
             # Track statistics
             missing_contacts = 0
@@ -336,7 +321,6 @@ class GhlContactConversation(models.Model):
                     contact = self.env['ghl.location.contact'].search([('external_id', '=', contact_id)], limit=1)
                     if not contact:
                         missing_contacts += 1
-                        _logger.warning(f"Contact not found for contact_id: {contact_id} (conversation: {ghl_id})")
                         continue
 
                     processed_conversations += 1
@@ -363,20 +347,16 @@ class GhlContactConversation(models.Model):
                         # Update existing conversation
                         existing_conversation.write(conversation_values)
                         updated_count += 1
-                        _logger.info(f"Updated conversation {ghl_id}")
                     else:
                         # Create new conversation
                         self.create(conversation_values)
                         created_count += 1
-                        _logger.info(f"Created conversation {ghl_id}")
 
                 except Exception as e:
                     error_msg = f"Error processing conversation {conversation_data.get('id', 'unknown')}: {str(e)}"
                     errors.append(error_msg)
                     _logger.error(error_msg)
 
-            _logger.info(
-                f"Conversation sync completed for location {location_id}: {created_count} created, {updated_count} updated, {missing_contacts} missing contacts, {processed_conversations} processed")
 
             return {
                 'success': True,
@@ -462,13 +442,11 @@ class GhlContactConversation(models.Model):
                 'Version': '2021-07-28',
             }
 
-            _logger.info(f"Fetching conversations for contact {contact_id} at location {location_id}")
             response = requests.get(url, headers=headers)
 
             if response.status_code == 200:
                 data = response.json()
-                conversations = data.get('conversations', [])
-                _logger.info(f"Found {len(conversations)} conversations for contact {contact_id}")
+                conversations = data.get('conversations', [])   
 
                 # Find the installed location and contact records
                 installed_location = self.env['installed.location'].sudo().search([
@@ -534,11 +512,9 @@ class GhlContactConversation(models.Model):
                             existing_conv.write(conv_vals)
                             updated_count += 1
                             conversation_record = existing_conv
-                            _logger.info(f"Updated conversation {conv_id} for contact {contact_id}")
                         else:
                             conversation_record = self.sudo().create(conv_vals)
                             created_count += 1
-                            _logger.info(f"Created conversation {conv_id} for contact {contact_id}")
 
                         # Fetch messages for this conversation
                         message_result = self.env['ghl.contact.message'].sudo().fetch_messages_for_conversation(
@@ -560,8 +536,6 @@ class GhlContactConversation(models.Model):
                         _logger.error(f"Error processing conversation {conv_data.get('id', 'unknown')}: {e}")
                         continue
 
-                _logger.info(
-                    f"Conversation sync completed for contact {contact_id}: {created_count} created, {updated_count} updated")
                 return {
                     'success': True,
                     'message': f'Successfully synced {len(conversations)} conversations',
@@ -631,7 +605,6 @@ class GhlContactConversation(models.Model):
             
             # Use the contact's actual location ID
             contact_location_id = contact_record.location_id.location_id if contact_record.location_id else location_id
-            _logger.info(f"Using contact's location ID: {contact_location_id} for contact {contact_id} (passed location_id: {location_id})")
             
             # Fetch conversations using location token
             url = f"https://services.leadconnectorhq.com/conversations/search?locationId={location_id}&contactId={contact_id}&limit={limit}"
@@ -641,13 +614,11 @@ class GhlContactConversation(models.Model):
                 'Version': '2021-07-28',
             }
 
-            _logger.info(f"Fetching conversations for contact {contact_id} at location {contact_location_id}")
             response = requests.get(url, headers=headers)
 
             if response.status_code == 200:
                 data = response.json()
                 conversations = data.get('conversations', [])
-                _logger.info(f"Found {len(conversations)} conversations for contact {contact_id}")
 
                 # Find the installed location and contact records
                 installed_location = self.env['installed.location'].sudo().search([
@@ -713,11 +684,9 @@ class GhlContactConversation(models.Model):
                             existing_conv.write(conv_vals)
                             updated_count += 1
                             conversation_record = existing_conv
-                            _logger.info(f"Updated conversation {conv_id} for contact {contact_id}")
                         else:
                             conversation_record = self.sudo().create(conv_vals)
                             created_count += 1
-                            _logger.info(f"Created conversation {conv_id} for contact {contact_id}")
 
                         # Fetch messages for this conversation
                         message_result = self.env['ghl.contact.message'].sudo().fetch_messages_for_conversation(
@@ -739,8 +708,6 @@ class GhlContactConversation(models.Model):
                         _logger.error(f"Error processing conversation {conv_data.get('id', 'unknown')}: {e}")
                         continue
 
-                _logger.info(
-                    f"Conversation sync completed for contact {contact_id}: {created_count} created, {updated_count} updated")
                 return {
                     'success': True,
                     'message': f'Successfully synced {len(conversations)} conversations',
@@ -797,8 +764,7 @@ class GhlContactConversation(models.Model):
 
         try:
             # Step 1: Get location token using agency token
-            location_token_result = self._get_location_token(app.access_token, self.location_id.location_id, company_id)
-            _logger.info(f"Location token result type: {type(location_token_result)}, Result: {location_token_result}")
+            location_token_result = self._get_location_token(app.access_token, self.location_id.location_id, company_id)    
 
             if not isinstance(location_token_result, dict):
                 raise ValidationError(_('Location token result is not a dictionary: %s') % str(location_token_result))
@@ -808,10 +774,8 @@ class GhlContactConversation(models.Model):
                     _('Failed to get location token: %s') % location_token_result.get('error', 'Unknown error'))
 
             location_token = location_token_result.get('access_token')
-            _logger.info(f"Location token: {location_token[:20] if location_token else 'None'}...")
 
             # Step 2: Fetch messages using location token
-            _logger.info(f"About to call fetch_messages_for_conversation with conversation_id={self.ghl_id}")
             try:
                 result = self.env['ghl.contact.message'].sudo().fetch_messages_for_conversation(
                     conversation_id=self.ghl_id,
@@ -820,7 +784,6 @@ class GhlContactConversation(models.Model):
                     contact_id=self.contact_id.id,
                     limit=100
                 )
-                _logger.info(f"fetch_messages_for_conversation completed successfully")
             except Exception as e:
                 _logger.error(f"Exception in fetch_messages_for_conversation: {str(e)}")
                 import traceback
@@ -828,8 +791,6 @@ class GhlContactConversation(models.Model):
                 raise
 
             # Debug: Check what result contains
-            _logger.info(f"Result type: {type(result)}, Result: {result}")
-            _logger.info(f"About to check result.get('success')")
 
             if isinstance(result, dict) and result.get('success'):
                 message_count = result.get('total_messages', 0)
@@ -970,7 +931,6 @@ class GhlContactConversation(models.Model):
         }
         try:
             resp = requests.get(url, headers=headers)
-            _logger.info(f"[GHLContactConversation] fetch_conversation_single response: {resp.status_code} {resp.text}")
             if resp.status_code != 200:
                 _logger.error(f"Failed to fetch conversation: {resp.text}")
                 return None

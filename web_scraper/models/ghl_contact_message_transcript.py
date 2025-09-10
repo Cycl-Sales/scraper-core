@@ -142,7 +142,6 @@ class GhlContactMessageTranscript(models.Model):
                 _logger.error(f"Error creating transcript record: {str(e)}")
                 continue
 
-        _logger.info(f"Created {len(created_records)} transcript records for message {message_id}")
         return created_records
 
     def get_full_transcript_text(self):
@@ -155,7 +154,6 @@ class GhlContactMessageTranscript(models.Model):
             ('message_id', '=', self.message_id.id)
         ], order='sentence_index asc')
 
-        _logger.info(f"[get_full_transcript_text] Found {len(transcripts)} transcript records for message {self.message_id.id}")
         
         transcript_parts = []
         for i, t in enumerate(transcripts):
@@ -165,8 +163,6 @@ class GhlContactMessageTranscript(models.Model):
         full_text = ' '.join(transcript_parts)
         # Limit the logged text to 100 characters to avoid log flooding
         logged_text = full_text[:100] + "..." if len(full_text) > 100 else full_text
-        _logger.info(f"[get_full_transcript_text] Final combined text: '{logged_text}'")
-        _logger.info(f"[get_full_transcript_text] Total length: {len(full_text)} characters")
         
         return full_text
 
@@ -248,7 +244,6 @@ class GhlContactMessageTranscript(models.Model):
             
             # Check if token is expired and try to refresh it
             if app.token_status == 'expired' and app.refresh_token:
-                _logger.info(f"Token expired for application {app.name}, attempting to refresh...")
                 try:
                     app.action_refresh_token()
                     # Re-read the app to get the updated token
@@ -270,13 +265,6 @@ class GhlContactMessageTranscript(models.Model):
             location = message.location_id
             company_id = app.company_id
 
-            _logger.info(f"[Transcript Fetch] Message ID: {message.id}")
-            _logger.info(f"[Transcript Fetch] Message GHL ID: {message.ghl_id}")
-            _logger.info(f"[Transcript Fetch] Location record: {location}")
-            _logger.info(f"[Transcript Fetch] Location ID field: {location.location_id if location else 'None'}")
-            _logger.info(f"[Transcript Fetch] Company ID: {company_id}")
-            _logger.info(
-                f"[Transcript Fetch] App access token: {app.access_token[:20] if app.access_token else 'None'}...")
 
             # Use the installed.location.fetch_location_token method
             location_token = location.fetch_location_token(
@@ -284,7 +272,6 @@ class GhlContactMessageTranscript(models.Model):
                 company_id=company_id
             )
 
-            _logger.info(f"[Transcript Fetch] Location token: {location_token[:20] if location_token else 'None'}...")
 
             if not location_token:
                 _logger.error(f"Failed to get location token for location {location.location_id} using agency token from app {app.name}")
@@ -296,7 +283,6 @@ class GhlContactMessageTranscript(models.Model):
             # Build API URL
             base_url = "https://services.leadconnectorhq.com"
             url = f"{base_url}/conversations/locations/{location.location_id}/messages/{message.ghl_id}/transcription"
-            _logger.info(f"[Transcript Fetch] API URL: {url}")
 
             headers = {
                 'Accept': 'application/json',
@@ -304,10 +290,8 @@ class GhlContactMessageTranscript(models.Model):
                 'Version': '2021-04-15'
             }
 
-            _logger.info(f"[Transcript Fetch] Fetching transcript for message {message.ghl_id}")
 
             response = requests.get(url, headers=headers, timeout=30)
-            _logger.info(f"[Transcript Fetch] Response status: {response.status_code}") 
 
             if response.status_code == 200:
                 transcript_data = response.json()

@@ -139,13 +139,11 @@ class InstalledLocationController(http.Controller):
                                 config = env['res.config.settings'].sudo().search([], limit=1)
                                 if not config:
                                     config = env['res.config.settings'].sudo().create({})
-                                    _logger.info(
-                                        "Created new res.config.settings record for sync status tracking (failed phase, non-concurrency error).")
                                 config.write({
                                     'ghl_locations_sync_status': 'failed',
                                     'ghl_locations_sync_error': str(e)
                                 })
-                                _logger.info('Set sync status to failed on config id=%s', config.id)
+                                pass  # No action needed when sync status is set to failed
                         except Exception as update_error:
                             _logger.error('Error updating sync status to failed: %s', str(update_error))
                         break
@@ -252,7 +250,7 @@ class InstalledLocationController(http.Controller):
         
         # Call the fetch_installed_locations function from the model (synchronous)
         installed_location_model = request.env['installed.location'].sudo()
-        # _logger.info('Fetching installed locations for app_id: %s', app_id)  # Reduced logging for production
+
         result = installed_location_model.fetch_installed_locations(
             company_id=company_id,
             app_id=app_id,
@@ -793,7 +791,6 @@ class InstalledLocationController(http.Controller):
                             'ghl_contacts_sync_location_id': location_id
                         })
                         cr.commit()
-                        # _logger.info('Set contacts sync status to in_progress for location %s', location_id)  # Reduced logging for production
                         break
                 except Exception as e:
                     if "concurrent update" in str(e) or "serialize access" in str(e):
@@ -824,7 +821,6 @@ class InstalledLocationController(http.Controller):
                         _logger.error('Location not found in background sync: %s', location_id)
                         return
                     result = loc_record.fetch_location_contacts(company_id, location_id, access_token)
-                    # _logger.info('Background contact sync result: %s', result.get('success', False))  # Reduced logging for production
                     cr.commit()
                 # --- Task Sync ---
                 with registry.cursor() as cr:
@@ -832,7 +828,6 @@ class InstalledLocationController(http.Controller):
                     task_result = env['ghl.contact.task'].sync_all_contact_tasks_optimized(
                         access_token, location_id, company_id
                     )
-                    # _logger.info('Background optimized task sync result: %s', task_result.get('success', False))  # Reduced logging for production
                     cr.commit()
                 # --- Conversation Sync ---
                 with registry.cursor() as cr:
@@ -840,7 +835,6 @@ class InstalledLocationController(http.Controller):
                     # Per-contact conversation sync is handled elsewhere if needed
                     # If you want to keep the old logic, you can loop here
                     # For now, just log that this step is isolated
-                    # _logger.info('Background conversation sync step (isolated cursor)')  # Reduced logging for production
                     # Example: conv_result = ...
                     cr.commit()
                 # --- Opportunity Sync ---
@@ -848,8 +842,7 @@ class InstalledLocationController(http.Controller):
                     env = api.Environment(cr, SUPERUSER_ID, {})
                     opp_result = env['ghl.contact.opportunity'].sync_opportunities_for_location(
                         access_token, location_id, company_id, max_pages=None
-                    )
-                    # _logger.info('Background opportunity sync result: %s', opp_result.get('success', False))  # Reduced logging for production
+                    )   
                     cr.commit()
                 # Set sync status to completed
                 with registry.cursor() as cr:
@@ -1121,7 +1114,6 @@ class InstalledLocationController(http.Controller):
             )
 
         # ALWAYS SYNC FRESH DATA FROM GHL API BEFORE RETURNING
-        # _logger.info('Syncing fresh data from GHL API for location: %s', location_id)  # Reduced logging for production
         app_id = self._get_app_id_from_request(kwargs)
         company_id = 'Ipg8nKDPLYKsbtodR6LN'
         app = request.env['cyclsales.application'].sudo().search([
@@ -1171,21 +1163,16 @@ class InstalledLocationController(http.Controller):
                         headers=get_cors_headers(request)
                     )
                 # SYNC CONTACTS (fetches from GHL and updates Odoo DB)
-                # _logger.info('Syncing contacts for location: %s', location_id)  # Reduced logging for production
                 contact_sync_result = loc.fetch_location_contacts(company_id, location_id, access_token)
                 sync_summary['contacts_synced'] = contact_sync_result.get('success', False)
-                # _logger.info('Contact sync result: %s', contact_sync_result.get('success', False))  # Reduced logging for production
 
                 # SYNC TASKS FOR ALL CONTACTS
-                # _logger.info('Syncing tasks for location: %s', location_id)  # Reduced logging for production
                 task_sync_result = request.env['ghl.contact.task'].sudo().sync_all_contact_tasks(access_token,
                                                                                                  location_id,
                                                                                                  company_id)
                 sync_summary['tasks_synced'] = task_sync_result.get('success', False)
-                # _logger.info('Task sync result: %s', task_sync_result.get('success', False))  # Reduced logging for production
 
                 # SYNC CONVERSATIONS FOR ALL CONTACTS
-                # _logger.info('Syncing conversations for location: %s', location_id)  # Reduced logging for production
                 contacts = request.env['ghl.location.contact'].sudo().search([
                     ('location_id.location_id', '=', location_id)
                 ])
@@ -1208,16 +1195,13 @@ class InstalledLocationController(http.Controller):
 
                 sync_summary['conversations_synced'] = total_contacts_synced > 0
 
-                # SYNC OPPORTUNITIES FOR THIS LOCATION
-                # _logger.info(f"Syncing opportunities for location: {location_id}")  # Reduced logging for production
+                # SYNC OPPORTUNITIES FOR THIS LOCATION  
                 opportunity_sync_result = request.env['ghl.contact.opportunity'].sudo().sync_opportunities_for_location(
                     access_token, location_id, company_id
                 )
                 sync_summary['opportunities_synced'] = opportunity_sync_result.get('success', False)
-                # _logger.info(f"Opportunity sync result: {opportunity_sync_result}")  # Reduced logging for production
 
                 # SYNC MESSAGES FOR ALL CONVERSATIONS TO GET FRESH TOUCH DATA
-                # _logger.info(f"Syncing messages for all conversations to get fresh touch data")  # Reduced logging for production
                 conversations = request.env['ghl.contact.conversation'].sudo().search([
                     ('contact_id.location_id.location_id', '=', location_id)
                 ])
@@ -1246,10 +1230,8 @@ class InstalledLocationController(http.Controller):
                 sync_summary['messages_fetched'] = total_messages_fetched
 
                 # UPDATE TOUCH INFORMATION FOR ALL CONTACTS
-                # _logger.info(f"Updating touch information for all contacts")  # Reduced logging for production
                 touch_update_result = request.env['ghl.location.contact'].sudo().update_all_contacts_touch_information()
                 sync_summary['touch_info_updated'] = touch_update_result.get('contacts_updated', 0)
-                # _logger.info(f"Touch update result: {touch_update_result}")  # Reduced logging for production
 
         # Fetch fresh contacts from our database after all syncs
         contacts = request.env['ghl.location.contact'].sudo().search([
@@ -1257,9 +1239,7 @@ class InstalledLocationController(http.Controller):
         ])
 
         # Log the number of contacts and their external_ids for debugging
-        # _logger.info(f"[location-contacts] Found {len(contacts)} contacts for location_id={location_id}")  # Reduced logging for production
         if contacts:
-            # _logger.info(f"[location-contacts] Contact external_ids: {[c.external_id for c in contacts]}")  # Reduced logging for production
             pass  # No action needed when contacts exist
 
         contact_data = []
@@ -1295,13 +1275,11 @@ class InstalledLocationController(http.Controller):
 
             assigned_user_name = contact.assigned_to or ''
             if contact.assigned_to:
-                # _logger.info(f"Looking up assigned user with external_id: {contact.assigned_to}")  # Reduced logging for production
                 assigned_user = request.env['ghl.location.user'].sudo().search([
                     ('external_id', '=', contact.assigned_to)
                 ], limit=1)
                 if assigned_user:
-                    assigned_user_name = assigned_user.name or f"{assigned_user.first_name or ''} {assigned_user.last_name or ''}".strip()
-                    # _logger.info(f"Found assigned user: {assigned_user_name}")  # Reduced logging for production
+                    assigned_user_name = assigned_user.name or f"{assigned_user.first_name or ''} {assigned_user.last_name or ''}".strip()  
                 else:
                     _logger.warning(f"No user found with external_id: {contact.assigned_to}")
 
@@ -1473,7 +1451,7 @@ class InstalledLocationController(http.Controller):
                 ('app_id', '=', app_id),
                 ('is_active', '=', True)
             ], limit=1)
-            # _logger.info(f"App found: {app}")  # Reduced logging for production
+
             if not app or not app.access_token:
                 _logger.error("No valid access token found for this app_id.")
                 return Response(
@@ -1483,7 +1461,6 @@ class InstalledLocationController(http.Controller):
                     headers=get_cors_headers(request)
                 )
             loc = request.env['installed.location'].sudo().search([('location_id', '=', location_id)], limit=1)
-            # _logger.info(f"Installed location found: {loc}")  # Reduced logging for production
             if not loc:
                 _logger.error("Location not found in DB")
                 return Response(
@@ -1523,20 +1500,14 @@ class InstalledLocationController(http.Controller):
                 )
 
             # If user filtering is applied, get count from GHL API with filter
-            if selected_user and selected_user.strip():
-                _logger.info(f"User filter applied: {selected_user}, getting filtered count from GHL API")
-
-                # Get filtered count directly from GHL API
-                _logger.info(
-                    f"Calling _get_filtered_contacts_count_from_ghl with: location_id={location_id}, selected_user={selected_user}")
+            if selected_user and selected_user.strip(): 
                 filtered_count_result = self._get_filtered_contacts_count_from_ghl(
                     location_id, selected_user, app.access_token, 'Ipg8nKDPLYKsbtodR6LN'
                 )
-                _logger.info(f"_get_filtered_contacts_count_from_ghl returned: {filtered_count_result}")
+
 
                 if filtered_count_result.get('success'):
                     filtered_count = filtered_count_result.get('total_contacts', 0)
-                    _logger.info(f"GHL API filtered contacts count: {filtered_count}")
 
                     return Response(
                         json.dumps({
@@ -1575,7 +1546,7 @@ class InstalledLocationController(http.Controller):
             else:
                 # No user filter, get total count from GHL API
                 result = loc.fetch_contacts_count(app.access_token, 'Ipg8nKDPLYKsbtodR6LN')
-                _logger.info(f"fetch_contacts_count result: {result}")
+
                 if result.get('success'):
                     return Response(
                         json.dumps({
@@ -1638,7 +1609,7 @@ class InstalledLocationController(http.Controller):
                 ('app_id', '=', app_id),
                 ('is_active', '=', True)
             ], limit=1)
-            # _logger.info(f"App found: {app}")  # Reduced logging for production
+
             if not app or not app.access_token:
                 _logger.error("No valid access token found for this app_id.")
                 return Response(
@@ -1647,8 +1618,7 @@ class InstalledLocationController(http.Controller):
                     status=400,
                     headers=get_cors_headers(request)
                 )
-            loc = request.env['installed.location'].sudo().search([('location_id', '=', location_id)], limit=1)
-            # _logger.info(f"Installed location found: {loc}")  # Reduced logging for production
+            loc = request.env['installed.location'].sudo().search([('location_id', '=', location_id)], limit=1) # noqa: F841
             if not loc:
                 _logger.error("Location not found in DB")
                 return Response(
@@ -1688,20 +1658,19 @@ class InstalledLocationController(http.Controller):
                 )
 
             # ALWAYS FETCH FRESH DATA FROM GHL API
-            _logger.info(f"Fetching fresh contact data from GHL API for location: {location_id}")
+
             result = loc.fetch_location_contacts_lazy(company_id, location_id, app.access_token, page=page, limit=limit)
-            # _logger.info(f"fetch_location_contacts_lazy result: {result}")  # Reduced logging for production
 
             if result.get('success'):
                 # SYNC TASKS FOR ALL CONTACTS IN THIS LOCATION
-                _logger.info(f"Syncing tasks for location: {location_id}")
+
                 task_sync_result = request.env['ghl.contact.task'].sudo().sync_all_contact_tasks(
                     app.access_token, location_id, company_id
                 )
-                _logger.info(f"Task sync result: {task_sync_result}")
+
 
                 # SYNC CONVERSATIONS FOR ALL CONTACTS IN THIS LOCATION
-                _logger.info('Syncing conversations for location: %s', location_id)
+
                 contacts = request.env['ghl.location.contact'].sudo().search([
                     ('location_id.location_id', '=', location_id)
                 ])
@@ -1723,14 +1692,14 @@ class InstalledLocationController(http.Controller):
                         _logger.error(f"Error syncing conversations for contact {contact.external_id}: {str(e)}")
 
                 # SYNC OPPORTUNITIES FOR THIS LOCATION
-                # _logger.info(f"Syncing opportunities for location: {location_id}")  # Reduced logging for production
+
                 opportunity_sync_result = request.env['ghl.contact.opportunity'].sudo().sync_opportunities_for_location(
                     app.access_token, location_id, company_id
                 )
-                # _logger.info(f"Opportunity sync result: {opportunity_sync_result}")  # Reduced logging for production
+
 
                 # SYNC MESSAGES FOR ALL CONVERSATIONS TO GET FRESH TOUCH DATA
-                # _logger.info(f"Syncing messages for all conversations to get fresh touch data")  # Reduced logging for production
+
                 conversations = request.env['ghl.contact.conversation'].sudo().search([
                     ('contact_id.location_id.location_id', '=', location_id)
                 ])
@@ -1757,9 +1726,9 @@ class InstalledLocationController(http.Controller):
                         _logger.error(f"Error fetching messages for conversation {conversation.ghl_id}: {str(e)}")
 
                 # UPDATE TOUCH INFORMATION FOR ALL CONTACTS
-                # _logger.info(f"Updating touch information for all contacts")  # Reduced logging for production
+
                 touch_update_result = request.env['ghl.location.contact'].sudo().update_all_contacts_touch_information()
-                # _logger.info(f"Touch update result: {touch_update_result}")  # Reduced logging for production
+
 
                 # Fetch fresh contact data from database after all syncs
                 contacts = request.env['ghl.location.contact'].sudo().search([
@@ -1953,7 +1922,7 @@ class InstalledLocationController(http.Controller):
                         app.access_token, contact.location_id.location_id, contact.external_id
                     )
                     if conv_result.get('success'):
-                        _logger.info(f"Successfully synced conversations for contact {contact.id}")
+                        pass
                     else:
                         _logger.warning(
                             f"Failed to sync conversations for contact {contact.id}: {conv_result.get('error')}")
@@ -1973,7 +1942,7 @@ class InstalledLocationController(http.Controller):
                         contact.id, app.access_token, contact.location_id.location_id, company_id
                     )
                     if task_result.get('success'):
-                        _logger.info(f"Successfully synced tasks for contact {contact.id}")
+                        pass
                     else:
                         _logger.warning(f"Failed to sync tasks for contact {contact.id}: {task_result.get('error')}")
                 except Exception as task_error:
@@ -1993,7 +1962,7 @@ class InstalledLocationController(http.Controller):
                     'last_message': last_message_data
                 })
 
-                _logger.info(f"Updated touch information for contact {contact.id}: {touch_summary}")
+
             except Exception as touch_error:
                 _logger.warning(f"Exception updating touch information for contact {contact.id}: {str(touch_error)}")
 
@@ -2307,7 +2276,6 @@ class InstalledLocationController(http.Controller):
         """
         Fetch messages for a specific contact's conversations
         """
-        _logger.info(f"fetch_messages_for_contact called for contact_id: {contact_id}")
         if request.httprequest.method == 'OPTIONS':
             return Response(status=200, headers=get_cors_headers(request))
 
@@ -2379,8 +2347,7 @@ class InstalledLocationController(http.Controller):
                     ])
 
                     if existing_messages:
-                        _logger.info(
-                            f"Conversation {conversation.ghl_id} already has {len(existing_messages)} messages, skipping")
+                        
                         continue
 
                     # Fetch messages for this conversation
@@ -2395,7 +2362,7 @@ class InstalledLocationController(http.Controller):
                     if message_result.get('success'):
                         messages_fetched = message_result.get('total_messages', 0)
                         total_messages_fetched += messages_fetched
-                        _logger.info(f"Fetched {messages_fetched} messages for conversation {conversation.ghl_id}")
+
                     else:
                         _logger.error(
                             f"Failed to fetch messages for conversation {conversation.ghl_id}: {message_result.get('error')}")
@@ -2441,7 +2408,6 @@ class InstalledLocationController(http.Controller):
         """
         Manually update touch information for a specific contact
         """
-        _logger.info(f"update_touch_info called for contact_id: {contact_id}")
         if request.httprequest.method == 'OPTIONS':
             return Response(status=200, headers=get_cors_headers(request))
 
@@ -2460,15 +2426,12 @@ class InstalledLocationController(http.Controller):
                 ('contact_id', '=', contact_id)
             ])
 
-            _logger.info(f"Found {len(messages)} messages for contact {contact_id}")
 
             # Count messages by type
             message_counts = {}
             for message in messages:
                 message_type = message.message_type or 'UNKNOWN'
                 message_counts[message_type] = message_counts.get(message_type, 0) + 1
-
-            _logger.info(f"Message counts: {message_counts}")
 
             # Create touch summary string
             touch_parts = []
@@ -2539,7 +2502,6 @@ class InstalledLocationController(http.Controller):
 
         try:
             # Always try to fetch fresh messages from GHL API first
-            _logger.info(f"Fetching fresh messages from GHL API for contact {contact.external_id}")
 
             # Get conversations for this contact
             conversations = request.env['ghl.contact.conversation'].sudo().search([
@@ -2567,7 +2529,7 @@ class InstalledLocationController(http.Controller):
                         for conversation in conversations:
                             if conversation.ghl_id:
                                 try:
-                                    _logger.info(f"Fetching fresh messages for conversation {conversation.ghl_id}")
+
                                     message_result = request.env[
                                         'ghl.contact.message'].sudo().fetch_messages_for_conversation(
                                         conversation_id=conversation.ghl_id,
@@ -2577,9 +2539,7 @@ class InstalledLocationController(http.Controller):
                                         limit=100  # Fetch more messages to get accurate counts
                                     )
                                     if message_result.get('success'):
-                                        # _logger.info(
-                                        #     f"Successfully fetched fresh messages for conversation {conversation.ghl_id}")  # Reduced logging for production
-                                        pass  # No action needed when messages are fetched successfully
+                                        pass
                                     else:
                                         _logger.warning(
                                             f"Failed to fetch fresh messages for conversation {conversation.ghl_id}: {message_result.get('error')}")
@@ -2594,21 +2554,17 @@ class InstalledLocationController(http.Controller):
 
             # If still no messages after fresh fetch, return no_touches
             if not messages:
-                _logger.info(f"No messages found for contact {contact.id} after fresh GHL API fetch")
+                pass
                 return 'no_touches'
 
             # Filter for OUTBOUND messages only (from our side)
             outbound_messages = messages.filtered(lambda m: m.direction == 'outbound')
-
-            # _logger.info(
-            #     f"Touch summary: {len(messages)} total messages, {len(outbound_messages)} outbound messages for contact {contact.id}")  # Reduced logging for production
 
             # Count outbound messages by type
             message_counts = {}
             for message in outbound_messages:
                 message_type = message.message_type or 'UNKNOWN'
                 message_counts[message_type] = message_counts.get(message_type, 0) + 1
-                # _logger.info(f"Outbound message type: {message_type}, count: {message_counts[message_type]}")  # Reduced logging for production
 
             # Create touch summary string in the format expected by frontend: "3 SMS, 1 PHONE CALL"
             touch_parts = []
@@ -2618,7 +2574,6 @@ class InstalledLocationController(http.Controller):
                 touch_parts.append(f"{count} {type_name}")
 
             result = ', '.join(touch_parts) if touch_parts else 'no_touches'
-            # _logger.info(f"Touch summary (outbound only) for contact {contact.id}: {result}")  # Reduced logging for production
             return result
 
         except Exception as e:
@@ -2667,7 +2622,6 @@ class InstalledLocationController(http.Controller):
 
         try:
             # Always try to fetch fresh messages from GHL API first (same as touch summary)
-            # _logger.info(f"Fetching fresh messages from GHL API for engagement summary - contact {contact.external_id}")  # Reduced logging for production
 
             # Get conversations for this contact
             conversations = request.env['ghl.contact.conversation'].sudo().search([
@@ -2695,8 +2649,7 @@ class InstalledLocationController(http.Controller):
                         for conversation in conversations:
                             if conversation.ghl_id:
                                 try:
-                                    _logger.info(
-                                        f"Fetching fresh messages for engagement - conversation {conversation.ghl_id}")
+
                                     message_result = request.env[
                                         'ghl.contact.message'].sudo().fetch_messages_for_conversation(
                                         conversation_id=conversation.ghl_id,
@@ -2706,8 +2659,7 @@ class InstalledLocationController(http.Controller):
                                         limit=100  # Fetch more messages to get accurate counts
                                     )
                                     if message_result.get('success'):
-                                        _logger.info(
-                                            f"Successfully fetched fresh messages for engagement - conversation {conversation.ghl_id}")
+                                        pass
                                     else:
                                         _logger.warning(
                                             f"Failed to fetch fresh messages for engagement - conversation {conversation.ghl_id}: {message_result.get('error')}")
@@ -2722,20 +2674,16 @@ class InstalledLocationController(http.Controller):
 
             # If no messages after fresh fetch, return empty array
             if not messages:
-                _logger.info(f"No messages found for contact {contact.id} after fresh GHL API fetch")
                 return []
 
             # Group ALL messages by type and count them (both inbound and outbound)
             engagement_data = []
             message_counts = {}
 
-            _logger.info(f"Processing {len(messages)} messages for engagement summary for contact {contact.id}")
 
             for message in messages:
                 message_type = message.message_type or 'UNKNOWN'
                 message_counts[message_type] = message_counts.get(message_type, 0) + 1
-                _logger.info(
-                    f"Message type: {message_type}, direction: {message.direction}, count: {message_counts[message_type]}")
 
             # Convert to the format expected by frontend
             for msg_type, count in message_counts.items():
@@ -2746,8 +2694,6 @@ class InstalledLocationController(http.Controller):
                     'color': self._get_engagement_color(msg_type)
                 })
 
-            _logger.info(
-                f"Engagement summary (all touches) for contact {contact.id}: {len(engagement_data)} types - {engagement_data}")
             return engagement_data
 
         except Exception as e:
@@ -2827,8 +2773,6 @@ class InstalledLocationController(http.Controller):
         import threading
         import time
         from datetime import datetime
-        
-        _logger.info(f"Starting GHL API sync for {len(contacts)} contacts")
         
         # Capture database name and contact IDs before starting background thread
         db_name = request.env.cr.dbname
@@ -2912,7 +2856,7 @@ class InstalledLocationController(http.Controller):
                                 error_count += 1
                                 continue
 
-                        _logger.info(f"GHL API sync completed: {success_count} successful, {error_count} failed out of {len(contacts)} contacts")
+
                         return  # Success, exit retry loop
 
                 except (psycopg2.errors.SerializationFailure, psycopg2.errors.DeadlockDetected) as db_error:
@@ -2934,7 +2878,7 @@ class InstalledLocationController(http.Controller):
         sync_thread = threading.Thread(target=sync_contacts_background, daemon=True)
         sync_thread.start()
 
-        _logger.info("GHL API sync started in background thread")
+        pass
 
     @http.route('/api/sync-contact-data', type='http', auth='none', methods=['POST', 'OPTIONS'], csrf=False)
     def sync_contact_data(self, **kwargs):
@@ -3004,17 +2948,12 @@ class InstalledLocationController(http.Controller):
                 )
 
             company_id = agency_token.company_id
-            _logger.info(f"Using company_id from agency token: {company_id}")
-            _logger.info(
-                f"Agency token details: company_id={agency_token.company_id}, access_token={agency_token.access_token[:20] if agency_token.access_token else 'None'}...")
 
             # Get location token
             from odoo.addons.web_scraper.models.ghl_api_utils import get_location_token
-            _logger.info(
-                f"Getting location token for app_id: {app_id}, company_id: {company_id}, location_id: {location_id}")
-            _logger.info(f"Using app access_token: {app.access_token[:20]}...")
+            
             location_token = get_location_token(app.access_token, company_id, location_id)
-            _logger.info(f"Location token result: {location_token[:20] if location_token else 'None'}...")
+
 
             if not location_token:
                 return Response(
@@ -3024,13 +2963,10 @@ class InstalledLocationController(http.Controller):
                     headers=get_cors_headers(request)
                 )
 
-            _logger.info(
-                f"Manually syncing data for contact {contact.name} (ID: {contact.id}, External ID: {contact.external_id})")
+
 
             # Get the correct location ID for this contact
             contact_location_id = contact.location_id.location_id if contact.location_id else location_id
-            _logger.info(
-                f"Using location ID: {contact_location_id} for contact {contact.name} (requested location_id: {location_id})")
 
             # Sync conversations and messages using the correct parameter order
             conversation_result = request.env[
@@ -3042,8 +2978,6 @@ class InstalledLocationController(http.Controller):
             all_messages = request.env['ghl.contact.message'].sudo().search([
                 ('contact_id', '=', contact.id)
             ])
-
-            _logger.info(f"Manual sync completed for {contact.name}: {len(all_messages)} messages found")
 
             return Response(
                 json.dumps({
@@ -3172,7 +3106,7 @@ class InstalledLocationController(http.Controller):
                 )
 
             # STEP 1: Check if we have enough contacts in the database for the requested page
-            _logger.info(f"Checking if we have enough contacts for page {page} (limit={limit}) from GHL API for location: {location_id}")
+
 
             # Build the domain for filtering contacts (same as used later)
             domain = [('location_id.location_id', '=', location_id)]
@@ -3190,11 +3124,9 @@ class InstalledLocationController(http.Controller):
 
             # Only fetch from GHL API if we don't have enough contacts AND it's a reasonable amount
             if current_contact_count < contacts_needed and contacts_needed <= 1000:  # Limit to prevent processing too many
-                _logger.info(f"Need {contacts_needed} contacts, have {current_contact_count}. Fetching only the specific page from GHL API...")
 
                 # Fetch only the specific page we need, not all pages up to it
                 result = loc.fetch_location_contacts_lazy(company_id, location_id, app.access_token, page=page, limit=limit)
-                # _logger.info(f"fetch_location_contacts_lazy result for page {page}: {result}")  # Reduced logging for production
 
                 if not result.get('success'):
                     _logger.error(f"fetch_location_contacts_lazy error: {result.get('error')}")
@@ -3204,26 +3136,22 @@ class InstalledLocationController(http.Controller):
                     result = {'success': True, 'created_count': 0, 'updated_count': 0}
             else:
                 if current_contact_count >= contacts_needed:
-                    _logger.info(f"Already have {current_contact_count} contacts, sufficient for page {page}")
+                    pass
                 else:
                     _logger.warning(f"Requested page {page} would require {contacts_needed} contacts, which is too many. Using existing {current_contact_count} contacts.")
                 
                 # For large page requests, just return what we have without API calls
-                _logger.info("Skipping GHL API fetch for large page request to prevent performance issues")
 
             # STEP 2: Get the contacts for the requested page from the database
             # Now that we've ensured we have enough contacts, we can properly paginate
-            _logger.info(f"Querying database for page {page} with limit={limit}, offset={(page - 1) * limit}")
+            pass
 
             # Add user filtering if selected_user is provided (domain already built above)
             if selected_user and selected_user.strip():
-                _logger.info(f"Filtering contacts by selected user (external_id): {selected_user}")
-                _logger.info(f"Applied user filter domain: {domain}")
+                pass 
 
             # First, let's see what contacts we have in total (with user filter if applicable)
             all_contacts = request.env['ghl.location.contact'].sudo().search(domain, order='date_added desc')
-
-            _logger.info(f"Total contacts in database (with user filter): {len(all_contacts)}")
 
 
             # Now get the paginated contacts
@@ -3238,25 +3166,21 @@ class InstalledLocationController(http.Controller):
                     ('location_id', '=', location_id)
                 ], limit=1)
                 if location_check:
-                    _logger.info(f"Location {location_id} exists in installed.location table")
                     # Check if there are any contacts at all for this location
                     all_contacts_for_location = request.env['ghl.location.contact'].sudo().search([
                         ('location_id.location_id', '=', location_id)
                     ])
-                    # _logger.info(f"Total contacts for location {location_id}: {len(all_contacts_for_location)}")  # Reduced logging for production
                 else:
                     _logger.error(f"Location {location_id} not found in installed.location table")
 
             for contact in contacts:
-                _logger.info(
-                    f"Contact {contact.id} (external_id: {contact.external_id}) - AI fields in DB: status='{contact.ai_status}', summary='{contact.ai_summary}', quality='{contact.ai_quality_grade}', sales='{contact.ai_sales_grade}'")
+                pass
 
             # STEP 3: Return basic contact data immediately and trigger GHL API sync
             contact_data = []
             contact_ids_for_background = []
 
             # STEP 3A: Trigger GHL API sync for fresh data in background
-            _logger.info(f"Triggering GHL API sync for {len(contacts)} contacts to ensure fresh data")
             self._trigger_ghl_sync_for_contacts(contacts, app.access_token, company_id, location_id, app_id)
 
             for contact in contacts:
@@ -3325,14 +3249,6 @@ class InstalledLocationController(http.Controller):
                     _logger.error(f"Error computing speed to lead for contact {contact.id}: {str(e)}")
                     speed_to_lead = 'Unknown'
 
-                # Debug: Log the computed field values
-                _logger.info(f"Contact {contact.id} computed field values (fresh from GHL):")
-                _logger.info(f"  touch_summary: '{touch_summary}'")
-                _logger.info(f"  last_touch_date: '{last_touch_date}'")
-                _logger.info(f"  last_message_data: '{last_message_data}'")
-                _logger.info(f"  speed_to_lead: '{speed_to_lead}'")
-                _logger.info(f"  engagement_summary: '{engagement_summary}'")
-
                 # Get fresh counts from GHL API
                 tasks_count = request.env['ghl.contact.task'].sudo().search_count([
                     ('contact_id', '=', contact.id)
@@ -3383,20 +3299,6 @@ class InstalledLocationController(http.Controller):
                     'conversations_count_basic': conversations_count,
                     'loading_details': False,  # No loading state initially
                 }
-
-                # Debug: Log AI fields for this contact
-                _logger.info(
-                    f"Contact {contact.id} (external_id: {contact.external_id}) - AI fields in DB: status='{contact.ai_status}', summary='{contact.ai_summary}', quality='{contact.ai_quality_grade}', sales='{contact.ai_sales_grade}'")
-                _logger.info(
-                    f"Contact {contact.id} AI fields being sent to frontend: status={contact_info['ai_status']}, summary={contact_info['ai_summary'][:50]}..., quality={contact_info['ai_quality_grade']}, sales={contact_info['ai_sales_grade']}")
-
-                # Additional debug: Check if AI fields are actually saved
-                if contact.ai_status and contact.ai_status != 'not_contacted':
-                    _logger.info(
-                        f"Contact {contact.id} has AI data: status='{contact.ai_status}', summary='{contact.ai_summary[:100] if contact.ai_summary else 'None'}...'")
-                else:
-                    _logger.info(f"Contact {contact.id} has NO AI data or default values")
-
                 contact_data.append(contact_info)
 
             # STEP 4: Start background sync for detailed data (only for current page contacts)
@@ -3452,9 +3354,6 @@ class InstalledLocationController(http.Controller):
                                         _logger.error(
                                             f"Background: Error marking contact {contact.external_id} as details_fetched: {str(write_error)}")
                                         cr.rollback()
-
-                                    _logger.info(f"Background: Starting sync for contact {contact.external_id}")
-
                             except Exception as e:
                                 _logger.error(f"Background: Error preparing contact {contact_id}: {str(e)}")
                                 continue
@@ -3465,7 +3364,7 @@ class InstalledLocationController(http.Controller):
                                     env = api.Environment(cr, SUPERUSER_ID, {})
                                     contact = env['ghl.location.contact'].browse(contact_id)
                                     if contact.exists():
-                                        _logger.info(f"Background: Syncing tasks for contact {contact.external_id}")
+
                                         try:
                                             env['ghl.contact.task'].sync_contact_tasks_from_ghl(
                                                 contact.id, access_token, contact.location_id.location_id, company_id
@@ -3485,8 +3384,6 @@ class InstalledLocationController(http.Controller):
                                     env = api.Environment(cr, SUPERUSER_ID, {})
                                     contact = env['ghl.location.contact'].browse(contact_id)
                                     if contact.exists():
-                                        _logger.info(
-                                            f"Background: Syncing conversations for contact {contact.external_id}")
                                         try:
                                             env['ghl.contact.conversation'].sync_conversations_for_contact(
                                                 access_token, contact.location_id.location_id, contact.external_id
@@ -3506,8 +3403,6 @@ class InstalledLocationController(http.Controller):
                                     env = api.Environment(cr, SUPERUSER_ID, {})
                                     contact = env['ghl.location.contact'].browse(contact_id)
                                     if contact.exists():
-                                        _logger.info(
-                                            f"Background: Syncing opportunities for contact {contact.external_id}")
                                         try:
                                             env['ghl.contact.opportunity'].sync_opportunities_for_contact(
                                                 access_token, contact.location_id.location_id, contact.external_id,
@@ -3561,8 +3456,6 @@ class InstalledLocationController(http.Controller):
                                                                 limit=100
                                                             )
                                                             conv_cr.commit()
-                                                            _logger.info(
-                                                                f"Background: Successfully fetched messages for conversation {conversation.ghl_id}")
                                                         else:
                                                             _logger.error(
                                                                 f"Background: Failed to get location token for conversation {conversation.ghl_id}")
@@ -3594,11 +3487,6 @@ class InstalledLocationController(http.Controller):
                                 _logger.error(
                                     f"Background: Error in touch update transaction for contact {contact_id}: {str(e)}")
 
-                            _logger.info(f"Background: Completed detailed sync for contact {contact_id}")
-
-                        _logger.info(
-                            f"Background: Completed detailed sync for {len(contact_ids_for_background)} contacts")
-
                     except Exception as e:
                         _logger.error(f"Background sync error: {str(e)}")
                         import traceback
@@ -3608,21 +3496,12 @@ class InstalledLocationController(http.Controller):
                 sync_thread = threading.Thread(target=background_sync_details)
                 sync_thread.daemon = True
                 sync_thread.start()
-                _logger.info(f"Started background sync for {len(contact_ids_for_background)} contacts")
 
             # Get the actual total count from the database (respecting user filter if applied)
             total_contacts_in_db = request.env['ghl.location.contact'].sudo().search_count(domain)
 
             # Calculate if there are more pages
             has_more_pages = (page * limit) < total_contacts_in_db
-
-            # Debug logging
-            _logger.info(f"Returning contacts data for location {location_id}:")
-            _logger.info(f"  User filter applied: {selected_user if selected_user else 'None'}")
-            _logger.info(f"  Total contacts in DB (with filter): {total_contacts_in_db}")
-            _logger.info(f"  Contact data length: {len(contact_data)}")
-            _logger.info(f"  Page: {page}, Limit: {limit}, Has more: {has_more_pages}")
-            _logger.info(f"  First few contacts: {contact_data[:2] if contact_data else 'No contacts'}")
 
             return Response(
                 json.dumps({
@@ -3685,8 +3564,6 @@ class InstalledLocationController(http.Controller):
         search_term = kwargs.get('search', '').strip()
         selected_user = kwargs.get('selected_user', '')  # New parameter for user filtering
 
-        _logger.info(
-            f"Search request - location_id: {location_id}, search_term: '{search_term}', selected_user: '{selected_user}'")
 
         if not location_id:
             return Response(
@@ -3740,13 +3617,6 @@ class InstalledLocationController(http.Controller):
             cross_location_limit = config.cross_location_limit if config and hasattr(config,
                                                                                      'cross_location_limit') else 50
 
-            _logger.info(f"GHL API search enabled: {ghl_search_enabled}, auto-create contacts: {ghl_auto_create}")
-            _logger.info(
-                f"GHL search threshold: {ghl_threshold}, limit: {ghl_search_limit}, timeout: {ghl_api_timeout}")
-
-            # Search contacts in database by name (case-insensitive)
-            _logger.info(f"Searching for term: '{search_term}' in location: {location_id}")
-
             # First, let's see what contacts exist in this location
             all_location_contacts = request.env['ghl.location.contact'].sudo().search([
                 ('location_id.location_id', '=', location_id)
@@ -3773,13 +3643,11 @@ class InstalledLocationController(http.Controller):
                 ('first_name', 'ilike', f'%{search_term}%'),
                 ('last_name', 'ilike', f'%{search_term}%'),
                 ('email', 'ilike', f'%{search_term}%')
-            ]
-            _logger.info(f"Search conditions: {search_conditions}")
+            ]   
 
             # Build user filter domain if selected_user is provided
             user_filter_domain = []
             if selected_user and selected_user.strip():
-                _logger.info(f"Adding user filter to search: {selected_user}")
                 # Find the user by name to get their external_id
                 user_record = request.env['ghl.location.user'].sudo().search([
                     ('location_id', '=', location_id),
@@ -3791,8 +3659,6 @@ class InstalledLocationController(http.Controller):
                 ], limit=1)
 
                 if user_record:
-                    _logger.info(
-                        f"Found user record for search: {user_record.name} with external_id: {user_record.external_id}")
                     user_filter_domain = [('assigned_to', '=', user_record.external_id)]
                 else:
                     _logger.warning(f"No user found with name: {selected_user} for search")
@@ -3854,13 +3720,10 @@ class InstalledLocationController(http.Controller):
                 ('location_id', '=', installed_location.id),
                 ('last_name', 'ilike', f'%{search_term}%')
             ])
-            _logger.info(f"Contacts with '{search_term}' in last_name: {len(bar_lastname_contacts)}")
-            for contact in bar_lastname_contacts:
-                _logger.info(f"Contact with '{search_term}' in last_name: {contact.name} (ID: {contact.id})")
+            
 
             # If no results in current location, search across all locations
             if not contacts:
-                _logger.info(f"No results found in location {location_id}, searching across all locations")
                 search_domain = [
                     '|',
                     ('name', 'ilike', f'%{search_term}%'),
@@ -3874,29 +3737,16 @@ class InstalledLocationController(http.Controller):
                 contacts = request.env['ghl.location.contact'].sudo().search(search_domain, order='date_added desc',
                                                                              limit=cross_location_limit)
 
-            _logger.info(f"Search found {len(contacts)} contacts matching '{search_term}'")
-
             # If we have sufficient local results, use them
             if len(contacts) >= ghl_threshold:
-                _logger.info(f"Sufficient local results ({len(contacts)} >= {ghl_threshold}), skipping GHL API call")
                 use_ghl_api = False
             else:
-                _logger.info(f"Insufficient local results ({len(contacts)} < {ghl_threshold}), will try GHL API")
                 use_ghl_api = True
 
             # Try GHL API search if we have insufficient local results and it's enabled
             ghl_contacts = []
             if use_ghl_api and ghl_search_enabled and app.access_token:
                 try:
-                    _logger.info(f"Searching GHL API for term: '{search_term}' in location: {location_id}")
-
-                    # Step 1: Get location-specific access token using existing function
-                    _logger.info("Getting location access token from GHL API...")
-
-                    # Get the company_id from the app
-                    app_company_id = app.company_id or company_id
-                    _logger.info(f"Using company_id: {app_company_id} for location token request")
-
                     # Use the existing get_location_token function from ghl_api_utils
                     from odoo.addons.web_scraper.models.ghl_api_utils import get_location_token
                     location_token = get_location_token(
@@ -3908,10 +3758,6 @@ class InstalledLocationController(http.Controller):
                     if not location_token:
                         _logger.error("Failed to get location access token")
                         raise Exception("Failed to get location access token")
-
-                    _logger.info("Successfully obtained location access token")
-                    _logger.info(
-                        f"Location token: {location_token[:20]}...{location_token[-20:] if len(location_token) > 40 else ''}")
 
                     # Step 2: Prepare GHL API search query using the correct format
                     # First try with the simple query field for better performance
@@ -3962,7 +3808,6 @@ class InstalledLocationController(http.Controller):
                     if user_filter_domain and selected_user:
                         ghl_search_query["assignedTo"] = user_filter_domain[0][2]  # Get the external_id
 
-                    _logger.info(f"GHL API search query: {ghl_search_query}")
 
                     # Step 3: Make GHL API call with location token
                     import requests
@@ -3983,15 +3828,11 @@ class InstalledLocationController(http.Controller):
                     if ghl_response.status_code == 200:
                         ghl_data = ghl_response.json()
                         ghl_contacts = ghl_data.get('contacts', [])
-                        _logger.info(f"GHL API returned {len(ghl_contacts)} contacts")
-                        _logger.info(f"GHL API response data keys: {list(ghl_data.keys())}")
-
+                       
                         # Log the first contact structure for debugging
                         if ghl_contacts:
                             first_contact = ghl_contacts[0]
-                            _logger.info(f"First contact structure: {list(first_contact.keys())}")
-                            _logger.info(f"Sample contact data: {first_contact}")
-
+                          
                         # Process GHL contacts and add them to local database if they don't exist
                         for ghl_contact in ghl_contacts:
                             # Check if contact already exists
@@ -4073,8 +3914,7 @@ class InstalledLocationController(http.Controller):
                                         new_contact_data['engagement_summary'] = json.dumps(current_engagement)
 
                                     new_contact = request.env['ghl.location.contact'].sudo().create(new_contact_data)
-                                    _logger.info(
-                                        f"Created new contact from GHL API: {new_contact.name} (ID: {new_contact.id})")
+                                    
 
                                     # Add to contacts list for this search
                                     contacts = contacts | new_contact
@@ -4534,7 +4374,6 @@ class InstalledLocationController(http.Controller):
         Fetch call messages for a specific contact by their database ID.
         Returns messages where message_type is 'TYPE_CALL'.
         """
-        _logger.info(f"get_contact_call_messages called for contact_id: {contact_id}")
 
         if request.httprequest.method == 'OPTIONS':
             return Response(status=200, headers=get_cors_headers(request))
@@ -4561,11 +4400,6 @@ class InstalledLocationController(http.Controller):
             # Format the messages for frontend
             messages_data = []
             for message in call_messages:
-                # Debug logging for the first message
-                if len(messages_data) == 0:
-                    _logger.info(
-                        f"Debug - First message data: id={message.id}, meta_id={message.meta_id}, meta_id.call_duration={message.meta_id.call_duration if message.meta_id else 'None'}")
-
                 if not message.recording_data:
                     try:
                         message.fetch_recording_url()
@@ -4593,15 +4427,6 @@ class InstalledLocationController(http.Controller):
                     ])
                     if transcript_records:
                         calculated_duration = sum(t.duration for t in transcript_records if t.duration)
-                        # Debug logging for transcript-based duration calculation
-                        if len(messages_data) == 0:
-                            _logger.info(
-                                f"Debug - Transcript-based duration: {calculated_duration} seconds from {len(transcript_records)} transcript records")
-                    else:
-                        # Debug logging when no transcript records found
-                        if len(messages_data) == 0:
-                            _logger.info(f"Debug - No transcript records found for message {message.id}")
-
                 message_data = {
                     'id': message.id,
                     'ghl_id': message.ghl_id,
@@ -4641,8 +4466,6 @@ class InstalledLocationController(http.Controller):
                 }
                 messages_data.append(message_data)
 
-            _logger.info(f"Found {len(messages_data)} call messages for contact {contact_id}")
-
             return Response(
                 json.dumps({
                     'success': True,
@@ -4680,7 +4503,6 @@ class InstalledLocationController(http.Controller):
         Fetch detailed call information including transcript, duration, and metadata
         for a specific message ID.
         """
-        _logger.info(f"get_call_details called for message_id: {message_id}")
 
         # Handle preflight OPTIONS request
         if request.httprequest.method == 'OPTIONS':
@@ -4853,8 +4675,6 @@ class InstalledLocationController(http.Controller):
                 }
             }
 
-            _logger.info(f"Successfully fetched call details for message {message_id}")
-
             return Response(
                 json.dumps({
                     'success': True,
@@ -4881,7 +4701,6 @@ class InstalledLocationController(http.Controller):
                 csrf=False)
     def run_ai_analysis(self, contact_id, **kwargs):
         """Run AI analysis for a specific contact"""
-        _logger.info(f"run_ai_analysis called for contact_id: {contact_id}")
 
         if request.httprequest.method == 'OPTIONS':
             return Response(status=200, headers=get_cors_headers(request))
@@ -4898,29 +4717,14 @@ class InstalledLocationController(http.Controller):
                     headers=get_cors_headers(request)
                 )
 
-            _logger.info(f"Running AI analysis for contact {contact_id} (name: {contact.name})")
 
             # Run AI analysis
             result = contact.run_ai_analysis()
 
-            _logger.info(f"AI analysis result for contact {contact_id}: {result}")
-
-            # Log the updated contact fields
-            _logger.info(
-                f"Contact {contact_id} AI fields after analysis: status='{contact.ai_status}', summary='{contact.ai_summary}', quality='{contact.ai_quality_grade}', sales='{contact.ai_sales_grade}'")
-
-            # Force a database commit to ensure the data is saved
             request.env.cr.commit()
-            _logger.info(f"Contact {contact_id} AI data committed to database")
-
-            # Verify the data was actually saved by re-reading from database
-            _logger.info(
-                f"Contact {contact_id} AI fields after commit verification: status='{contact.ai_status}', summary='{contact.ai_summary}', quality='{contact.ai_quality_grade}', sales='{contact.ai_sales_grade}'")
 
             # Additional verification: Query the database directly
             contact_from_db = request.env['ghl.location.contact'].sudo().browse(contact_id)
-            _logger.info(
-                f"Contact {contact_id} AI fields from direct DB query: status='{contact_from_db.ai_status}', summary='{contact_from_db.ai_summary}', quality='{contact_from_db.ai_quality_grade}', sales='{contact_from_db.ai_sales_grade}'")
 
             if result.get('success'):
                 return Response(
@@ -4960,7 +4764,6 @@ class InstalledLocationController(http.Controller):
                 csrf=False)
     def generate_call_summary(self, message_id, **kwargs):
         """Generate AI call summary for a specific message"""
-        _logger.info(f"generate_call_summary called for message_id: {message_id}")
 
         if request.httprequest.method == 'OPTIONS':
             return Response(status=200, headers=get_cors_headers(request))
@@ -4997,12 +4800,8 @@ class InstalledLocationController(http.Controller):
                     headers=get_cors_headers(request)
                 )
 
-            _logger.info(f"Generating AI call summary for message {message_id}")
-
             # Generate AI call summary
             message.action_generate_ai_call_summary(api_key=api_key)
-
-            _logger.info(f"Successfully generated AI call summary for message {message_id}")
 
             return Response(
                 json.dumps({
@@ -5031,7 +4830,6 @@ class InstalledLocationController(http.Controller):
         """
         Get or update OpenAI API key for a specific location
         """
-        _logger.info(f"Manage OpenAI API key called for location_id: {location_id}")
 
         # Handle preflight OPTIONS request
         if request.httprequest.method == 'OPTIONS':
@@ -5099,7 +4897,6 @@ class InstalledLocationController(http.Controller):
                 # Update the API key
                 installed_location.write({'openai_api_key': new_api_key})
 
-                _logger.info(f"Updated OpenAI API key for location {location_id}")
 
                 return Response(
                     json.dumps({
@@ -5127,7 +4924,6 @@ class InstalledLocationController(http.Controller):
         """
         Get all call messages for a specific location with pagination and filtering
         """
-        _logger.info(f"get_location_calls called for location_id: {location_id}")
 
         # Handle preflight OPTIONS request
         if request.httprequest.method == 'OPTIONS':
@@ -5168,7 +4964,6 @@ class InstalledLocationController(http.Controller):
                 ('location_id.location_id', '=', location_id),
                 ('message_type', '=', 'TYPE_CALL')
             ]
-            _logger.info(f"Built domain for location {location_id}: {domain}")
 
             # Add user filter if specified
             if selected_user and selected_user.strip():
@@ -5184,7 +4979,6 @@ class InstalledLocationController(http.Controller):
                         ('contact_id', 'in', user_contact_ids),
                         ('message_type', '=', 'TYPE_CALL')
                     ]
-                    _logger.info(f"Applied user filter: {domain}")
 
             # Add search filter if specified
             if search_term and search_term.strip():
@@ -5203,24 +4997,19 @@ class InstalledLocationController(http.Controller):
                         ('contact_id', 'in', search_contact_ids),
                         ('message_type', '=', 'TYPE_CALL')
                     ]
-                    _logger.info(f"Applied search filter: {domain}")
 
             # Get total count
             total_calls = request.env['ghl.contact.message'].sudo().search_count(domain)
-            _logger.info(f"Total calls found for domain {domain}: {total_calls}")
-            _logger.info(f"Domain breakdown: location_id.location_id='{location_id}', message_type='TYPE_CALL'")
 
             # Debug: Let's also check the raw count without any filters
             raw_total = request.env['ghl.contact.message'].sudo().search_count([
                 ('message_type', '=', 'TYPE_CALL')
             ])
-            _logger.info(f"Raw total calls in system (no location filter): {raw_total}")
 
             # Debug: Check location-specific count
             location_total = request.env['ghl.contact.message'].sudo().search_count([
                 ('location_id.location_id', '=', location_id)
             ])
-            _logger.info(f"Total messages for location {location_id}: {location_total}")
 
             # Get paginated results
             call_messages = request.env['ghl.contact.message'].sudo().search(
@@ -5229,20 +5018,17 @@ class InstalledLocationController(http.Controller):
                 limit=limit,
                 offset=offset
             )
-            _logger.info(f"Retrieved {len(call_messages)} call messages for pagination")
 
             # Debug: Let's also check what the first few messages look like
             if call_messages:
                 first_message = call_messages[0]
-                _logger.info(
-                    f"First message debug: id={first_message.id}, contact_id={first_message.contact_id.id if first_message.contact_id else 'None'}, location_id={first_message.location_id.location_id if first_message.location_id else 'None'}")
+                
 
             # Additional debugging: Let's check what call messages exist in the system
             all_call_messages = request.env['ghl.contact.message'].sudo().search([
                 ('message_type', '=', 'TYPE_CALL')
             ], limit=5)
-            _logger.info(
-                f"Sample of all call messages in system: {[(m.id, m.contact_id.name if m.contact_id else 'None', m.location_id.location_id if m.location_id else 'None') for m in all_call_messages]}")
+
 
             # Prepare response data - use the same structure as the working endpoint
             calls_data = []
@@ -5317,10 +5103,7 @@ class InstalledLocationController(http.Controller):
                     }
                     calls_data.append(call_data)
 
-            _logger.info(f"Found {len(calls_data)} call messages for location {location_id}")
-            _logger.info(f"Total calls count: {total_calls}, Page: {page}, Limit: {limit}")
-            _logger.info(f"Response data: success={True}, calls_count={len(calls_data)}, total_calls={total_calls}")
-
+            
             return Response(
                 json.dumps({
                     'success': True,
@@ -5356,7 +5139,7 @@ class InstalledLocationController(http.Controller):
         """
         Fetch transcript for a specific call message
         """
-        _logger.info(f"fetch_transcript_for_message called for message_id: {message_id}")
+
 
         # Handle preflight OPTIONS request
         if request.httprequest.method == 'OPTIONS':
@@ -5455,7 +5238,7 @@ class InstalledLocationController(http.Controller):
         """
         Fetch recording for a specific call message
         """
-        _logger.info(f"fetch_recording_for_message called for message_id: {message_id}")
+
 
         # Handle preflight OPTIONS request
         if request.httprequest.method == 'OPTIONS':
@@ -5552,7 +5335,7 @@ class InstalledLocationController(http.Controller):
         """
         Get existing transcript for a specific call message
         """
-        _logger.info(f"get_transcript_for_message called for message_id: {message_id}")
+
 
         # Handle preflight OPTIONS request
         if request.httprequest.method == 'OPTIONS':
@@ -5641,7 +5424,6 @@ class InstalledLocationController(http.Controller):
         """
         Validate OpenAI API key for a specific location
         """
-        _logger.info(f"Validate OpenAI API key called for location_id: {location_id}")
 
         # Handle preflight OPTIONS request
         if request.httprequest.method == 'OPTIONS':
@@ -5798,7 +5580,6 @@ class InstalledLocationController(http.Controller):
     @http.route('/api/update-all-contacts-ai-status', type='http', auth='none', methods=['POST', 'OPTIONS'], csrf=False)
     def update_all_contacts_ai_status(self, **kwargs):
         """Update AI status for all contacts based on their activity"""
-        _logger.info("update_all_contacts_ai_status called")
 
         if request.httprequest.method == 'OPTIONS':
             return Response(status=200, headers=get_cors_headers(request))
@@ -5807,7 +5588,6 @@ class InstalledLocationController(http.Controller):
             # Update AI status for all contacts
             result = request.env['ghl.location.contact'].sudo().update_all_contacts_ai_status()
 
-            _logger.info(f"AI status update completed: {result}")
 
             return Response(
                 json.dumps(result),
@@ -5829,7 +5609,6 @@ class InstalledLocationController(http.Controller):
                 methods=['POST', 'OPTIONS'], csrf=False)
     def run_ai_sales_grade_analysis(self, contact_id, **kwargs):
         """Run AI sales grade analysis for a specific contact"""
-        _logger.info(f"run_ai_sales_grade_analysis called for contact_id: {contact_id}")
 
         if request.httprequest.method == 'OPTIONS':
             return Response(status=200, headers=get_cors_headers(request))
@@ -5846,30 +5625,14 @@ class InstalledLocationController(http.Controller):
                     headers=get_cors_headers(request)
                 )
 
-            _logger.info(f"Running AI sales grade analysis for contact {contact_id} (name: {contact.name})")
 
             # Run AI sales grade analysis
             result = contact.run_ai_sales_grade_analysis()
 
-            _logger.info(f"AI sales grade analysis result for contact {contact_id}: {result}")
-
-            # Log the updated contact fields
-            _logger.info(
-                f"Contact {contact_id} AI sales grade fields after analysis: sales_grade='{contact.ai_sales_grade}', sales_reasoning='{contact.ai_sales_reasoning}'")
-
-            # Force a database commit to ensure the data is saved
-            request.env.cr.commit()
-            _logger.info(f"Contact {contact_id} AI sales grade data committed to database")
-
-            # Verify the data was actually saved by re-reading from database
-            _logger.info(
-                f"Contact {contact_id} AI sales grade fields after commit verification: sales_grade='{contact.ai_sales_grade}', sales_reasoning='{contact.ai_sales_reasoning}'")
 
             # Additional verification: Query the database directly
             contact_from_db = request.env['ghl.location.contact'].sudo().browse(contact_id)
-            _logger.info(
-                f"Contact {contact_id} AI sales grade fields from direct DB query: sales_grade='{contact_from_db.ai_sales_grade}', sales_reasoning='{contact_from_db.ai_sales_reasoning}'")
-
+            
             if result.get('success'):
                 return Response(
                     json.dumps({
@@ -5964,7 +5727,7 @@ class InstalledLocationController(http.Controller):
 
                 for attempt in range(max_retries):
                     try:
-                        _logger.info(f"Starting full GHL sync for location {location_id} (attempt {attempt + 1})")
+                        _(f"Starting full GHL sync for location {location_id} (attempt {attempt + 1})")
 
                         registry = Registry(dbname)
                         with registry.cursor() as cr:
@@ -5996,7 +5759,6 @@ class InstalledLocationController(http.Controller):
 
                             if ghl_count_result.get('success'):
                                 ghl_total = ghl_count_result.get('total_contacts', 0)
-                                _logger.info(f"GHL API reports {ghl_total} total contacts for location {location_id}")
                             else:
                                 _logger.warning(f"Could not get GHL contact count: {ghl_count_result.get('error')}")
                                 ghl_total = 0
@@ -6005,12 +5767,9 @@ class InstalledLocationController(http.Controller):
                             current_count = env['ghl.location.contact'].search_count([
                                 ('location_id.location_id', '=', location_id)
                             ])
-                            _logger.info(f"Local database has {current_count} contacts before sync")
 
                             # If we have significantly fewer contacts locally, do a full sync
                             if ghl_total > 0 and current_count < ghl_total * 0.8:
-                                _logger.info(
-                                    f"Local count ({current_count}) is significantly lower than GHL total ({ghl_total}). Starting full sync...")
 
                                 # Use the comprehensive fetch method to get all contacts
                                 sync_result = location_record.fetch_location_contacts_lazy(
@@ -6027,11 +5786,8 @@ class InstalledLocationController(http.Controller):
                                         ])
 
                                         if current_local_count >= ghl_total * 0.95:  # Stop when we have 95% of contacts
-                                            _logger.info(
-                                                f"Reached 95% of GHL contacts ({current_local_count}/{ghl_total}), stopping sync")
                                             break
 
-                                        _logger.info(f"Fetching page {page} for location {location_id}")
                                         page_result = location_record.fetch_location_contacts_lazy(
                                             company_id, location_id, app_record.access_token, page=page, limit=100
                                         )
@@ -6046,7 +5802,6 @@ class InstalledLocationController(http.Controller):
                                         ])
 
                                         if new_count <= current_local_count:
-                                            _logger.info(f"No new contacts on page {page}, stopping")
                                             break
 
                                         current_local_count = new_count
@@ -6063,11 +5818,10 @@ class InstalledLocationController(http.Controller):
                                     final_count = env['ghl.location.contact'].search_count([
                                         ('location_id.location_id', '=', location_id)
                                     ])
-                                    _logger.info(f"Full sync completed. Final count: {final_count}/{ghl_total}")
                                 else:
                                     _logger.error(f"Failed to start full sync: {sync_result.get('error')}")
                             else:
-                                _logger.info(f"Local database is sufficiently synced ({current_count}/{ghl_total})")
+                                pass
 
                             cr.commit()
 
@@ -6082,7 +5836,6 @@ class InstalledLocationController(http.Controller):
             sync_thread = threading.Thread(target=background_full_sync)
             sync_thread.daemon = True
             sync_thread.start()
-            _logger.info(f"Started full GHL sync thread for location {location_id}")
 
             return Response(
                 json.dumps({
@@ -6153,16 +5906,10 @@ class InstalledLocationController(http.Controller):
                         "value": selected_user
                     }
                 ]
-                _logger.info(f"Adding GHL API filter for user: {selected_user}")
-                _logger.info(f"Filter structure: {data['filters']}")
-                _logger.info(f"Using field 'assignedTo' with value '{selected_user}' (per GHL API docs)")
-
-            _logger.info(f"Fetching filtered contacts count from GHL API for location {location_id}")
-            _logger.info(f"Request data: {data}")
 
             # First, let's test without filters to see the base response structure
             if selected_user and selected_user.strip():
-                _logger.info("Testing base response structure first...")
+
                 base_data = data.copy()
                 if 'filters' in base_data:
                     del base_data['filters']
@@ -6170,42 +5917,23 @@ class InstalledLocationController(http.Controller):
                 base_response = requests.post(url, headers=headers, json=base_data, timeout=30)
                 if base_response.status_code == 200:
                     base_result = base_response.json()
-                    _logger.info(f"Base response (no filters): {base_result}")
-                    _logger.info(f"Base response keys: {list(base_result.keys())}")
+                    
                     if 'contacts' in base_result and base_result['contacts']:
                         sample_contact = base_result['contacts'][0]
-                        _logger.info(f"Sample contact structure: {sample_contact}")
-                        _logger.info(f"Sample contact keys: {list(sample_contact.keys())}")
+                        
                         # Look for user assignment fields
                         user_fields = [k for k in sample_contact.keys() if 'user' in k.lower() or 'assign' in k.lower()]
-                        _logger.info(f"Potential user assignment fields: {user_fields}")
-
-                        # Also check for any fields that might contain the user ID
-                        if 'assignedTo' in sample_contact:
-                            _logger.info(f"assignedTo value: {sample_contact['assignedTo']}")
-                        if 'assignedToId' in sample_contact:
-                            _logger.info(f"assignedToId value: {sample_contact['assignedToId']}")
-                        if 'userId' in sample_contact:
-                            _logger.info(f"userId value: {sample_contact['userId']}")
-                        if 'assignedUserId' in sample_contact:
-                            _logger.info(f"assignedUserId value: {sample_contact['assignedUserId']}")
-
+                        
             response = requests.post(url, headers=headers, json=data, timeout=30)
             if response.status_code == 200:
                 result = response.json()
                 total_count = result.get('total', 0)
-                _logger.info(f"GHL API filtered contacts count for location {location_id}: {total_count}")
-                _logger.info(f"GHL API response structure: {list(result.keys())}")
-                _logger.info(f"GHL API response sample: {result}")
-
+                
                 # Compare filtered vs unfiltered counts
                 if selected_user and selected_user.strip():
-                    _logger.info(f"COMPARISON: Filtered count: {total_count}, Expected from GHL app: ~540")
                     if total_count < 100:  # If we're getting a very low count, the filter might not be working
                         _logger.warning(f"WARNING: Filtered count ({total_count}) is much lower than expected (540).")
                         _logger.warning(f"Check GHL API response for errors or incorrect filter structure.")
-                    else:
-                        _logger.info(f"SUCCESS: Filter working correctly. Got {total_count} contacts (expected ~540)")
 
                 return {'success': True, 'total_contacts': total_count, 'is_filtered': bool(selected_user)}
             else:
@@ -6255,7 +5983,6 @@ class InstalledLocationController(http.Controller):
                     # Commit the individual transaction
                     new_cr.commit()
                     
-                    _logger.info(f"Successfully updated contact {contact.id} touch info on attempt {attempt + 1}")
                     return True
                 
             except Exception as e:
@@ -6331,7 +6058,6 @@ class InstalledLocationController(http.Controller):
                 # Force a flush to ensure all updates are applied
                 request.env.flush_all()
                 
-                _logger.info(f"Bulk update completed: {results['success_count']} successful, {len(results['failed_contact_ids'])} failed")
                 return results
                 
             except Exception as e:
@@ -6416,7 +6142,6 @@ class InstalledLocationController(http.Controller):
                         
                         # Commit the batch
                         new_cr.commit()
-                        _logger.info(f"Successfully processed batch of {len(existing_contacts)} contacts")
                         break  # Success, move to next batch
                         
                 except Exception as e:
@@ -6440,7 +6165,6 @@ class InstalledLocationController(http.Controller):
                                 results['failed_contact_ids'].append(contact_id)
                         break
         
-        _logger.info(f"Safe bulk update completed: {results['success_count']} successful, {len(results['failed_contact_ids'])} failed")
         return results
 
     def _process_contacts_in_safe_batches(self, contacts, batch_size=5):
@@ -6466,7 +6190,6 @@ class InstalledLocationController(http.Controller):
         # Process contacts in small batches
         for i in range(0, len(contacts), batch_size):
             batch = contacts[i:i + batch_size]
-            _logger.info(f"Processing batch {i//batch_size + 1} with {len(batch)} contacts")
             
             for contact in batch:
                 try:
@@ -6490,14 +6213,12 @@ class InstalledLocationController(http.Controller):
                         results['success_count'] += 1
                         results['total_processed'] += 1
                         
-                        _logger.info(f"Successfully processed contact {contact.id}")
                         
                 except Exception as e:
                     _logger.error(f"Failed to process contact {contact.id}: {str(e)}")
                     results['failed_contact_ids'].append(contact.id)
                     results['total_processed'] += 1
         
-        _logger.info(f"Batch processing completed: {results['success_count']} successful, {len(results['failed_contact_ids'])} failed")
         return results
 
     def _process_single_contact_safely(self, contact, env):
@@ -6525,7 +6246,6 @@ class InstalledLocationController(http.Controller):
                 'last_message': last_message_data
             })
 
-            _logger.info(f"Updated touch information for contact {contact.id}: {touch_summary}")
             
         except Exception as e:
             _logger.error(f"Error processing contact {contact.id}: {str(e)}")

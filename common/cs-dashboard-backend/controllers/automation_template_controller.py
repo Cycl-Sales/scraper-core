@@ -188,8 +188,7 @@ class AutomationTemplateController(http.Controller):
                     headers=get_cors_headers(request)
                 )
         
-        # _logger.info('API CALL: /api/automation_template/update for location_id: %s, automation_group: %s', 
-        #             data.get('location_id'), data.get('automation_group'))  # Reduced logging for production
+    
 
         # Check if we have location_id or automation_group
         location_id = data.get('location_id')
@@ -226,7 +225,6 @@ class AutomationTemplateController(http.Controller):
             # Check if the installed location has an automation template directly assigned
             if installed_location.automation_template_id:
                 template = installed_location.automation_template_id
-                # _logger.info('Found directly assigned template: %s (ID: %s)', template.name, template.id)  # Reduced logging for production
                 pass  # No action needed when template is found
 
         if not template and automation_group:
@@ -235,7 +233,6 @@ class AutomationTemplateController(http.Controller):
                 ('automation_group', '=', automation_group)
             ], limit=1)
             if template:
-                # _logger.info('Found template by automation_group: %s (ID: %s)', template.name, template.id)  # Reduced logging for production
                 pass  # No action needed when template is found
 
         if not template and location_id and installed_location:
@@ -245,12 +242,10 @@ class AutomationTemplateController(http.Controller):
                     ('automation_group', '=', installed_location.automation_group)
                 ], limit=1)
                 if template:
-                    # _logger.info('Found template by automation_group: %s (ID: %s)', template.name, template.id)  # Reduced logging for production
                     pass  # No action needed when template is found
 
         # Check if we're trying to update a default template
         if template and template.is_default:
-            _logger.info('Creating location-specific copy of default template')
 
             # Create a new location-specific template based on the default
             if location_id and installed_location:
@@ -291,9 +286,7 @@ class AutomationTemplateController(http.Controller):
             # Update the installed location to point to the new template
             if location_id and installed_location:
                 installed_location.automation_template_id = template.id
-                _logger.info('Updated location %s to use new template: %s', installed_location.name, template.name)
 
-            _logger.info('Created new location-specific template: %s (ID: %s)', template.name, template.id)
 
         if not template:
             # Create a new custom template for this location/group
@@ -339,7 +332,7 @@ class AutomationTemplateController(http.Controller):
 
         # Return updated template as JSON
         result = AutomationTemplateController.serialize_template(template)
-        _logger.info('Successfully updated automation template: %s', template.name)
+
         return Response(
             json.dumps(result),
             content_type='application/json',
@@ -351,7 +344,6 @@ class AutomationTemplateController(http.Controller):
         """
         Update the nested settings for a template.
         """
-        _logger.info('Updating settings for template %s', template.id)
 
         def is_real_database_id(id_value):
             """Check if an ID is a real database ID (reasonable range) vs a temporary frontend ID"""
@@ -872,7 +864,7 @@ class AutomationTemplateController(http.Controller):
         Copy all settings from source template to new template.
         This creates deep copies of all related settings.
         """
-        _logger.info('Copying settings from template %s to %s', source_template.id, new_template.id)
+        pass
 
         # Copy call transcript settings
         for setting in source_template.call_transcript_setting_ids:
@@ -1002,8 +994,6 @@ class AutomationTemplateController(http.Controller):
                     'rule_text': rule.rule_text,
                 })
 
-        _logger.info('Successfully copied all settings from template %s to %s', source_template.id, new_template.id)
-
     def _create_location_template(self, installed_location, template_name):
         """Create a new automation template for a specific location"""
         # First, clean up any existing templates for this location
@@ -1033,7 +1023,6 @@ class AutomationTemplateController(http.Controller):
         # Assign this template to the installed location
         installed_location.automation_template_id = template.id
 
-        _logger.info('Created new location template: %s for location: %s', template.name, installed_location.name)
 
         return template
 
@@ -1061,7 +1050,6 @@ class AutomationTemplateController(http.Controller):
         if default_template:
             self._copy_template_settings(template, default_template)
 
-        _logger.info('Created new group template: %s for group: %s', template.name, automation_group)
 
         return template
 
@@ -1082,11 +1070,8 @@ class AutomationTemplateController(http.Controller):
             templates_to_delete = existing_templates.sorted('id', reverse=True)[1:]
 
             for template in templates_to_delete:
-                _logger.info('Deleting duplicate template: %s (ID: %s)', template.name, template.id)
                 template.unlink()
 
-            _logger.info('Cleaned up %d duplicate templates for location %s', 
-                        len(templates_to_delete), installed_location.name)
 
     def _cleanup_duplicate_templates_for_group(self, automation_group):
         """Remove duplicate templates for a specific automation group, keeping only the most recent one"""
@@ -1104,11 +1089,7 @@ class AutomationTemplateController(http.Controller):
             templates_to_delete = existing_templates.sorted('id', reverse=True)[1:]
 
             for template in templates_to_delete:
-                _logger.info('Deleting duplicate template: %s (ID: %s)', template.name, template.id)
                 template.unlink()
-
-            _logger.info('Cleaned up %d duplicate templates for automation group %s', 
-                        len(templates_to_delete), automation_group)
 
     @http.route('/api/automation_template/get', type='http', auth='none', methods=['POST', 'OPTIONS'], csrf=False)
     def get_automation_template(self, **kwargs):
@@ -1141,9 +1122,6 @@ class AutomationTemplateController(http.Controller):
         location_id = data.get('location_id')
         automation_group = data.get('automation_group')
 
-        _logger.info('API CALL: /api/automation_template/get for location_id: %s, automation_group: %s', 
-                    location_id, automation_group)
-
         if not location_id and not automation_group:
             _logger.error('Missing required parameter: location_id or automation_group')
             return Response(
@@ -1160,7 +1138,6 @@ class AutomationTemplateController(http.Controller):
                 ('automation_group', '=', automation_group)
             ], limit=1)
             if template:
-                # _logger.info('Found template by automation_group: %s (ID: %s)', template.name, template.id)  # Reduced logging for production
                 pass  # No action needed when template is found
 
         if not template and location_id:
@@ -1170,13 +1147,11 @@ class AutomationTemplateController(http.Controller):
             ], limit=1)
 
             if installed_location:
-                _logger.info('Found installed.location: %s (ID: %s)', installed_location.name, installed_location.id)
 
                 # Now search for template by the installed.location record
                 # Check if the installed location has an automation template directly assigned
                 if installed_location.automation_template_id:
                     template = installed_location.automation_template_id
-                    # _logger.info('Found directly assigned template: %s (ID: %s)', template.name, template.id)  # Reduced logging for production
                     pass  # No action needed when template is found
                 else:
                     # If no template is directly assigned, look for a template with matching automation_group
@@ -1185,27 +1160,22 @@ class AutomationTemplateController(http.Controller):
                             ('automation_group', '=', installed_location.automation_group)
                         ], limit=1)
                         if template:
-                            # _logger.info('Found template by automation_group: %s (ID: %s)', template.name, template.id)  # Reduced logging for production
                             pass  # No action needed when template is found
                         else:
                             _logger.warning('No template found for automation_group: %s', installed_location.automation_group)
                     else:
                         _logger.warning('No automation_group set for location: %s', installed_location.name)
 
-                if template:
-                    _logger.info('Found template: %s (ID: %s)', template.name, template.id)
-                else:
+                if not template:
                     _logger.warning('No template found for location_id: %s', location_id)
             else:
                 _logger.warning('No installed.location found for location_id: %s', location_id)
 
         if not template:
             # Optionally, return the default template if exists
-            _logger.info('No specific template found, checking for default template')
             default_template = request.env['automation.template'].sudo().search([('is_default', '=', True)], limit=1)
             if default_template:
                 result = AutomationTemplateController.serialize_template(default_template)
-                _logger.info('Returning default automation template: %s', default_template.name)
                 return Response(
                     json.dumps(result),
                     content_type='application/json',
@@ -1222,7 +1192,6 @@ class AutomationTemplateController(http.Controller):
                 )
 
         result = AutomationTemplateController.serialize_template(template)
-        _logger.info('Returning automation template: %s', template.name)
         return Response(
             json.dumps(result),
             content_type='application/json',
@@ -1238,7 +1207,6 @@ class AutomationTemplateController(http.Controller):
             data = params['params']
         else:
             data = params
-        _logger.info('API CALL: /api/automation_template/get_by_id for template_id: %s', data.get('id'))
         template_id = data.get('id')
         if not template_id:
             _logger.error('Missing required parameter: id')
@@ -1248,7 +1216,6 @@ class AutomationTemplateController(http.Controller):
             _logger.error('Template not found for id: %s', template_id)
             return {'error': 'template not found'}
         result = AutomationTemplateController.serialize_template(template)
-        _logger.info('Returning automation template by id: %s', template.name)
         return result
 
     @http.route('/api/automation_template/cleanup_duplicates', type='json', auth='user', methods=['POST'], csrf=False)
@@ -1283,8 +1250,6 @@ class AutomationTemplateController(http.Controller):
 
         data = getattr(request, 'jsonrequest', {}) or {}
         app_id = data.get('appId')
-
-        _logger.info('API CALL: /api/automation_template/list')
 
         # Get all templates
         templates = request.env['automation.template'].sudo().search([])
@@ -1322,7 +1287,6 @@ class AutomationTemplateController(http.Controller):
             'is_custom': t.is_custom,
             'parent_template_id': t.parent_template_id.id if t.parent_template_id else None
         } for t in templates]
-        _logger.info('Returning %d templates', len(data))
         return Response(
             json.dumps({'templates': data}),
             content_type='application/json',
@@ -1339,8 +1303,6 @@ class AutomationTemplateController(http.Controller):
         """
         data = getattr(request, 'jsonrequest', {}) or {}
         app_id = data.get('appId')
-
-        _logger.info('API CALL: /api/automation_template/fix_location_templates')
 
         if not app_id:
             return Response(
@@ -1364,12 +1326,12 @@ class AutomationTemplateController(http.Controller):
         issues_found = []
 
         for location in locations:
-            _logger.info('Processing location: %s (%s)', location.name, location.location_id)
+            pass
 
             # Check if this location has a template assigned
             if location.automation_template_id:
                 template = location.automation_template_id
-                _logger.info('Location %s has template: %s (ID: %s)', location.name, template.name, template.id)
+                pass
 
                 # Check if this template is shared with other locations
                 other_locations_with_same_template = request.env['installed.location'].sudo().search([
@@ -1400,8 +1362,7 @@ class AutomationTemplateController(http.Controller):
                     if existing_unique_template:
                         # Use the existing unique template
                         location.automation_template_id = existing_unique_template.id
-                        _logger.info('Assigned existing unique template: %s to location %s', 
-                                   existing_unique_template.name, location.name)
+                        
                     else:
                         # Create a new unique template
                         new_template_vals = {
@@ -1421,9 +1382,6 @@ class AutomationTemplateController(http.Controller):
 
                         # Assign the new template to this location
                         location.automation_template_id = new_template.id
-
-                        _logger.info('Created new unique template: %s for location %s', new_template.name, location.name)
-
                     fixed_locations.append({
                         'location_name': location.name,
                         'location_id': location.location_id,
@@ -1431,9 +1389,9 @@ class AutomationTemplateController(http.Controller):
                         'action': 'created_new_template' if not existing_unique_template else 'assigned_existing_template'
                     })
                 else:
-                    _logger.info('Location %s has unique template: %s', location.name, template.name)
+                    pass
             else:
-                _logger.warning('Location %s has no template assigned', location.name)
+                pass
 
         return {
             'success': True,

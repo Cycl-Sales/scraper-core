@@ -59,13 +59,10 @@ class InstalledLocation(models.Model):
             if template_name.endswith(' - Automation Template'):
                 template_name = template_name[:-22]  # Remove " - Automation Template"
             result = template_name
-            _logger.info(f"Location {self.name} ({self.location_id}) automation group: {result} (from template: {self.automation_template_id.name})")
-            return result
+            return result   
         elif self.automation_group:
-            _logger.info(f"Location {self.name} ({self.location_id}) automation group: {self.automation_group} (from automation_group field)")
             return self.automation_group
-        else:
-            _logger.info(f"Location {self.name} ({self.location_id}) automation group: Generic Default (default fallback)")
+        else:   
             return "Generic Default"
 
 
@@ -107,14 +104,10 @@ class InstalledLocation(models.Model):
             'Authorization': f'Bearer {access_token}',
             'Version': '2021-07-28',
         }
-        _logger.info(f"Fetching details for location_id={location_id} with URL={url}")
         try:
             resp = requests.get(url, headers=headers)
-            _logger.info(f"Details API response status: {resp.status_code}")
-            _logger.info(f"Details API response text: {resp.text}")
             if resp.status_code == 200:
                 details = resp.json()
-                _logger.info(f"Parsed details JSON: {details}")
 
                 # Extract location data from the nested structure
                 location_data = details.get('location', {})
@@ -137,7 +130,6 @@ class InstalledLocation(models.Model):
                         'timezone': business_data.get('timezone'),
                         'logo_url': business_data.get('logoUrl'),
                     }
-                    _logger.info(f"Business values: {business_vals}")
 
                 # Map API field names to Odoo field names for social
                 social_vals = {}
@@ -156,7 +148,6 @@ class InstalledLocation(models.Model):
                         'blog_rss': social_data.get('blogRss'),
                         'google_places_id': social_data.get('googlePlacesId'),
                     }
-                    _logger.info(f"Social values: {social_vals}")
 
                 # Map API field names to Odoo field names for settings
                 settings_vals = {}
@@ -168,14 +159,12 @@ class InstalledLocation(models.Model):
                         'allow_facebook_name_merge': settings_data.get('allowFacebookNameMerge'),
                         'disable_contact_timezone': settings_data.get('disableContactTimezone'),
                     }
-                    _logger.info(f"Settings values: {settings_vals}")
 
                 # Map API field names to Odoo field names for reseller
                 reseller_vals = {}
                 if location_data.get('reseller'):
                     reseller_data = location_data.get('reseller', {})
                     # Add reseller fields as needed
-                    _logger.info(f"Reseller values: {reseller_vals}")
 
                 business = False
                 social = False
@@ -185,28 +174,24 @@ class InstalledLocation(models.Model):
                 if business_vals:
                     try:
                         business = self.env['location.business'].sudo().create(business_vals)
-                        _logger.info(f"Created business record with ID: {business.id}")
                     except Exception as e:
                         _logger.error(f"Error creating business record: {e}")
 
                 if social_vals:
                     try:
                         social = self.env['location.social'].sudo().create(social_vals)
-                        _logger.info(f"Created social record with ID: {social.id}")
                     except Exception as e:
                         _logger.error(f"Error creating social record: {e}")
 
                 if settings_vals:
                     try:
                         settings = self.env['location.settings'].sudo().create(settings_vals)
-                        _logger.info(f"Created settings record with ID: {settings.id}")
                     except Exception as e:
                         _logger.error(f"Error creating settings record: {e}")
 
                 if reseller_vals:
                     try:
                         reseller = self.env['location.reseller'].sudo().create(reseller_vals)
-                        _logger.info(f"Created reseller record with ID: {reseller.id}")
                     except Exception as e:
                         _logger.error(f"Error creating reseller record: {e}")
 
@@ -231,17 +216,12 @@ class InstalledLocation(models.Model):
                     'social_id': social.id if social else False,
                     'settings_id': settings.id if settings else False,
                     'reseller_id': reseller.id if reseller else False,
-                }
-                _logger.info(f"Detail values to write/create: {detail_vals}")
+                }       
                 detail = self.env['installed.location.detail'].sudo().search([('location_id', '=', self.id)], limit=1)
                 if detail:
-                    _logger.info(f"Updating existing installed.location.detail id={detail.id}")
                     detail.write(detail_vals)
-                    _logger.info(f"Updated detail record with values: {detail_vals}")
                 else:
-                    _logger.info(f"Creating new installed.location.detail for location_id={self.id}")
                     detail = self.env['installed.location.detail'].sudo().create(detail_vals)
-                    _logger.info(f"Created detail record with ID: {detail.id}")
             else:
                 _logger.error(f"Failed to fetch details for location {location_id}: {resp.text}")
         except Exception as e:
@@ -273,7 +253,6 @@ class InstalledLocation(models.Model):
 
         try:
             token_resp = requests.post(token_url, headers=headers, data=data)
-            _logger.info(f"Location token response: {token_resp.status_code} {token_resp.text}")
             if token_resp.status_code not in (200, 201):
                 _logger.error(f"Failed to get location token: {token_resp.text}")
                 return None
@@ -292,11 +271,9 @@ class InstalledLocation(models.Model):
                 'Version': '2021-07-28',
             }
             users_resp = requests.get(users_url, headers=user_headers)
-            _logger.info(f"Users API response: {users_resp.status_code} {users_resp.text}")
 
             if users_resp.status_code == 200:
                 users_json = users_resp.json()
-                _logger.info(f"Fetched users for location {location_id}: {users_json}")
 
                 # Step 3: Process and create/update user records
                 users_data = users_json.get('users', [])
@@ -435,18 +412,14 @@ class InstalledLocation(models.Model):
                         if existing_user:
                             existing_user.write(user_vals)
                             updated_count += 1
-                            _logger.info(f"Updated user record for external_id: {external_id}")
                         else:
                             self.env['ghl.location.user'].sudo().create(user_vals)
                             created_count += 1
-                            _logger.info(f"Created user record for external_id: {external_id}")
 
                     except Exception as e:
-                        _logger.error(f"Error processing user {user_data.get('_id', 'unknown')}: {e}")
+                        _logger.error(f"Error processing user {user_data.get('id', 'unknown')}: {e}")
                         continue
 
-                _logger.info(
-                    f"User sync completed for location {location_id}: {created_count} created, {updated_count} updated")
                 return {
                     'success': True,
                     'created_count': created_count,
@@ -484,8 +457,6 @@ class InstalledLocation(models.Model):
             f"https://services.leadconnectorhq.com/oauth/installedLocations?"
             f"limit={limit}&isInstalled=true&companyId={company_id}&appId={app_id}"
         )
-        _logger.info(f"Calling GHL API URL: {url}")
-        _logger.info(f"Using app_id: {app_id}, company_id: {company_id}")
         
         headers = {
             'Accept': 'application/json',
@@ -494,21 +465,14 @@ class InstalledLocation(models.Model):
         }
         try:
             response = requests.get(url, headers=headers)
-            _logger.info(f"GHL API response status: {response.status_code}")
-            print(response.json())
-            print('123123')
             if response.status_code == 200:
                 data = response.json()
-                _logger.info(f"GHL API response data: {data}")
-                _logger.info(f"Number of locations returned: {len(data.get('locations', []))}")
                 
                 # Update count and install_to_future_locations on a dummy record (or all records)
                 count = data.get('count')
                 install_to_future = data.get('installToFutureLocations')
-                _logger.info(f"Count: {count}, Install to future: {install_to_future}")
                 for loc in data.get('locations', []):
                     location_id_from_api = loc.get('_id')
-                    _logger.info(f"Processing location from GHL API: {location_id_from_api}")
                     
                     vals = {
                         'location_id': location_id_from_api,
@@ -519,18 +483,14 @@ class InstalledLocation(models.Model):
                         'count': count,
                         'install_to_future_locations': install_to_future,
                     }
-                    _logger.info(f"Location values: {vals}")
                     
                     # Search for existing record by location_id only (not by app_id)
                     rec = self.sudo().search([('location_id', '=', vals['location_id'])], limit=1)
-                    _logger.info(f"Found existing record: {rec}")
                     
                     if rec:
                         rec.write(vals)
-                        _logger.info(f"Updated existing location record: {location_id_from_api}")
                     else:
                         rec = self.sudo().create(vals)
-                        _logger.info(f"Created new location record: {location_id_from_api}")
                     
                     # Only fetch details if explicitly requested
                     if fetch_details:
@@ -568,12 +528,10 @@ class InstalledLocation(models.Model):
                     }
                 ]
             }
-            _logger.info(f"Fetching contacts count for location {self.location_id}")
             response = requests.post(url, headers=headers, json=data, timeout=30)
             if response.status_code == 200:
                 result = response.json()
                 total_count = result.get('total', 0)
-                _logger.info(f"Total contacts count for location {self.location_id}: {total_count}")
                 self.write({'contacts_count': total_count})
                 return {'success': True, 'total_contacts': total_count}
             else:
@@ -723,13 +681,7 @@ class InstalledLocation(models.Model):
                                 existing_contact = env['ghl.location.contact'].sudo().search([
                                     ('external_id', '=', external_id),
                                     ('location_id', '=', installed_location.id)
-                                ], limit=1)
-                                
-                                # Debug: Log what we found
-                                if existing_contact:
-                                    _logger.info(f"Found existing contact: ID={existing_contact.id}, Name='{existing_contact.name}', External_ID='{existing_contact.external_id}'")
-                                else:
-                                    _logger.info(f"No existing contact found for external_id: {external_id}")
+                                ], limit=1) 
                             except Exception as cursor_error:
                                 if "could not serialize access due to concurrent update" in str(cursor_error):
                                     _logger.warning(
@@ -783,12 +735,10 @@ class InstalledLocation(models.Model):
                             try:
                                 if existing_contact:
                                     existing_contact.write(contact_vals)
-                                    updated_count += 1
-                                    _logger.info(f"Updated contact record for external_id: {external_id}, Name: {contact_name}")
+                                    updated_count += 1      
                                 else:
                                     new_contact = env['ghl.location.contact'].sudo().create(contact_vals)
                                     created_count += 1
-                                    _logger.info(f"Created contact record for external_id: {external_id}, Name: {contact_name}, New ID: {new_contact.id}")
                                 cr.commit()
                                 break  # Success, exit retry loop
                             except Exception as write_error:
@@ -1091,7 +1041,6 @@ class InstalledLocation(models.Model):
                             if attributions_data:
                                 existing_contact.attribution_ids.write({'contact_id': existing_contact.id})
                             updated_count += 1
-                            _logger.info(f"Updated contact record for external_id: {external_id}")
                         else:
                             new_contact = self.env['ghl.location.contact'].sudo().create(contact_vals)
                             # Update custom fields and attributions with the correct contact_id
@@ -1100,9 +1049,7 @@ class InstalledLocation(models.Model):
                             if attributions_data:
                                 new_contact.attribution_ids.write({'contact_id': new_contact.id})
                             created_count += 1
-                            _logger.info(f"Created contact record for external_id: {external_id}")
-                    except Exception as db_error:
-                        print(contact_vals)
+                    except Exception as db_error:   
                         _logger.error(f"Database error while creating/updating contact {external_id}: {db_error}")
                         # Continue with next contact instead of failing completely
                         continue
@@ -1125,8 +1072,6 @@ class InstalledLocation(models.Model):
                     _logger.error(f"Full traceback: {traceback.format_exc()}")
                     continue
 
-            _logger.info(
-                f"Contact sync completed for location {location_id}: {created_count} created, {updated_count} updated")
             return {
                 'success': True,
                 'created_count': created_count,
@@ -1169,15 +1114,12 @@ class InstalledLocation(models.Model):
             ], limit=50)  # Process in batches
 
             if not contacts_needing_details:
-                _logger.info(f"No contacts need detailed data for location {location_id}")
                 return {
                     'success': True,
                     'message': 'No contacts need detailed data',
                     'processed': 0
                 }
 
-            _logger.info(
-                f"Syncing detailed data for {len(contacts_needing_details)} contacts in location {location_id}")
 
             # Get location token
             from .ghl_api_utils import get_location_token
@@ -1205,9 +1147,6 @@ class InstalledLocation(models.Model):
                     # Mark contact as having details fetched
                     contact.write({'details_fetched': True})
                     processed_count += 1
-
-                    _logger.info(
-                        f"Synced details for contact {contact.external_id}: tasks={task_result.get('success', False)}, conversations={conversation_result.get('success', False)}")
 
                 except Exception as e:
                     _logger.error(f"Error syncing details for contact {contact.external_id}: {str(e)}")

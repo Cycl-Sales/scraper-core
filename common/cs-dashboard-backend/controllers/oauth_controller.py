@@ -30,7 +30,6 @@ class GHLOAuthController(http.Controller):
                 try:
                     json_data = json.loads(request.httprequest.data.decode()) 
                 except Exception as e:
-                    # _logger.info(f"Failed to parse JSON from request data: {e}")  # Reduced logging for production
                     pass  # Silently handle JSON parsing errors
             
             # ===== EXTRACT KEY PARAMETERS =====
@@ -91,36 +90,28 @@ class GHLOAuthController(http.Controller):
                         app_id = state_data.get('appId')
                         
                 except Exception as e:
-                    _logger.info(f"Failed to decode state parameter: {e}")
                     # Fallback: use state as location_id if decoding fails
                     if not location_id:
                         location_id = state
-                        _logger.info(f"Using state as location_id (fallback): {location_id}")
             
             # If location_id is not provided, try to extract it from state
             if not location_id and state:
                 location_id = state
-                _logger.info(f"Using state as location_id: {location_id}")
             
             # If still not found, try companyId (for company-level installs)
             if not location_id and company_id:
                 location_id = company_id
-                _logger.info(f"Using company_id as location_id: {location_id}")
             
             # As a last resort, try to parse from request.params or request.httprequest.data
             if not location_id:
-                _logger.info("Location ID still not found, trying additional sources...")
                 # Try to parse from request.params
                 location_id = request.params.get('locationId') or request.params.get('companyId') or request.params.get('state')
-                _logger.info(f"Location ID from request.params: {location_id}")
                 # Try to parse from POST body if available
                 if not location_id and request.httprequest.data:
                     try:
                         data = json.loads(request.httprequest.data.decode())
                         location_id = data.get('locationId') or data.get('companyId') or data.get('state')
-                        # _logger.info(f"Location ID from request data: {location_id}")  # Reduced logging for production
                     except Exception as e:
-                        # _logger.info(f"Failed to parse location ID from request data: {e}")  # Reduced logging for production
                         pass  # Silently handle parsing errors
 
            
@@ -353,11 +344,9 @@ class GHLOAuthController(http.Controller):
             if ghl_token:
                 # Update existing record
                 ghl_token.write(token_data)
-                _logger.info(f"Updated GHL token for location: {location_id} (app: {app_name})")
             else:
                 # Create new record
                 request.env['ghl.agency.token'].sudo().create(token_data)
-                _logger.info(f"Created new GHL token for location: {location_id} (app: {app_name})")
 
         except Exception as e:
             _logger.error(f"Error storing GHL credentials: {str(e)}")
@@ -395,7 +384,6 @@ class GHLOAuthController(http.Controller):
 
             if response.status_code == 200:
                 location_data = response.json()
-                _logger.info(f"Retrieved location info for: {location_id}")
                 return location_data
             else:
                 _logger.error(f"Failed to get location info: {response.status_code}")
@@ -424,11 +412,9 @@ class GHLOAuthController(http.Controller):
             if ghl_location:
                 # Update existing location
                 ghl_location.write(location_data)
-                _logger.info(f"Updated GHL location: {location_id}")
             else:
                 # Create new location
                 request.env['ghl.location'].sudo().create(location_data)
-                _logger.info(f"Created new GHL location: {location_id}")
 
         except Exception as e:
             _logger.error(f"Error creating/updating location: {str(e)}")
@@ -452,7 +438,6 @@ class GHLOAuthController(http.Controller):
             state = kwargs.get('state')
             app_id = kwargs.get('appId')  # Get app_id from parameters
 
-                # _logger.info(f"OAuth authorize called with - locationId: {location_id}, companyId: {company_id}, appId: {app_id}")  # Reduced logging for production
 
             if not location_id and not company_id:
                 return Response(
@@ -495,14 +480,11 @@ class GHLOAuthController(http.Controller):
             # Encode state data to avoid URL encoding issues
             state_encoded = base64.urlsafe_b64encode(json_module.dumps(state_data).encode()).decode()
             
-            # _logger.info(f"Generated state data: {state_data}")  # Reduced logging for production
-            # _logger.info(f"Encoded state: {state_encoded}")  # Reduced logging for production
 
             # Generate authorization URL using CyclSales app credentials
             redirect_uri = f"{request.env['ir.config_parameter'].sudo().get_param('web.base.url')}/api/dashboard/oauth/callback"
             auth_url = f"https://marketplace.gohighlevel.com/oauth/chooselocation?response_type=code&client_id={cyclsales_app.client_id}&redirect_uri={redirect_uri}&scope=locations.readonly&state={state_encoded}"
 
-            # _logger.info(f"Generated authorization URL: {auth_url}")  # Reduced logging for production
 
             return Response(
                 json.dumps({
@@ -607,14 +589,6 @@ class GHLOAuthController(http.Controller):
                     json_data = json.loads(raw_data.decode())
                 except Exception as e:
                     _logger.error(f"Failed to parse JSON: {e}")
-            # _logger.info(f"GHL Event Webhook received with kwargs: {kwargs}")  # Reduced logging for production
-            # _logger.info(f"Request params: {request.params}")  # Reduced logging for production
-            # _logger.info(f"Request data: {raw_data}")  # Reduced logging for production
-            # _logger.info(f"Parsed JSON: {json_data}")  # Reduced logging for production
-            # print(f"GHL Event Webhook - kwargs: {kwargs}")  # Reduced logging for production
-            # print(f"GHL Event Webhook - params: {request.params}")  # Reduced logging for production
-            # print(f"GHL Event Webhook - data: {raw_data}")  # Reduced logging for production
-            # print(f"GHL Event Webhook - parsed JSON: {json_data}")  # Reduced logging for production
 
             # --- Event Management Logic (similar to ghl_controller.py) ---
             event_type = json_data.get('type') if json_data else None
@@ -648,44 +622,24 @@ class GHLOAuthController(http.Controller):
                 _logger.warning(f"Could not log event to web.scraper.event.log: {e}")
             # Check for stored temporary tokens and complete installation
             if event_type == 'INSTALL':
-                # _logger.info("=" * 50)  # Reduced logging for production
-                # _logger.info("PROCESSING INSTALL EVENT")  # Reduced logging for production
-                # _logger.info("=" * 50)  # Reduced logging for production
-                # _logger.info(f"Event type: {event_type}")  # Reduced logging for production
-                # _logger.info(f"Install type: {json_data.get('installType')}")  # Reduced logging for production
-                # _logger.info(f"Company ID: {company_id}")  # Reduced logging for production
-                # _logger.info(f"Location ID: {location_id}")  # Reduced logging for production
-                # _logger.info(f"App ID: {json_data.get('appId')}")  # Reduced logging for production
                 
                 # Check if we have stored temporary tokens
                 if hasattr(self, '_temp_tokens') and self._temp_tokens:
-                    # _logger.info(f"Found {len(self._temp_tokens)} stored temporary tokens")  # Reduced logging for production
                     
                     # Look for tokens that match this installation
                     matching_tokens = None
                     for temp_key, temp_data in self._temp_tokens.items():
-                        # _logger.info(f"Checking temp token key: {temp_key}")  # Reduced logging for production
-                        # _logger.info(f"Temp token app_id: {temp_data.get('app_id')}")  # Reduced logging for production
-                        # _logger.info(f"Event app_id: {json_data.get('appId')}")  # Reduced logging for production
                         
                         # Match by app_id
                         if temp_data.get('app_id') == json_data.get('appId'):
                             matching_tokens = temp_data
-                            # _logger.info(f"Found matching tokens for app_id: {json_data.get('appId')}")  # Reduced logging for production
                             break
                     
                     if matching_tokens:
-                        # _logger.info("=" * 50)  # Reduced logging for production
-                        # _logger.info("COMPLETING GHL INSTALLATION")  # Reduced logging for production
-                        # _logger.info("=" * 50)  # Reduced logging for production
                         
                         access_token = matching_tokens['access_token']
                         refresh_token = matching_tokens['refresh_token']
                         app_id = matching_tokens['app_id']
-                        
-                        _logger.info(f"Using stored tokens for app_id: {app_id}")
-                        _logger.info(f"Company ID: {company_id}")
-                        _logger.info(f"Location ID: {location_id}")
                         
                         # Store the credentials based on installation type
                         if json_data.get('installType') == 'Company':
@@ -703,7 +657,6 @@ class GHLOAuthController(http.Controller):
                                         'app_id': app_id,
                                         'last_updated': fields.Datetime.now()
                                     })
-                                    _logger.info(f"Updated company credentials for company_id: {company_id}")
                                 else:
                                     request.env['ghl.company.credential'].sudo().create({
                                         'company_id': company_id,
@@ -712,7 +665,6 @@ class GHLOAuthController(http.Controller):
                                         'app_id': app_id,
                                         'last_updated': fields.Datetime.now()
                                     })
-                                    _logger.info(f"Created company credentials for company_id: {company_id}")
                             else:
                                 _logger.warning("Company-level installation but no company_id provided")
                         
@@ -730,8 +682,7 @@ class GHLOAuthController(http.Controller):
                                         'refresh_token': refresh_token,
                                         'app_id': app_id,
                                         'last_updated': fields.Datetime.now()
-                                    })
-                                    _logger.info(f"Updated location credentials for location_id: {location_id}")
+                                    })  
                                 else:
                                     request.env['ghl.location.credential'].sudo().create({
                                         'location_id': location_id,
@@ -740,13 +691,11 @@ class GHLOAuthController(http.Controller):
                                         'app_id': app_id,
                                         'last_updated': fields.Datetime.now()
                                     })
-                                    _logger.info(f"Created location credentials for location_id: {location_id}")
                             else:
                                 _logger.warning("Location-level installation but no location_id provided")
                         
                         # Clean up temporary tokens
                         del self._temp_tokens[temp_key]
-                        _logger.info("Cleaned up temporary tokens")
                         
                         # Update or create ghl.location record
                         if location_id:
@@ -759,7 +708,6 @@ class GHLOAuthController(http.Controller):
                                     'is_installed': True,
                                     'last_updated': fields.Datetime.now()
                                 })
-                                _logger.info(f"Updated ghl.location record for location_id: {location_id}")
                             else:
                                 request.env['ghl.location'].sudo().create({
                                     'location_id': location_id,
@@ -767,9 +715,7 @@ class GHLOAuthController(http.Controller):
                                     'is_installed': True,
                                     'last_updated': fields.Datetime.now()
                                 })
-                                _logger.info(f"Created ghl.location record for location_id: {location_id}")
                         
-                        _logger.info("GHL installation completed successfully")
                         return Response(
                             json.dumps({'success': True, 'message': 'Installation completed'}),
                             content_type='application/json',
@@ -801,7 +747,6 @@ class GHLOAuthController(http.Controller):
     @http.route('/api/dashboard/locations', type='http', auth='none', methods=['GET'], csrf=False)
     def get_ghl_locations(self, **kwargs):
         try:
-            _logger.info("Starting get_ghl_locations endpoint")
             app_id = kwargs.get('appId')  # Get app_id from parameters
             
             # Get active CyclSales application
@@ -816,13 +761,11 @@ class GHLOAuthController(http.Controller):
                 ], limit=1)
             
             app_id = cyclsales_app.app_id if cyclsales_app else None
-            _logger.info(f"CyclSales app found: {cyclsales_app}, app_id: {app_id}")
             print(f"App ID: {app_id}")
             
             agency_token = request.env['ghl.agency.token'].sudo().search([
                 ('app_id', '=', app_id)
             ], order='create_date desc', limit=1)
-            _logger.info(f"Agency token found: {agency_token}")
             print(f"Agency token: {agency_token}")
             
             if not agency_token or not agency_token.access_token:
@@ -836,23 +779,19 @@ class GHLOAuthController(http.Controller):
 
             # Get the company_id from the agency token
             company_id = agency_token.company_id
-            _logger.info(f"Company ID: {company_id}")
             print(f"Company ID: {company_id}")
             
             # Use the correct GHL API endpoint for installed locations
             url = f"https://services.leadconnectorhq.com/oauth/installedLocations?isInstalled=true&companyId={company_id}&appId={app_id}"
-            _logger.info(f"Calling GHL API: {url}")
             print(f"Calling GHL API: {url}")
             
             headers = {
                 'Authorization': f'Bearer {agency_token.access_token}',
                 'Version': '2021-07-28'  # Default GHL API version
             }
-            _logger.info(f"Headers: {headers}")
             print(f"Headers: {headers}")
             
             resp = requests.get(url, headers=headers)
-            _logger.info(f"GHL API response: {resp.status_code} - {resp.text}")
             print(f"GHL API response: {resp.status_code} - {resp.text}")
             if resp.status_code == 200:
                 return Response(

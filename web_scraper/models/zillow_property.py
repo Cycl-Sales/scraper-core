@@ -485,7 +485,6 @@ class ZillowProperty(models.Model):
                 # Remove old agents for this property detail
                 property_detail.agent_ids.unlink()
                 for agent in listing_agents:
-                    _logger.info(f"Creating agent for property_detail {property_detail.id}: {agent}")
                     self.env['zillow.property.agent'].create([{
                         'property_id': property_detail.id,
                         'associated_agent_type': agent.get('associatedAgentType'),
@@ -542,19 +541,15 @@ class ZillowProperty(models.Model):
                 _logger.error(f"Failed to update property {prop.zpid}: {e}")
 
     def fetch_details_for_missing_properties(self):
-        _logger.info(">>> fetch_details_for_missing_properties CALLED on ids: %s", self.ids)
-        _logger.info(f"Found {len(self)} properties to process.")
         props_without_details = self
         count = 0
         for prop in props_without_details:
             try:
-                _logger.info(f"Fetching details for property zpid={prop.zpid}, id={prop.id}")
                 prop.action_fetch_property_data(ignore_last_fetched=True)
                 count += 1
             except Exception as e:
                 _logger.error(f"Failed to fetch details for property {prop.zpid}: {e}")
         msg = f"Fetched details for {count} properties." if count else "No properties needed details."
-        _logger.info(msg)
         return {
             'type': 'ir.actions.client',
             'tag': 'display_notification',
@@ -567,7 +562,6 @@ class ZillowProperty(models.Model):
         }
 
     def action_fetch_details_for_selected(self):
-        _logger.info(">>> action_fetch_details_for_selected CALLED on ids: %s", self.ids)
         return self.fetch_details_for_missing_properties()
 
     def send_to_ghl_webhook(self):
@@ -592,10 +586,8 @@ class ZillowProperty(models.Model):
                 "realtor_phone": agent.phone_number if agent else '',
                 "description": rec.description,
             }
-            _logger.info(f"[GHL TEST] Sending payload to GHL webhook: {payload}")
             try:
                 resp = requests.post(webhook_url, json=payload, timeout=10)
-                _logger.info(f"[GHL TEST] Webhook response: {resp.status_code} {resp.text}")
             except Exception as e:
                 _logger.error(f"[GHL TEST] Webhook error: {e}")
 
@@ -729,7 +721,6 @@ class ZillowPropertySearchWizard(models.TransientModel):
         params = {'address': self.address}
         try:
             response = robust_get(url, headers=headers, params=params)
-            _logger.info(f"Search address response: {response.status_code} {response.text}")
             response.raise_for_status()
             data = response.json()
             if not data or not data.get('zpid'):

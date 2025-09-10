@@ -36,7 +36,6 @@ class GHLController(http.Controller):
                 'Content-Type': 'application/x-www-form-urlencoded',
             }
             resp = requests.post(GHL_TOKEN_URL, data=payload, headers=headers)
-            _logger.info(f"GHL token exchange response: {resp.status_code} {resp.text}")
             if resp.status_code != 200:
                 return f'Failed to exchange code for tokens: {resp.text}', 400
             token_data = resp.json()
@@ -96,7 +95,6 @@ class GHLController(http.Controller):
     def app_events(self, **kwargs):
         try:
             data = request.httprequest.get_data()
-            _logger.info(f"Received GHL app event: {data}")
             try:
                 event = json.loads(data)
             except Exception as e:

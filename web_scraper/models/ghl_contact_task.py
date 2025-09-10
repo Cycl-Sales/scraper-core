@@ -96,9 +96,8 @@ class GhlContactTask(models.Model):
             try:
                 # Auto-assign user if assigned_to matches a ghl.location.user
                 if val.get('assigned_to') and val.get('contact_id'):
-                    _logger.info(f"Creating task with assigned_to: {val.get('assigned_to')}, contact_id: {val.get('contact_id')}")
+
                     contact = self.env['ghl.location.contact'].browse(val['contact_id'])
-                    _logger.info(f"Contact found: {contact.exists()}, location_id: {contact.location_id if contact.exists() else 'N/A'}")
                     if contact and contact.location_id:
                         installed_location = self.env['installed.location'].search([
                             ('location_id', '=', contact.location_id.id)
@@ -108,7 +107,6 @@ class GhlContactTask(models.Model):
                                 ('external_id', '=', val['assigned_to']),
                                 ('location_id', '=', contact.location_id.id)
                             ], limit=1)
-                            _logger.info(f"User found: {user.exists() if user else False}")
                             if user:
                                 val['assigned_user_id'] = user.id
             except Exception as e:
@@ -202,7 +200,6 @@ class GhlContactTask(models.Model):
             }
             
             token_resp = requests.post(token_url, headers=headers, data=data)
-            # _logger.info(f"Location token response for tasks: {token_resp.status_code} {token_resp.text}")
             if token_resp.status_code not in (200, 201):
                 _logger.error(f"Failed to get location token for tasks: {token_resp.text}")
                 return {
@@ -229,7 +226,6 @@ class GhlContactTask(models.Model):
                 'Version': '2021-07-28'
             }
             
-            _logger.info(f"Fetching tasks for contact {contact_external_id} from GHL API")
             
             response = requests.get(url, headers=task_headers, timeout=30)
             
@@ -238,10 +234,8 @@ class GhlContactTask(models.Model):
                 
                 # Check if tasks_data is a list or dict
                 if isinstance(tasks_data, list):
-                    _logger.info(f"API returned list with {len(tasks_data)} items for contact {contact_external_id}")
                     return {'tasks': tasks_data}
                 elif isinstance(tasks_data, dict):
-                    _logger.info(f"Successfully fetched {len(tasks_data.get('tasks', []))} tasks for contact {contact_external_id}")
                     return tasks_data
                 else:
                     _logger.error(f"Unexpected response type for contact {contact_external_id}: {type(tasks_data)}")
@@ -294,12 +288,10 @@ class GhlContactTask(models.Model):
                 return api_response
             
             tasks_data = api_response.get('tasks', [])
-            _logger.info(f"Processing {len(tasks_data)} tasks for contact {contact.name}")
             created_count = 0
             updated_count = 0
             
             for i, task_data in enumerate(tasks_data):
-                _logger.info(f"Processing task {i+1}/{len(tasks_data)} for contact {contact.external_id}: {json.dumps(task_data, indent=2)}")
                 task_external_id = task_data.get('id')
                 if not task_external_id:
                     continue
@@ -338,7 +330,6 @@ class GhlContactTask(models.Model):
                     try:
                         existing_task.write('task_vals')
                         updated_count += 1
-                        _logger.info(f"Updated task {task_external_id} for contact {contact.external_id}")
                     except Exception as e:
                         _logger.error(f"Error updating task {task_external_id}: {str(e)}")
                         continue
@@ -347,7 +338,6 @@ class GhlContactTask(models.Model):
                     try:
                         self.create(task_vals)
                         created_count += 1
-                        _logger.info(f"Created task {task_external_id} for contact {contact.external_id}")
                     except Exception as e:
                         _logger.error(f"Error creating task {task_external_id}: {str(e)}")
                         continue
@@ -379,11 +369,9 @@ class GhlContactTask(models.Model):
             dict: Overall sync results
         """
         try:
-            _logger.info(f"[task sync] Looking for contacts with location_id={location_id}")
             contacts = self.env['ghl.location.contact'].search([
                 ('location_id.location_id', '=', location_id)
             ])
-            _logger.info(f"[task sync] Found {len(contacts)} contacts for location_id={location_id}")
             
             total_created = 0
             total_updated = 0
@@ -431,13 +419,11 @@ class GhlContactTask(models.Model):
             dict: Overall sync results
         """
         try:
-            _logger.info(f"[optimized task sync] Starting for location_id={location_id}")
             
             # Get contacts for this location
             contacts = self.env['ghl.location.contact'].search([
                 ('location_id.location_id', '=', location_id)
             ])
-            _logger.info(f"[optimized task sync] Found {len(contacts)} contacts")
             
             if not contacts:
                 return {
@@ -495,7 +481,6 @@ class GhlContactTask(models.Model):
                 key = (task.external_id, task.contact_id.id)
                 existing_task_map[key] = task
             
-            _logger.info(f"[optimized task sync] Found {len(existing_tasks)} existing tasks")
             
             # Step 3: Process contacts in batches to avoid overwhelming the API
             batch_size = 10  # Process 10 contacts at a time
@@ -505,7 +490,6 @@ class GhlContactTask(models.Model):
             
             for i in range(0, len(contacts), batch_size):
                 batch_contacts = contacts[i:i + batch_size]
-                _logger.info(f"[optimized task sync] Processing batch {i//batch_size + 1}, contacts {i+1}-{min(i+batch_size, len(contacts))}")
                 
                 # Process each contact in the batch
                 for contact in batch_contacts:
@@ -516,7 +500,6 @@ class GhlContactTask(models.Model):
                         
                         if tasks_result['success']:
                             tasks_list = tasks_result['items']
-                            _logger.info(f"Fetched {len(tasks_list)} tasks for contact {contact.external_id} from {tasks_result['total_pages']} pages")
                         else:
                             _logger.warning(f"Failed to fetch tasks for contact {contact.external_id}: {tasks_result.get('error')}")
                             continue
@@ -571,7 +554,6 @@ class GhlContactTask(models.Model):
                 if i + batch_size < len(contacts):
                     time.sleep(0.5)
             
-            _logger.info(f"[optimized task sync] Completed: {total_created} created, {total_updated} updated, {len(errors)} errors")
             
             return {
                 'success': True,

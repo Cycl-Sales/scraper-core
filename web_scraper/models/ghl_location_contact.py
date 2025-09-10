@@ -355,7 +355,6 @@ class GHLLocationContact(models.Model):
             ('id', 'in', self.env['ghl.contact.message'].search([]).mapped('contact_id.id'))
         ])
 
-        _logger.info(f"Updating touch information for {len(contacts_with_messages)} contacts with messages")
 
         for contact in contacts_with_messages:
             try:
@@ -363,7 +362,6 @@ class GHLLocationContact(models.Model):
             except Exception as e:
                 _logger.error(f"Error updating touch information for contact {contact.id}: {str(e)}")
 
-        _logger.info("Touch information update completed")
         return {
             'success': True,
             'contacts_updated': len(contacts_with_messages)
@@ -399,11 +397,7 @@ class GHLLocationContact(models.Model):
         )
         
         contacts_without_templates = contacts_with_messages - contacts_with_templates
-        
-        _logger.info(f"Found {len(contacts_with_messages)} contacts with messages")
-        _logger.info(f"Found {len(contacts_with_templates)} contacts with automation templates")
-        _logger.info(f"Found {len(contacts_without_templates)} contacts without automation templates")
-        
+
         if contacts_without_templates:
             _logger.warning(f"Contacts without automation templates: {contacts_without_templates.mapped('name')}")
         
@@ -412,8 +406,7 @@ class GHLLocationContact(models.Model):
                 contact.update_ai_analysis_status()
             except Exception as e:
                 _logger.error(f"Error updating AI analysis status for contact {contact.id}: {str(e)}")
-        
-        _logger.info("AI analysis status update completed")
+
         return {
             'success': True,
             'contacts_updated': len(contacts_with_templates),
@@ -459,9 +452,6 @@ class GHLLocationContact(models.Model):
             if not automation_template:
                 raise Exception("No automation template found for this contact's location. Please assign an automation template to the location first.")
             
-            _logger.info(f"Starting AI analysis for contact {self.id} using template {automation_template.name}")
-            _logger.info(f"Contact location: {self.location_id.name} (ID: {self.location_id.id})")
-            _logger.info(f"Automation template: {automation_template.name} (ID: {automation_template.id})")
             
             # Get the location's OpenAI API key
             if not self.location_id.openai_api_key:
@@ -481,8 +471,6 @@ class GHLLocationContact(models.Model):
                 'ai_analysis_status': 'completed',
                 'ai_analysis_date': fields.Datetime.now()
             })
-            
-            _logger.info(f"AI analysis completed successfully for contact {self.id}")
             
             return {
                 'success': True,
@@ -516,8 +504,6 @@ class GHLLocationContact(models.Model):
             if not automation_template:
                 raise Exception("No automation template found for this contact's location. Please assign an automation template to the location first.")
             
-            _logger.info(f"Starting AI sales grade analysis for contact {self.id} using template {automation_template.name}")
-            
             # Get the location's OpenAI API key
             if not self.location_id.openai_api_key:
                 raise Exception("No OpenAI API key configured for this location. Please add an OpenAI API key to the location settings.")
@@ -530,8 +516,6 @@ class GHLLocationContact(models.Model):
             
             # Update contact fields with AI sales grade results
             self._update_contact_with_ai_sales_grade_results(ai_result, automation_template)
-            
-            _logger.info(f"AI sales grade analysis completed successfully for contact {self.id}")
             
             return {
                 'success': True,
@@ -676,14 +660,10 @@ class GHLLocationContact(models.Model):
 
         # Log API key info (first 10 chars for debugging)
         api_key_preview = api_key[:10] + "..." if len(api_key) > 10 else api_key
-        _logger.info(f"Using API key for contact {self.id}: {api_key_preview}")
-        _logger.info(f"API key length: {len(api_key)} characters")
 
         # Create AI prompt for contact analysis
         prompt = self._create_ai_analysis_prompt(contact_data, automation_template)
         
-        # Log the prompt for debugging
-        _logger.info(f"AI prompt for contact {self.id}: {prompt}")
 
         # Convert contact data to text for AI analysis
         contact_text = json.dumps(contact_data, indent=2)
@@ -693,10 +673,6 @@ class GHLLocationContact(models.Model):
         contact_text_length = len(contact_text)
         total_length = prompt_length + contact_text_length
         
-        _logger.info(f"Data sizes for contact {self.id}:")
-        _logger.info(f"  Prompt length: {prompt_length} characters")
-        _logger.info(f"  Contact data length: {contact_text_length} characters")
-        _logger.info(f"  Total length: {total_length} characters")
         
         # Check if data is too large (OpenAI has limits)
         if total_length > 100000:  # Conservative limit
@@ -705,7 +681,6 @@ class GHLLocationContact(models.Model):
             max_contact_length = 100000 - prompt_length - 1000  # Leave some buffer
             if max_contact_length > 0:
                 contact_text = contact_text[:max_contact_length] + "... (truncated)"
-                _logger.info(f"Truncated contact data to {len(contact_text)} characters")
             else:
                 _logger.error(f"Prompt too large for contact {self.id}, cannot proceed")
                 return {
@@ -739,18 +714,10 @@ class GHLLocationContact(models.Model):
         }
 
         # Log request details for debugging
-        _logger.info(f"OpenAI API request for contact {self.id}:")
-        _logger.info(f"  URL: https://api.openai.com/v1/chat/completions")
-        _logger.info(f"  Model: {data['model']}")
-        _logger.info(f"  Max tokens: {data['max_tokens']}")
-        _logger.info(f"  Temperature: {data['temperature']}")
-        _logger.info(f"  System message length: {len(data['messages'][0]['content'])} chars")
-        _logger.info(f"  User message length: {len(data['messages'][1]['content'])} chars")
         
         # Log a sample of the user message content for debugging
         user_message = data['messages'][1]['content']
         user_message_preview = user_message[:200] + "..." if len(user_message) > 200 else user_message
-        _logger.info(f"  User message preview: {user_message_preview}")
 
         try:
             # Make the API call
@@ -761,10 +728,7 @@ class GHLLocationContact(models.Model):
                 timeout=30
             )
             
-            # Log response details for debugging
-            _logger.info(f"OpenAI API response for contact {self.id}:")
-            _logger.info(f"  Status code: {response.status_code}")
-            _logger.info(f"  Response headers: {dict(response.headers)}")
+            # Log response details for debugging    
             
             if response.status_code != 200:
                 _logger.error(f"OpenAI API error response for contact {self.id}:")
@@ -781,8 +745,6 @@ class GHLLocationContact(models.Model):
             # Parse the response
             result = response.json()
             ai_response_text = result['choices'][0]['message']['content']
-
-            _logger.info(f"Raw AI response for contact {self.id}: {ai_response_text}")
 
             # Parse the JSON response
             try:
@@ -801,7 +763,6 @@ class GHLLocationContact(models.Model):
                     else:
                         ai_result = json.loads(ai_response_text)
 
-                _logger.info(f"Parsed AI result for contact {self.id}: {ai_result}")
                 return ai_result
 
             except json.JSONDecodeError as e:
@@ -820,7 +781,6 @@ class GHLLocationContact(models.Model):
             
             # Try fallback to gpt-3.5-turbo if gpt-4o fails
             if 'gpt-4o' in str(data.get('model', '')):
-                _logger.info(f"Trying fallback to gpt-3.5-turbo for contact {self.id}")
                 try:
                     data['model'] = 'gpt-3.5-turbo'
                     response = requests.post(
@@ -831,7 +791,6 @@ class GHLLocationContact(models.Model):
                     )
                     
                     if response.status_code == 200:
-                        _logger.info(f"Fallback model succeeded for contact {self.id}")
                         result = response.json()
                         ai_response_text = result['choices'][0]['message']['content']
                         
@@ -849,7 +808,6 @@ class GHLLocationContact(models.Model):
                                 else:
                                     ai_result = json.loads(ai_response_text)
                             
-                            _logger.info(f"Parsed AI result with fallback model for contact {self.id}: {ai_result}")
                             return ai_result
                             
                         except json.JSONDecodeError as e:
@@ -896,8 +854,6 @@ class GHLLocationContact(models.Model):
             location_id=self.location_id.id
         )
 
-        _logger.info(f"AI analysis result for contact {self.id}: {ai_result}")
-
         return ai_result
 
     def _create_ai_analysis_prompt(self, contact_data, automation_template):
@@ -914,13 +870,10 @@ class GHLLocationContact(models.Model):
                 contact_status_rules = "Available Contact Status Options:\n"
                 for option in status_options:
                     contact_status_rules += f"- {option.name}: {option.description}\n"
-                _logger.info(f"Contact status rules for contact {self.id}: {contact_status_rules}")
-                _logger.info(f"Found {len(status_options)} status options for contact {self.id}")
             else:
                 _logger.warning(f"No status options found for contact {self.id} in automation template {automation_template.name}")
         else:
             _logger.warning(f"No enabled contact status settings found for contact {self.id} in automation template {automation_template.name}")
-            _logger.info(f"All contact status settings for template {automation_template.name}: {automation_template.contact_status_setting_ids}")
         
         # Get AI contact scoring rules from automation template
         ai_contact_scoring_setting = automation_template.ai_contact_scoring_setting_ids.filtered(lambda s: s.enabled)
@@ -1070,9 +1023,6 @@ IMPORTANT: Return ONLY the JSON object. Do not wrap it in markdown code blocks (
             # Set AI status (HTML formatted)
             self.ai_status = ai_status
             
-            # Log the AI status for debugging
-            _logger.info(f"Setting AI status for contact {self.id}: {ai_status}")
-            
             # Set AI summary (HTML formatted)
             if ai_summary and isinstance(ai_summary, str) and len(ai_summary.strip()) > 0:
                 # Check if the summary is just placeholder text
@@ -1121,7 +1071,6 @@ IMPORTANT: Return ONLY the JSON object. Do not wrap it in markdown code blocks (
                     corrected_reasoning = re.sub(grade_pattern, f'grade {ai_quality_grade.split("_")[1].upper()}', ai_reasoning, flags=re.IGNORECASE)
                     
                     if corrected_reasoning != ai_reasoning:
-                        _logger.info(f"Corrected AI reasoning for contact {self.id} to match grade '{ai_quality_grade}'")
                         ai_reasoning = corrected_reasoning
                 
                 self.ai_reasoning = ai_reasoning
@@ -1146,9 +1095,6 @@ IMPORTANT: Return ONLY the JSON object. Do not wrap it in markdown code blocks (
                 'ai_analysis_status': 'completed',
                 'ai_analysis_date': fields.Datetime.now(),
             })
-            
-            _logger.info(
-                f"Updated contact {self.id} with AI results: status={self.ai_status}, quality={self.ai_quality_grade}, sales={self.ai_sales_grade}")
              
         except Exception as e:
             _logger.error(f"Error updating contact {self.id} with AI results: {str(e)}")
@@ -1401,19 +1347,16 @@ IMPORTANT: Return ONLY the JSON object. Do not wrap it in markdown code blocks (
                     }
                 ]
             }
-            _logger.info(f"Fetching contacts for location {location_id} with pageLimit={limit}, page={page}")
             response = requests.post(url, headers=headers, json=data, timeout=30)
             if response.status_code == 200:
                 result = response.json()
                 contacts = result.get('contacts', [])
                 total_count = result.get('total', 0)
-                _logger.info(f"Successfully fetched {len(contacts)} contacts (total: {total_count}) for page {page}")
                 
                 # Log the first few contacts to see what we're getting
                 for i, contact in enumerate(contacts[:3]):
                     contact_name = contact.get('contactName', 'Unknown')
                     contact_id = contact.get('id', 'Unknown')
-                    _logger.info(f"GHL API Contact {i+1} on page {page}: ID={contact_id}, Name='{contact_name}'")
                 return {
                     'success': True,
                     'contacts_data': contacts,
@@ -1466,11 +1409,8 @@ IMPORTANT: Return ONLY the JSON object. Do not wrap it in markdown code blocks (
                     'error': "Failed to get location access token"
                 }
             # Step 2: Fetch all contacts using new pagination utility (POST /contacts/search)
-            _logger.info(f"Fetching contacts for location {location_id} with pagination (max_pages: {max_pages})")
             result = fetch_contacts_with_pagination(location_token, location_id, max_pages)
             if result['success']:
-                _logger.info(
-                    f"Successfully fetched {result['total_items']} contacts from {result['total_pages']} pages")
                 return {
                     'success': True,
                     'contacts_data': result['items'],
@@ -1515,7 +1455,6 @@ IMPORTANT: Return ONLY the JSON object. Do not wrap it in markdown code blocks (
         }
         try:
             resp = requests.get(url, headers=headers)
-            _logger.info(f"[GHLLocationContact] fetch_contact_single response: {resp.status_code} {resp.text}")
             if resp.status_code != 200:
                 _logger.error(f"Failed to fetch contact: {resp.text}")
                 return None
@@ -1632,8 +1571,7 @@ IMPORTANT: Return ONLY the JSON object. Do not wrap it in markdown code blocks (
                 
                 # Only update if status has changed
                 if new_ai_status != contact.ai_status:
-                    contact.ai_status = new_ai_status
-                    # _logger.info(f"Updated contact {contact.id} AI status from '{contact.ai_status}' to '{new_ai_status}' based on activity")  # Reduced logging for production
+                    contact.ai_status = new_ai_status   
                 
             except Exception as e:
                 _logger.error(f"Error updating AI status for contact {contact.id}: {str(e)}")
@@ -1713,7 +1651,6 @@ IMPORTANT: Return ONLY the JSON object. Do not wrap it in markdown code blocks (
         _logger = logging.getLogger(__name__)
         
         all_contacts = self.search([])
-        _logger.info(f"Updating AI status for {len(all_contacts)} contacts")
         
         updated_count = 0
         for contact in all_contacts:
@@ -1741,7 +1678,6 @@ IMPORTANT: Return ONLY the JSON object. Do not wrap it in markdown code blocks (
                     _logger.error(f"Error updating AI status for contact {contact.id}: {str(e)}")
                     break  # Don't retry for non-concurrency errors
         
-        _logger.info(f"Updated AI status for {updated_count} contacts")
         return {
             'success': True,
             'contacts_updated': updated_count,
@@ -1768,7 +1704,6 @@ IMPORTANT: Return ONLY the JSON object. Do not wrap it in markdown code blocks (
                 # Also update AI status based on activity
                 self.update_ai_status_based_on_activity()
                 
-                # _logger.info(f"Updated touch information and AI status for contact {self.id}")  # Reduced logging for production
                 return  # Success, exit retry loop
                 
             except (psycopg2.errors.SerializationFailure, psycopg2.errors.DeadlockDetected) as db_error:
@@ -1809,18 +1744,15 @@ IMPORTANT: Return ONLY the JSON object. Do not wrap it in markdown code blocks (
             
             # If there's recent activity, the status might need updating
             if recent_messages or recent_conversations or recent_opportunities:
-                _logger.info(f"Contact {self.id} has recent activity - AI status may need updating")
                 return False
             
             # If no recent activity and current status is appropriate for inactive contacts
             inactive_statuses = ['not_contacted', 'cold_lead', 'no_response', 'follow_up_needed']
             if self.ai_status in inactive_statuses:
-                _logger.info(f"Contact {self.id} has no recent activity and current status '{self.ai_status}' is appropriate")
                 return True
             
             # If current status suggests engagement but no recent activity, it might be outdated
             if self.ai_status not in inactive_statuses:
-                _logger.info(f"Contact {self.id} has no recent activity but current status '{self.ai_status}' suggests engagement - may need updating")
                 return False
             
             return True
@@ -1854,13 +1786,11 @@ IMPORTANT: Return ONLY the JSON object. Do not wrap it in markdown code blocks (
 
         # Log API key info (first 10 chars for debugging)
         api_key_preview = api_key[:10] + "..." if len(api_key) > 10 else api_key
-        _logger.info(f"Using API key for sales grade analysis for contact {self.id}: {api_key_preview}")
 
         # Create AI prompt for sales grade analysis
         prompt = self._create_ai_sales_grade_prompt(contact_data, automation_template)
         
         # Log the prompt for debugging
-        _logger.info(f"AI sales grade prompt for contact {self.id}: {prompt}")
 
         # Convert contact data to text for AI analysis
         contact_text = json.dumps(contact_data, indent=2)
@@ -1870,10 +1800,6 @@ IMPORTANT: Return ONLY the JSON object. Do not wrap it in markdown code blocks (
         contact_text_length = len(contact_text)
         total_length = prompt_length + contact_text_length
         
-        _logger.info(f"Sales grade analysis data sizes for contact {self.id}:")
-        _logger.info(f"  Prompt length: {prompt_length} characters")
-        _logger.info(f"  Contact data length: {contact_text_length} characters")
-        _logger.info(f"  Total length: {total_length} characters")
         
         # Check if data is too large (OpenAI has limits)
         if total_length > 100000:  # Conservative limit
@@ -1882,7 +1808,6 @@ IMPORTANT: Return ONLY the JSON object. Do not wrap it in markdown code blocks (
             max_contact_length = 100000 - prompt_length - 1000  # Leave some buffer
             if max_contact_length > 0:
                 contact_text = contact_text[:max_contact_length] + "... (truncated)"
-                _logger.info(f"Truncated contact data to {len(contact_text)} characters")
             else:
                 _logger.error(f"Prompt too large for sales grade analysis for contact {self.id}, cannot proceed")
                 return {
@@ -1912,13 +1837,6 @@ IMPORTANT: Return ONLY the JSON object. Do not wrap it in markdown code blocks (
             'max_tokens': 1500
         }
 
-        # Log request details for debugging
-        _logger.info(f"OpenAI API request for sales grade analysis for contact {self.id}:")
-        _logger.info(f"  URL: https://api.openai.com/v1/chat/completions")
-        _logger.info(f"  Model: {data['model']}")
-        _logger.info(f"  Max tokens: {data['max_tokens']}")
-        _logger.info(f"  Temperature: {data['temperature']}")
-
         try:
             # Make the API call
             response = requests.post(
@@ -1928,9 +1846,6 @@ IMPORTANT: Return ONLY the JSON object. Do not wrap it in markdown code blocks (
                 timeout=30
             )
             
-            # Log response details for debugging
-            _logger.info(f"OpenAI API response for sales grade analysis for contact {self.id}:")
-            _logger.info(f"  Status code: {response.status_code}")
             
             if response.status_code != 200:
                 _logger.error(f"OpenAI API error response for sales grade analysis for contact {self.id}:")
@@ -1942,8 +1857,6 @@ IMPORTANT: Return ONLY the JSON object. Do not wrap it in markdown code blocks (
             # Parse the response
             result = response.json()
             ai_response_text = result['choices'][0]['message']['content']
-
-            _logger.info(f"Raw AI sales grade response for contact {self.id}: {ai_response_text}")
 
             # Parse the JSON response
             try:
@@ -1961,8 +1874,6 @@ IMPORTANT: Return ONLY the JSON object. Do not wrap it in markdown code blocks (
                         ai_result = json.loads(json_match.group())
                     else:
                         ai_result = json.loads(ai_response_text)
-
-                _logger.info(f"Parsed AI sales grade result for contact {self.id}: {ai_result}")
                 return ai_result
 
             except json.JSONDecodeError as e:
@@ -1978,7 +1889,6 @@ IMPORTANT: Return ONLY the JSON object. Do not wrap it in markdown code blocks (
             
             # Try fallback to gpt-3.5-turbo if gpt-4o fails
             if 'gpt-4o' in str(data.get('model', '')):
-                _logger.info(f"Trying fallback to gpt-3.5-turbo for sales grade analysis for contact {self.id}")
                 try:
                     data['model'] = 'gpt-3.5-turbo'
                     response = requests.post(
@@ -1989,7 +1899,6 @@ IMPORTANT: Return ONLY the JSON object. Do not wrap it in markdown code blocks (
                     )
                     
                     if response.status_code == 200:
-                        _logger.info(f"Fallback model succeeded for sales grade analysis for contact {self.id}")
                         result = response.json()
                         ai_response_text = result['choices'][0]['message']['content']
                         
@@ -2007,7 +1916,7 @@ IMPORTANT: Return ONLY the JSON object. Do not wrap it in markdown code blocks (
                                 else:
                                     ai_result = json.loads(ai_response_text)
                             
-                            _logger.info(f"Parsed AI sales grade result with fallback model for contact {self.id}: {ai_result}")
+
                             return ai_result
                             
                         except json.JSONDecodeError as e:
@@ -2128,22 +2037,15 @@ IMPORTANT: Return ONLY the JSON object. Do not wrap it in markdown code blocks (
             # Extract AI sales grade results
             ai_sales_grade = ai_result.get('ai_sales_grade', 'no_grade')
             ai_sales_reasoning = ai_result.get('ai_sales_reasoning', '<span style="color: #6b7280;">No sales grade analysis available</span>')
-            
-            _logger.info(f"AI sales grade analysis for contact {self.id}:")
-            _logger.info(f"  Raw AI sales grade: '{ai_sales_grade}'")
-            _logger.info(f"  AI sales reasoning preview: '{ai_sales_reasoning[:200]}...'")
-            
             # Validate sales grade against available options
             if automation_template:
                 ai_sales_scoring_setting = automation_template.ai_sales_scoring_setting_ids.filtered(lambda s: s.enabled)
                 if ai_sales_scoring_setting:
                     # Get available grades from the setting
                     available_grades = self._get_valid_sales_grades()
-                    _logger.info(f"  Available grades from template: {available_grades}")
                     
                     # Normalize the AI sales grade to match the available grades format
                     normalized_grade = ai_sales_grade.lower().replace(' ', '_').replace('-', '_')
-                    _logger.info(f"  Normalized AI sales grade: '{normalized_grade}'")
                     
                     # Check if the normalized grade is in available grades
                     if normalized_grade in available_grades:
@@ -2165,7 +2067,6 @@ IMPORTANT: Return ONLY the JSON object. Do not wrap it in markdown code blocks (
             self.ai_sales_grade = ai_sales_grade
             self.ai_sales_reasoning = ai_sales_reasoning
             
-            _logger.info(f"Updated contact {self.id} with AI sales grade results: sales_grade='{ai_sales_grade}'")
             
         except Exception as e:
             _logger.error(f"Error updating contact {self.id} with AI sales grade results: {str(e)}")
@@ -2197,7 +2098,6 @@ IMPORTANT: Return ONLY the JSON object. Do not wrap it in markdown code blocks (
                     # Commit the individual transaction
                     new_cr.commit()
                     
-                    _logger.info(f"Successfully updated contact {self.id} on attempt {attempt + 1}")
                     return True
                 
             except Exception as e:
@@ -2236,7 +2136,6 @@ IMPORTANT: Return ONLY the JSON object. Do not wrap it in markdown code blocks (
                     # Commit the individual transaction
                     new_cr.commit()
                     
-                    _logger.info(f"Successfully updated contact {self.id} with AI results on attempt {attempt + 1}")
                     return True
                 
             except Exception as e:

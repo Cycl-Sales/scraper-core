@@ -49,7 +49,6 @@ class GHLAPIPaginator:
         
         while True:
             if max_pages and page > max_pages:
-                _logger.info(f"Reached maximum pages limit ({max_pages})")
                 break
             
             # Add pagination parameters
@@ -58,7 +57,6 @@ class GHLAPIPaginator:
             
             try:
                 url = f"{self.base_url}{endpoint}"
-                _logger.info(f"Fetching page {page} from {url} with params: {current_params}")
                 
                 response = self.session.get(url, params=current_params, timeout=30)
                 
@@ -73,10 +71,7 @@ class GHLAPIPaginator:
                         total_count = meta.get('total', 0)
                         current_count = len(items) if items else 0
                         
-                        _logger.info(f"Page {page}: Got {current_count} items, total available: {total_count}")
-                        
                         if not items:
-                            _logger.info("No more items to fetch")
                             break
                         
                         yield {
@@ -91,21 +86,17 @@ class GHLAPIPaginator:
                         
                         # Check if we've fetched all available items
                         if total_count and total_fetched >= total_count:
-                            _logger.info(f"Fetched all {total_count} items")
                             break
                         
                         # If we got fewer items than requested, we're done
                         if current_count < params['limit']:
-                            _logger.info(f"Got fewer items ({current_count}) than limit ({params['limit']}), assuming end of data")
                             break
                     
                     elif isinstance(data, list):
                         # Direct list response
                         current_count = len(data)
-                        _logger.info(f"Page {page}: Got {current_count} items (list response)")
                         
                         if not data:
-                            _logger.info("No more items to fetch")
                             break
                         
                         yield {
@@ -120,7 +111,6 @@ class GHLAPIPaginator:
                         
                         # If we got fewer items than requested, we're done
                         if current_count < params['limit']:
-                            _logger.info(f"Got fewer items ({current_count}) than limit ({params['limit']}), assuming end of data")
                             break
                     
                     else:
@@ -128,7 +118,6 @@ class GHLAPIPaginator:
                         break
                 
                 elif response.status_code == 404:
-                    _logger.info("Endpoint returned 404, no data available")
                     break
                 
                 elif response.status_code == 429:
@@ -205,7 +194,6 @@ class GHLAPIPaginator:
         pages_fetched = 0
         while True:
             if max_pages and page > max_pages:
-                _logger.info(f"Reached maximum pages limit ({max_pages})")
                 break
             body = {
                 "locationId": location_id,
@@ -220,21 +208,13 @@ class GHLAPIPaginator:
             }
             url = f"{self.base_url}/contacts/search"
             try:
-                _logger.info(f"Fetching contacts page {page} for location {location_id} via POST {url}")
                 response = self.session.post(url, json=body, timeout=30)
                 if response.status_code == 200:
                     data = response.json()
                     contacts = data.get('contacts', [])
-                    total = data.get('total', None)
-                    _logger.info(f"Fetched {len(contacts)} contacts on page {page} (total: {total})")
+                    total = data.get('total', None)     
                     all_contacts.extend(contacts)
                     pages_fetched += 1
-                    if len(contacts) < page_limit:
-                        _logger.info("Last page reached (fewer contacts than pageLimit)")
-                        break
-                    if total is not None and len(all_contacts) >= total:
-                        _logger.info("Fetched all available contacts")
-                        break
                     page += 1
                     time.sleep(delay_between_requests)
                 else:
@@ -279,13 +259,11 @@ def get_location_token(app_access_token: str, company_id: str, location_id: str)
         }
         
         response = requests.post(token_url, headers=headers, data=data, timeout=30)
-        _logger.info(f"Location token response: {response.status_code}")
         
         if response.status_code in (200, 201):
             token_json = response.json()
             location_token = token_json.get('access_token')
             if location_token:
-                # _logger.info("Successfully obtained location token")  # Reduced logging for production
                 return location_token
             else:
                 _logger.error(f"No access_token in location token response: {token_json}")
@@ -332,13 +310,11 @@ def fetch_opportunities_with_pagination(location_token: str, location_id: str,
     total_count = 0
     while True:
         if max_pages and page > max_pages:
-            _logger.info(f"Reached maximum pages limit ({max_pages}) for opportunities/search")
             break
         params = {'location_id': location_id, 'limit': 100, 'page': page}
         if contact_id:
             params['contact_id'] = contact_id
         url = f"https://services.leadconnectorhq.com/opportunities/search"
-        _logger.info(f"Fetching opportunities page {page} from {url} with params: {params}")
         response = session.get(url, params=params, timeout=30)
         if response.status_code == 200:
             data = response.json()
@@ -346,19 +322,15 @@ def fetch_opportunities_with_pagination(location_token: str, location_id: str,
             meta = data.get('meta', {})
             total_count = meta.get('total', 0)
             current_count = len(items)
-            _logger.info(f"Page {page}: Got {current_count} opportunities, total available: {total_count}")
             if not items:
-                _logger.info("No more opportunities to fetch")
                 break
             all_items.extend(items)
             total_pages = page
             # If we got fewer items than requested, we're done
             if current_count < params['limit']:
-                _logger.info(f"Got fewer items ({current_count}) than limit ({params['limit']}), assuming end of data")
                 break
             # If we've fetched all available items
-            if total_count and len(all_items) >= total_count:
-                _logger.info(f"Fetched all {total_count} opportunities")
+            if total_count and len(all_items) >= total_count:   
                 break
             page += 1
         elif response.status_code == 422:
