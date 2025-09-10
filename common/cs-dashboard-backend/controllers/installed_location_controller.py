@@ -3149,10 +3149,10 @@ class InstalledLocationController(http.Controller):
             contact_ids_for_background = []
 
             # STEP 3A: Trigger GHL API sync for fresh data (sequential processing)
-            # Limit to first 5 contacts to prevent overwhelming the system and concurrent updates
-            limited_contacts = contacts[:5] if len(contacts) > 5 else contacts
-            if limited_contacts:
-                self._trigger_ghl_sync_for_contacts(limited_contacts, app.access_token, company_id, location_id, app_id)
+            # DISABLED: Background sync to prevent concurrent update conflicts
+            # limited_contacts = contacts[:5] if len(contacts) > 5 else contacts
+            # if limited_contacts:
+            #     self._trigger_ghl_sync_for_contacts(limited_contacts, app.access_token, company_id, location_id, app_id)
 
             for contact in contacts:
                 contact_ids_for_background.append(contact.id)
