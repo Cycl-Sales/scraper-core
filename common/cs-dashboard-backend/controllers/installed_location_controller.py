@@ -2765,6 +2765,119 @@ class InstalledLocationController(http.Controller):
         }
         return color_mapping.get(message_type, 'border-slate-500 text-slate-300')
 
+    def _fetch_fresh_contacts_from_ghl(self, location_token, location_id, page, limit, company_id):
+        """
+        Fetch fresh contacts from GHL API with pagination support
+        """
+        import requests
+        import json
+        from datetime import datetime
+        
+        try:
+            # Calculate offset for pagination
+            offset = (page - 1) * limit
+            
+            # Fetch contacts from GHL API with pagination
+            url = f"https://services.leadconnectorhq.com/contacts/?locationId={location_id}&limit={limit}&offset={offset}"
+            headers = {
+                'Accept': 'application/json',
+                'Authorization': f'Bearer {location_token}',
+                'Version': '2021-07-28',
+            }
+            
+            response = requests.get(url, headers=headers, timeout=30)
+            
+            if response.status_code == 200:
+                data = response.json()
+                contacts_data = data.get('contacts', [])
+                
+                # Find the installed location
+                installed_location = request.env['installed.location'].sudo().search([
+                    ('location_id', '=', location_id)
+                ], limit=1)
+                
+                if not installed_location:
+                    return {
+                        'success': False,
+                        'message': f'No installed location found for location_id: {location_id}',
+                        'contacts': []
+                    }
+                
+                # Process and create/update contacts
+                processed_contacts = []
+                for contact_data in contacts_data:
+                    try:
+                        # Prepare contact values
+                        contact_vals = {
+                            'external_id': contact_data.get('id'),
+                            'location_id': installed_location.id,
+                            'name': contact_data.get('name', ''),
+                            'first_name': contact_data.get('firstName', ''),
+                            'last_name': contact_data.get('lastName', ''),
+                            'email': contact_data.get('email', ''),
+                            'phone': contact_data.get('phone', ''),
+                            'timezone': contact_data.get('timezone', ''),
+                            'country': contact_data.get('country', ''),
+                            'source': contact_data.get('source', ''),
+                            'date_added': self._parse_iso_date(contact_data.get('dateAdded')),
+                            'business_id': contact_data.get('businessId', ''),
+                            'followers': contact_data.get('followers', ''),
+                            'tag_list': contact_data.get('tagList', ''),
+                        }
+                        
+                        # Create or update contact
+                        existing_contact = request.env['ghl.location.contact'].sudo().search([
+                            ('external_id', '=', contact_vals['external_id']),
+                            ('location_id', '=', installed_location.id)
+                        ], limit=1)
+                        
+                        if existing_contact:
+                            existing_contact.write(contact_vals)
+                            processed_contacts.append(existing_contact)
+                        else:
+                            new_contact = request.env['ghl.location.contact'].sudo().create(contact_vals)
+                            processed_contacts.append(new_contact)
+                            
+                    except Exception as contact_error:
+                        _logger.warning(f"Could not process contact {contact_data.get('id', 'unknown')}: {str(contact_error)}")
+                        continue
+                
+                return {
+                    'success': True,
+                    'message': f'Successfully fetched {len(processed_contacts)} contacts from GHL API',
+                    'contacts': processed_contacts
+                }
+                
+            else:
+                return {
+                    'success': False,
+                    'message': f'GHL API error: {response.status_code} {response.text}',
+                    'contacts': []
+                }
+                
+        except Exception as e:
+            _logger.error(f"Error fetching fresh contacts from GHL API: {str(e)}")
+            return {
+                'success': False,
+                'message': f'Unexpected error: {str(e)}',
+                'contacts': []
+            }
+
+    def _parse_iso_date(self, date_string):
+        """Parse ISO date string to datetime object"""
+        if not date_string:
+            return None
+        try:
+            # Handle different date formats from GHL API
+            if 'T' in date_string:
+                # ISO format with time
+                return datetime.fromisoformat(date_string.replace('Z', '+00:00'))
+            else:
+                # Date only format
+                return datetime.strptime(date_string, '%Y-%m-%d')
+        except Exception:
+            return None
+
     def _trigger_ghl_sync_for_contacts(self, contacts, access_token, company_id, location_id, app_id):
         """
         Trigger GHL API sync for contacts to ensure fresh data
@@ -3148,11 +3261,31 @@ class InstalledLocationController(http.Controller):
             contact_data = []
             contact_ids_for_background = []
 
-            # STEP 3A: Trigger GHL API sync for fresh data (sequential processing)
-            # DISABLED: Background sync to prevent concurrent update conflicts
-            # limited_contacts = contacts[:5] if len(contacts) > 5 else contacts
-            # if limited_contacts:
-            #     self._trigger_ghl_sync_for_contacts(limited_contacts, app.access_token, company_id, location_id, app_id)
+            # STEP 3A: Fetch fresh data from GHL API synchronously based on pagination
+            # This ensures we get fresh data from GHL API for the requested page and limit
+            try:
+                # Get location token for GHL API calls
+                from odoo.addons.web_scraper.models.ghl_api_utils import get_location_token
+                location_token = get_location_token(app.access_token, company_id, location_id)
+                
+                if location_token:
+                    # Fetch fresh contacts from GHL API with pagination
+                    fresh_contacts_result = self._fetch_fresh_contacts_from_ghl(
+                        location_token, location_id, page, limit, company_id
+                    )
+                    
+                    if fresh_contacts_result.get('success'):
+                        # Update contacts with fresh data from GHL API
+                        contacts = fresh_contacts_result.get('contacts', contacts)
+                        _logger.info(f"Successfully fetched {len(contacts)} fresh contacts from GHL API")
+                    else:
+                        _logger.warning(f"Failed to fetch fresh contacts from GHL API: {fresh_contacts_result.get('message', 'Unknown error')}")
+                else:
+                    _logger.warning("Failed to get location token for GHL API fetch")
+                    
+            except Exception as e:
+                _logger.error(f"Error fetching fresh contacts from GHL API: {str(e)}")
+                # Continue with existing contacts if GHL API fetch fails
 
             for contact in contacts:
                 contact_ids_for_background.append(contact.id)
@@ -3188,20 +3321,49 @@ class InstalledLocationController(http.Controller):
                     if assigned_user:
                         assigned_user_name = assigned_user.name or f"{assigned_user.first_name or ''} {assigned_user.last_name or ''}".strip()
 
-                # Use existing data for all contacts (no background sync)
-                touch_summary = contact.touch_summary or 'No activity'
-                last_touch_date = contact.last_touch_date
-                last_message_data = contact.last_message or []
+                # Compute fresh data for contacts (now that we have fresh GHL API data)
+                try:
+                    touch_summary = self._compute_touch_summary_for_contact(contact)
+                except Exception as e:
+                    _logger.error(f"Error computing touch summary for contact {contact.id}: {str(e)}")
+                    touch_summary = contact.touch_summary or 'No activity'
                 
-                # Use existing engagement summary for all contacts
-                engagement_summary = contact.engagement_summary or []
+                try:
+                    last_touch_date = self._compute_last_touch_date_for_contact(contact)
+                except Exception as e:
+                    _logger.error(f"Error computing last touch date for contact {contact.id}: {str(e)}")
+                    last_touch_date = contact.last_touch_date
                 
-                # Use existing speed to lead for all contacts
-                speed_to_lead = 'Unknown'
+                try:
+                    last_message_data = self._compute_last_message_content_for_contact(contact)
+                except Exception as e:
+                    _logger.error(f"Error computing last message content for contact {contact.id}: {str(e)}")
+                    last_message_data = contact.last_message or []
+                
+                try:
+                    engagement_summary = self._compute_engagement_summary_for_contact(contact)
+                except Exception as e:
+                    _logger.error(f"Error computing engagement summary for contact {contact.id}: {str(e)}")
+                    engagement_summary = contact.engagement_summary or []
+                
+                try:
+                    speed_to_lead = self._compute_speed_to_lead_for_contact(contact)
+                except Exception as e:
+                    _logger.error(f"Error computing speed to lead for contact {contact.id}: {str(e)}")
+                    speed_to_lead = 'Unknown'
 
-                # Use existing counts for all contacts (no background sync)
-                tasks_count = 0
-                conversations_count = 0
+                # Get fresh counts from database
+                try:
+                    tasks_count = request.env['ghl.contact.task'].sudo().search_count([
+                        ('contact_id', '=', contact.id)
+                    ])
+                    conversations_count = request.env['ghl.contact.conversation'].sudo().search_count([
+                        ('contact_id', '=', contact.id)
+                    ])
+                except Exception as e:
+                    _logger.error(f"Error getting counts for contact {contact.id}: {str(e)}")
+                    tasks_count = 0
+                    conversations_count = 0
 
                 contact_info = {
                     'id': contact.id,
