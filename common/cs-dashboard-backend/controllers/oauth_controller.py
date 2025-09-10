@@ -30,7 +30,7 @@ class GHLOAuthController(http.Controller):
                 try:
                     json_data = json.loads(request.httprequest.data.decode()) 
                 except Exception as e:
-                    _logger.info(f"Failed to parse JSON from request data: {e}")
+                    # _logger.info(f"Failed to parse JSON from request data: {e}")  # Reduced logging for production
             
             # ===== EXTRACT KEY PARAMETERS =====
             code = kwargs.get('code')
@@ -450,7 +450,7 @@ class GHLOAuthController(http.Controller):
             state = kwargs.get('state')
             app_id = kwargs.get('appId')  # Get app_id from parameters
 
-            _logger.info(f"OAuth authorize called with - locationId: {location_id}, companyId: {company_id}, appId: {app_id}")
+                # _logger.info(f"OAuth authorize called with - locationId: {location_id}, companyId: {company_id}, appId: {app_id}")  # Reduced logging for production
 
             if not location_id and not company_id:
                 return Response(
@@ -493,14 +493,14 @@ class GHLOAuthController(http.Controller):
             # Encode state data to avoid URL encoding issues
             state_encoded = base64.urlsafe_b64encode(json_module.dumps(state_data).encode()).decode()
             
-            _logger.info(f"Generated state data: {state_data}")
-            _logger.info(f"Encoded state: {state_encoded}")
+            # _logger.info(f"Generated state data: {state_data}")  # Reduced logging for production
+            # _logger.info(f"Encoded state: {state_encoded}")  # Reduced logging for production
 
             # Generate authorization URL using CyclSales app credentials
             redirect_uri = f"{request.env['ir.config_parameter'].sudo().get_param('web.base.url')}/api/dashboard/oauth/callback"
             auth_url = f"https://marketplace.gohighlevel.com/oauth/chooselocation?response_type=code&client_id={cyclsales_app.client_id}&redirect_uri={redirect_uri}&scope=locations.readonly&state={state_encoded}"
 
-            _logger.info(f"Generated authorization URL: {auth_url}")
+            # _logger.info(f"Generated authorization URL: {auth_url}")  # Reduced logging for production
 
             return Response(
                 json.dumps({
@@ -605,14 +605,14 @@ class GHLOAuthController(http.Controller):
                     json_data = json.loads(raw_data.decode())
                 except Exception as e:
                     _logger.error(f"Failed to parse JSON: {e}")
-            _logger.info(f"GHL Event Webhook received with kwargs: {kwargs}")
-            _logger.info(f"Request params: {request.params}")
-            _logger.info(f"Request data: {raw_data}")
-            _logger.info(f"Parsed JSON: {json_data}")
-            print(f"GHL Event Webhook - kwargs: {kwargs}")
-            print(f"GHL Event Webhook - params: {request.params}")
-            print(f"GHL Event Webhook - data: {raw_data}")
-            print(f"GHL Event Webhook - parsed JSON: {json_data}")
+            # _logger.info(f"GHL Event Webhook received with kwargs: {kwargs}")  # Reduced logging for production
+            # _logger.info(f"Request params: {request.params}")  # Reduced logging for production
+            # _logger.info(f"Request data: {raw_data}")  # Reduced logging for production
+            # _logger.info(f"Parsed JSON: {json_data}")  # Reduced logging for production
+            # print(f"GHL Event Webhook - kwargs: {kwargs}")  # Reduced logging for production
+            # print(f"GHL Event Webhook - params: {request.params}")  # Reduced logging for production
+            # print(f"GHL Event Webhook - data: {raw_data}")  # Reduced logging for production
+            # print(f"GHL Event Webhook - parsed JSON: {json_data}")  # Reduced logging for production
 
             # --- Event Management Logic (similar to ghl_controller.py) ---
             event_type = json_data.get('type') if json_data else None
@@ -646,36 +646,36 @@ class GHLOAuthController(http.Controller):
                 _logger.warning(f"Could not log event to web.scraper.event.log: {e}")
             # Check for stored temporary tokens and complete installation
             if event_type == 'INSTALL':
-                _logger.info("=" * 50)
-                _logger.info("PROCESSING INSTALL EVENT")
-                _logger.info("=" * 50)
-                _logger.info(f"Event type: {event_type}")
-                _logger.info(f"Install type: {json_data.get('installType')}")
-                _logger.info(f"Company ID: {company_id}")
-                _logger.info(f"Location ID: {location_id}")
-                _logger.info(f"App ID: {json_data.get('appId')}")
+                # _logger.info("=" * 50)  # Reduced logging for production
+                # _logger.info("PROCESSING INSTALL EVENT")  # Reduced logging for production
+                # _logger.info("=" * 50)  # Reduced logging for production
+                # _logger.info(f"Event type: {event_type}")  # Reduced logging for production
+                # _logger.info(f"Install type: {json_data.get('installType')}")  # Reduced logging for production
+                # _logger.info(f"Company ID: {company_id}")  # Reduced logging for production
+                # _logger.info(f"Location ID: {location_id}")  # Reduced logging for production
+                # _logger.info(f"App ID: {json_data.get('appId')}")  # Reduced logging for production
                 
                 # Check if we have stored temporary tokens
                 if hasattr(self, '_temp_tokens') and self._temp_tokens:
-                    _logger.info(f"Found {len(self._temp_tokens)} stored temporary tokens")
+                    # _logger.info(f"Found {len(self._temp_tokens)} stored temporary tokens")  # Reduced logging for production
                     
                     # Look for tokens that match this installation
                     matching_tokens = None
                     for temp_key, temp_data in self._temp_tokens.items():
-                        _logger.info(f"Checking temp token key: {temp_key}")
-                        _logger.info(f"Temp token app_id: {temp_data.get('app_id')}")
-                        _logger.info(f"Event app_id: {json_data.get('appId')}")
+                        # _logger.info(f"Checking temp token key: {temp_key}")  # Reduced logging for production
+                        # _logger.info(f"Temp token app_id: {temp_data.get('app_id')}")  # Reduced logging for production
+                        # _logger.info(f"Event app_id: {json_data.get('appId')}")  # Reduced logging for production
                         
                         # Match by app_id
                         if temp_data.get('app_id') == json_data.get('appId'):
                             matching_tokens = temp_data
-                            _logger.info(f"Found matching tokens for app_id: {json_data.get('appId')}")
+                            # _logger.info(f"Found matching tokens for app_id: {json_data.get('appId')}")  # Reduced logging for production
                             break
                     
                     if matching_tokens:
-                        _logger.info("=" * 50)
-                        _logger.info("COMPLETING GHL INSTALLATION")
-                        _logger.info("=" * 50)
+                        # _logger.info("=" * 50)  # Reduced logging for production
+                        # _logger.info("COMPLETING GHL INSTALLATION")  # Reduced logging for production
+                        # _logger.info("=" * 50)  # Reduced logging for production
                         
                         access_token = matching_tokens['access_token']
                         refresh_token = matching_tokens['refresh_token']

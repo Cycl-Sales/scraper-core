@@ -188,8 +188,8 @@ class AutomationTemplateController(http.Controller):
                     headers=get_cors_headers(request)
                 )
         
-        _logger.info('API CALL: /api/automation_template/update for location_id: %s, automation_group: %s', 
-                    data.get('location_id'), data.get('automation_group'))
+        # _logger.info('API CALL: /api/automation_template/update for location_id: %s, automation_group: %s', 
+        #             data.get('location_id'), data.get('automation_group'))  # Reduced logging for production
 
         # Check if we have location_id or automation_group
         location_id = data.get('location_id')
@@ -226,7 +226,7 @@ class AutomationTemplateController(http.Controller):
             # Check if the installed location has an automation template directly assigned
             if installed_location.automation_template_id:
                 template = installed_location.automation_template_id
-                _logger.info('Found directly assigned template: %s (ID: %s)', template.name, template.id)
+                # _logger.info('Found directly assigned template: %s (ID: %s)', template.name, template.id)  # Reduced logging for production
 
         if not template and automation_group:
             # Try to find template by automation_group
@@ -234,7 +234,7 @@ class AutomationTemplateController(http.Controller):
                 ('automation_group', '=', automation_group)
             ], limit=1)
             if template:
-                _logger.info('Found template by automation_group: %s (ID: %s)', template.name, template.id)
+                # _logger.info('Found template by automation_group: %s (ID: %s)', template.name, template.id)  # Reduced logging for production
 
         if not template and location_id and installed_location:
             # If no template is directly assigned, look for a template with matching automation_group
@@ -243,7 +243,7 @@ class AutomationTemplateController(http.Controller):
                     ('automation_group', '=', installed_location.automation_group)
                 ], limit=1)
                 if template:
-                    _logger.info('Found template by automation_group: %s (ID: %s)', template.name, template.id)
+                    # _logger.info('Found template by automation_group: %s (ID: %s)', template.name, template.id)  # Reduced logging for production
 
         # Check if we're trying to update a default template
         if template and template.is_default:
@@ -1157,7 +1157,7 @@ class AutomationTemplateController(http.Controller):
                 ('automation_group', '=', automation_group)
             ], limit=1)
             if template:
-                _logger.info('Found template by automation_group: %s (ID: %s)', template.name, template.id)
+                # _logger.info('Found template by automation_group: %s (ID: %s)', template.name, template.id)  # Reduced logging for production
 
         if not template and location_id:
             # Find the installed.location record first
@@ -1172,7 +1172,7 @@ class AutomationTemplateController(http.Controller):
                 # Check if the installed location has an automation template directly assigned
                 if installed_location.automation_template_id:
                     template = installed_location.automation_template_id
-                    _logger.info('Found directly assigned template: %s (ID: %s)', template.name, template.id)
+                    # _logger.info('Found directly assigned template: %s (ID: %s)', template.name, template.id)  # Reduced logging for production
                 else:
                     # If no template is directly assigned, look for a template with matching automation_group
                     if installed_location.automation_group:
@@ -1180,7 +1180,7 @@ class AutomationTemplateController(http.Controller):
                             ('automation_group', '=', installed_location.automation_group)
                         ], limit=1)
                         if template:
-                            _logger.info('Found template by automation_group: %s (ID: %s)', template.name, template.id)
+                            # _logger.info('Found template by automation_group: %s (ID: %s)', template.name, template.id)  # Reduced logging for production
                         else:
                             _logger.warning('No template found for automation_group: %s', installed_location.automation_group)
                     else:
