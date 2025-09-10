@@ -1985,11 +1985,11 @@ export default function AnalyticsContactsTable({ loading = false, locationId, se
                                 No Activity
                               </span>
                             ) : (
-                              <div className="flex flex-wrap gap-1">
+                              <div className="flex gap-1 overflow-x-auto">
                                 {touchSummaryData.map((chip, index) => (
                                   <span
                                     key={index}
-                                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border ${chip.border} ${chip.textColor} font-medium tracking-tight h-7 text-[11px] bg-slate-800/30 transition-all duration-200`}
+                                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border ${chip.border} ${chip.textColor} font-medium tracking-tight h-7 text-[11px] bg-slate-800/30 transition-all duration-200 whitespace-nowrap flex-shrink-0`}
                                     style={{ borderWidth: 1 }}
                                   >
                                     <span className={chip.iconColor}>{chip.icon}</span>
@@ -2015,10 +2015,10 @@ export default function AnalyticsContactsTable({ loading = false, locationId, se
                                 No Engagement
                               </span>
                             ) : (
-                              <div className="flex flex-wrap gap-1">
+                              <div className="flex gap-1 overflow-x-auto">
                                 {Array.isArray(row.engagementSummary) && row.engagementSummary.length > 0
                                   ? row.engagementSummary.map((e, idx) => (
-                                    <span key={idx} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border ${e.color || 'border-slate-500 text-slate-300'} font-medium tracking-tight h-7 text-[11px] bg-slate-800/30 transition-all duration-200`} style={{ borderWidth: 1 }}>
+                                    <span key={idx} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border ${e.color || 'border-slate-500 text-slate-300'} font-medium tracking-tight h-7 text-[11px] bg-slate-800/30 transition-all duration-200 whitespace-nowrap flex-shrink-0`} style={{ borderWidth: 1 }}>
                                       <span>{e.icon || '📄'}</span>
                                       {e.type === "No Engagement" ? "No Engagement" : `${e.count}x ${formatEngagementType(e.type)}`}
                                     </span>
