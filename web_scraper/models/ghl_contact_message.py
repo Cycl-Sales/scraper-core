@@ -76,6 +76,7 @@ class GhlContactMessage(models.Model):
         ('sent', 'Sent'),
         ('delivered', 'Delivered'),
         ('read', 'Read'),
+        ('voicemail', 'Voicemail'),
     ], string='Status')
     content_type = fields.Char('Content Type')
     source = fields.Char('Source')
