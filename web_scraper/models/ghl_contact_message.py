@@ -99,10 +99,14 @@ class GhlContactMessage(models.Model):
     recording_content_type = fields.Char('Recording Content Type')
     recording_size = fields.Integer('Recording Size (bytes)')
     recording_fetched = fields.Boolean('Recording Fetched', compute='_compute_recording_fetched', store=True)
+    recording_checked = fields.Boolean('Recording Checked', default=False, help='Whether we have checked if this message has a recording available')
+    recording_available = fields.Boolean('Recording Available', default=True, help='Whether this message has a recording available in GHL')
 
     # Transcript fields
     transcript_fetched = fields.Boolean('Transcript Fetched', compute='_compute_transcript_fetched', store=True)
     transcript_fetch_attempted = fields.Boolean('Transcript Fetch Attempted', default=False)
+    transcript_checked = fields.Boolean('Transcript Checked', default=False, help='Whether we have checked if this message has a transcript available')
+    transcript_available = fields.Boolean('Transcript Available', default=True, help='Whether this message has a transcript available in GHL')
 
     # AI Analysis fields
     ai_call_summary_html = fields.Html('AI Call Summary', help='AI-generated HTML summary of the call')
@@ -723,12 +727,27 @@ class GhlContactMessage(models.Model):
                     'message': f'Recording saved to database and file: {file_path}'
                 }
             else:
-                _logger.error(f"Failed to fetch recording: {response.status_code} {response.text}")
-                return {
-                    'success': False,
-                    'error': f'API error: {response.status_code} {response.text}',
-                    'status_code': response.status_code
-                }
+                # Handle specific error cases
+                if response.status_code == 422:
+                    # Message does not have recording - mark as checked and not available
+                    _logger.info(f"Message {message_id} does not have a recording available")
+                    self.write({
+                        'recording_checked': True,
+                        'recording_available': False
+                    })
+                    return {
+                        'success': False,
+                        'error': 'No recording available for this message',
+                        'status_code': response.status_code,
+                        'no_recording': True
+                    }
+                else:
+                    _logger.error(f"Failed to fetch recording: {response.status_code} {response.text}")
+                    return {
+                        'success': False,
+                        'error': f'API error: {response.status_code} {response.text}',
+                        'status_code': response.status_code
+                    }
 
         except Exception as e:
             _logger.error(f"Exception while fetching recording for message {message_id}: {str(e)}")

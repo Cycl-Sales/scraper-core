@@ -322,6 +322,26 @@ class GhlContactMessageTranscript(models.Model):
                     'average_confidence': transcript_summary.get('average_confidence', 0)
                 }
             else:
+                # Handle specific error cases
+                if response.status_code == 400:
+                    # Check if it's a "transcription does not exist" error
+                    error_text = response.text.lower()
+                    if "transcription does not exist" in error_text:
+                        # Mark the message as having no transcript available
+                        message = self.env['ghl.contact.message'].sudo().browse(message_id)
+                        if message.exists():
+                            message.write({
+                                'transcript_checked': True,
+                                'transcript_available': False
+                            })
+                        _logger.info(f"Message {message_id} does not have a transcript available")
+                        return {
+                            'success': False,
+                            'error': 'No transcript available for this message',
+                            'status_code': response.status_code,
+                            'no_transcript': True
+                        }
+                
                 _logger.error(f"API error: {response.status_code} {response.text}")
                 return {
                     'success': False,

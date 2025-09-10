@@ -35,6 +35,10 @@ interface CallData {
   recording_filename?: string;
   recording_size?: number;
   recording_content_type?: string;
+  recording_available?: boolean;
+  recording_checked?: boolean;
+  transcript_available?: boolean;
+  transcript_checked?: boolean;
   transcript: TranscriptEntry[];
   summary: CallSummary;
   aiAnalysis: AIAnalysis;
@@ -111,6 +115,13 @@ export default function CallTranscriptDialog({ open, onOpenChange, callData, onD
   const recordingFetchAttemptedRef = useRef(false);
   const transcriptFetchAttemptedRef = useRef(false);
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
+  const [toast, setToast] = useState<{message: string, type: 'success' | 'error' | 'info'} | null>(null);
+
+  // Toast notification function
+  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 4000);
+  };
 
   // Update local transcript and recording when callData changes and check for existing data
   useEffect(() => {
@@ -294,6 +305,13 @@ export default function CallTranscriptDialog({ open, onOpenChange, callData, onD
     try {
       console.log('Checking for existing transcript for call:', callData.id);
 
+      // Check if transcript has been confirmed as not available
+      if (callData.transcript_checked && !callData.transcript_available) {
+        console.log('Transcript confirmed as not available for this call');
+        setLocalTranscript([]); // Clear any existing transcript
+        return;
+      }
+
       const response = await fetch(`${PROD_BASE_URL}/api/get-transcript/${callData.id}`, {
         method: 'GET',
         headers: {
@@ -359,7 +377,7 @@ export default function CallTranscriptDialog({ open, onOpenChange, callData, onD
       if (result.success) {
         // Update local transcript state
         setLocalTranscript(result.transcript);
-        alert(`Transcript fetched successfully! ${result.total_sentences} sentences found.`);
+        showToast(`Transcript fetched successfully! ${result.total_sentences} sentences found.`, 'success');
         
         // Trigger data refresh
         if (onDataRefresh) {
@@ -369,12 +387,14 @@ export default function CallTranscriptDialog({ open, onOpenChange, callData, onD
           onOpenChange(false);
           setTimeout(() => onOpenChange(true), 100);
         }
+      } else if (result.no_transcript) {
+        showToast('No transcript available for this call', 'info');
       } else {
         throw new Error(result.error || 'Failed to fetch transcript');
       }
     } catch (error) {
       console.error('Error fetching transcript:', error);
-      alert(`Error fetching transcript: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      showToast(`Error fetching transcript: ${error instanceof Error ? error.message : 'Unknown error'}`, 'error');
     } finally {
       setIsFetchingTranscript(false);
     }
@@ -388,6 +408,13 @@ export default function CallTranscriptDialog({ open, onOpenChange, callData, onD
     
     try {
       console.log('Checking for existing recording for call:', callData.id);
+
+      // Check if recording has been confirmed as not available
+      if (callData.recording_checked && !callData.recording_available) {
+        console.log('Recording confirmed as not available for this call');
+        setLocalRecordingUrl(''); // Clear any existing URL
+        return;
+      }
 
       // If we already have a recording URL, no need to fetch
       if (callData.recordingUrl) {
@@ -441,7 +468,7 @@ export default function CallTranscriptDialog({ open, onOpenChange, callData, onD
         // Update local recording state with full URL
         const fullRecordingUrl = result.recording_url.startsWith('http') ? result.recording_url : `${PROD_BASE_URL}${result.recording_url}`;
         setLocalRecordingUrl(fullRecordingUrl);
-        alert(`Recording fetched successfully!`);
+        showToast('Recording fetched successfully!', 'success');
         
         // Trigger data refresh
         if (onDataRefresh) {
@@ -451,12 +478,14 @@ export default function CallTranscriptDialog({ open, onOpenChange, callData, onD
           onOpenChange(false);
           setTimeout(() => onOpenChange(true), 100);
         }
+      } else if (result.no_recording) {
+        showToast('No recording available for this call', 'info');
       } else {
         throw new Error(result.error || 'Failed to fetch recording');
       }
     } catch (error) {
       console.error('Error fetching recording:', error);
-      alert(`Error fetching recording: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      showToast(`Error fetching recording: ${error instanceof Error ? error.message : 'Unknown error'}`, 'error');
     } finally {
       setIsFetchingRecording(false);
     }
@@ -865,8 +894,16 @@ export default function CallTranscriptDialog({ open, onOpenChange, callData, onD
                       </>
                     ) : (
                       <>
-                        <div className="text-slate-400 text-sm">No recording available for this call</div>
-                        <div className="text-slate-500 text-xs mt-2">Click the button below to fetch recording from GHL API</div>
+                        <div className="text-slate-400 text-sm">
+                          {callData.recording_checked && !callData.recording_available 
+                            ? "No recording available for this call" 
+                            : "No recording available for this call"}
+                        </div>
+                        <div className="text-slate-500 text-xs mt-2">
+                          {callData.recording_checked && !callData.recording_available 
+                            ? "This call has been confirmed to have no recording in GHL" 
+                            : "Click the button below to fetch recording from GHL API"}
+                        </div>
                         <Button
                           onClick={handleFetchRecording}
                           className="mt-4 bg-blue-600 hover:bg-blue-700 text-white"
@@ -912,14 +949,19 @@ export default function CallTranscriptDialog({ open, onOpenChange, callData, onD
                     ))
                   ) : (
                     <div className="text-center py-8">
-                      <div className="text-slate-400 text-sm">No transcript available for this call</div>
-                      <div className="text-slate-500 text-xs mt-2">
-                        {isFetchingTranscript ? 
-                          '📥 Fetching transcript from GHL API...' : 
-                          'Click the button below to fetch transcript from GHL API'
-                        }
+                      <div className="text-slate-400 text-sm">
+                        {callData.transcript_checked && !callData.transcript_available 
+                          ? "No transcript available for this call" 
+                          : "No transcript available for this call"}
                       </div>
-                      {!isFetchingTranscript && (
+                      <div className="text-slate-500 text-xs mt-2">
+                        {callData.transcript_checked && !callData.transcript_available 
+                          ? "This call has been confirmed to have no transcript in GHL" 
+                          : isFetchingTranscript ? 
+                            '📥 Fetching transcript from GHL API...' : 
+                            'Click the button below to fetch transcript from GHL API'}
+                      </div>
+                      {!isFetchingTranscript && !(callData.transcript_checked && !callData.transcript_available) && (
                         <Button
                           onClick={handleFetchTranscript}
                           className="mt-4 bg-blue-600 hover:bg-blue-700 text-white"
@@ -936,6 +978,25 @@ export default function CallTranscriptDialog({ open, onOpenChange, callData, onD
           </Card>
         </div>
       </DialogContent>
+      
+      {/* Toast Notification */}
+      {toast && (
+        <div className={`fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg max-w-sm ${
+          toast.type === 'success' ? 'bg-green-500 text-white' :
+          toast.type === 'error' ? 'bg-red-500 text-white' :
+          'bg-blue-500 text-white'
+        }`}>
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium">{toast.message}</span>
+            <button
+              onClick={() => setToast(null)}
+              className="ml-2 text-white hover:text-gray-200"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
     </Dialog>
   );
 }
