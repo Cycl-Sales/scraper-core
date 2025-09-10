@@ -708,46 +708,21 @@ class GhlContactConversation(models.Model):
                             'channel': conv_data.get('channel', ''),
                         }
 
-                        # Create or update conversation with retry logic for serialization failures
-                        max_retries = 3
+                        # Create or update conversation
                         conversation_record = None
-                        
-                        for attempt in range(max_retries):
-                            try:
-                                if existing_conv:
-                                    existing_conv.write(conv_vals)
-                                    updated_count += 1
-                                    conversation_record = existing_conv
-                                else:
-                                    conversation_record = self.sudo().create(conv_vals)
-                                    created_count += 1
-                                break  # Success, exit retry loop
-                                
-                            except Exception as write_error:
-                                error_str = str(write_error)
-                                if ("could not serialize access due to concurrent update" in error_str or 
-                                    "transaction is aborted" in error_str or
-                                    "deadlock detected" in error_str) and attempt < max_retries - 1:
-                                    
-                                    # Wait with exponential backoff before retrying
-                                    wait_time = (2 ** attempt) * 0.1  # 0.1s, 0.2s, 0.4s
-                                    _logger.warning(f"Serialization failure for conversation {conv_id}, retrying in {wait_time}s (attempt {attempt + 1}/{max_retries})")
-                                    time.sleep(wait_time)
-                                    
-                                    # Re-fetch the existing conversation in case it was created by another process
-                                    if not existing_conv:
-                                        existing_conv = self.sudo().search([
-                                            ('ghl_id', '=', conv_id),
-                                            ('contact_id', '=', contact_record.id)
-                                        ], limit=1)
-                                    continue
-                                else:
-                                    # If it's not a serialization error or we've exhausted retries, re-raise
-                                    _logger.error(f"Conversation write failed after {attempt + 1} attempts: {error_str}")
-                                    raise write_error
+                        try:
+                            if existing_conv:
+                                existing_conv.write(conv_vals)
+                                updated_count += 1
+                                conversation_record = existing_conv
+                            else:
+                                conversation_record = self.sudo().create(conv_vals)
+                                created_count += 1
+                        except Exception as write_error:
+                            _logger.warning(f"Could not create/update conversation {conv_id}: {str(write_error)}")
+                            continue  # Skip this conversation and continue with the next one
                         
                         if not conversation_record:
-                            _logger.error(f"Failed to create/update conversation {conv_id} after {max_retries} attempts")
                             continue
 
                         # Fetch messages for this conversation
