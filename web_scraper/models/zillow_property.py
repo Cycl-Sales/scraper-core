@@ -12,7 +12,7 @@ _logger = logging.getLogger(__name__)
 def ms_to_odoo_date(ms):
     try:
         ms = int(ms)
-        return Date.to_string(datetime.utcfromtimestamp(ms / 1000))
+        return Date.to_string(datetime.fromtimestamp(ms / 1000, tz=datetime.timezone.utc))
     except Exception:
         return False
 
@@ -20,7 +20,7 @@ def ms_to_odoo_date(ms):
 def ms_to_odoo_datetime(ms):
     try:
         ms = int(ms)
-        return Datetime.to_string(datetime.utcfromtimestamp(ms / 1000))
+        return Datetime.to_string(datetime.fromtimestamp(ms / 1000, tz=datetime.timezone.utc))
     except Exception:
         return False
 

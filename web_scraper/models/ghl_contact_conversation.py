@@ -395,7 +395,7 @@ class GhlContactConversation(models.Model):
                 if isinstance(ms, datetime):
                     return ms
                 ms = int(ms)
-                return datetime.utcfromtimestamp(ms / 1000.0)
+                return datetime.fromtimestamp(ms / 1000.0, tz=datetime.timezone.utc)
             except Exception:
                 return None
 
@@ -583,7 +583,7 @@ class GhlContactConversation(models.Model):
                 if isinstance(ms, datetime):
                     return ms
                 ms = int(ms)
-                return datetime.utcfromtimestamp(ms / 1000.0)
+                return datetime.fromtimestamp(ms / 1000.0, tz=datetime.timezone.utc)
             except Exception:
                 return None
 
