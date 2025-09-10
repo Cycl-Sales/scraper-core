@@ -93,13 +93,41 @@ class GhlContactConversation(models.Model):
 
     @api.depends('full_name', 'contact_name', 'ghl_id')
     def _compute_display_name(self):
+        import logging
+        _logger = logging.getLogger(__name__)
+        
         for record in self:
-            if record.full_name:
-                record.display_name = record.full_name
-            elif record.contact_name:
-                record.display_name = record.contact_name
-            else:
-                record.display_name = f"Conversation {record.ghl_id}"
+            try:
+                # Check if we're in a valid transaction state
+                if not self.env.cr or self.env.cr.closed:
+                    record.display_name = f"Conversation {record.ghl_id or 'Unknown'}"
+                    continue
+                
+                # Try to access the fields safely
+                try:
+                    full_name = record.full_name
+                    contact_name = record.contact_name
+                    ghl_id = record.ghl_id
+                except Exception as field_error:
+                    # If we can't access the fields due to transaction issues, use fallback
+                    _logger.warning(f"Could not access fields for conversation {record.id}: {field_error}")
+                    record.display_name = f"Conversation {record.ghl_id or 'Unknown'}"
+                    continue
+                
+                if full_name:
+                    record.display_name = full_name
+                elif contact_name:
+                    record.display_name = contact_name
+                else:
+                    record.display_name = f"Conversation {ghl_id or 'Unknown'}"
+                    
+            except Exception as e:
+                # Fallback for any other errors during computation
+                _logger.warning(f"Error computing display_name for conversation {record.id}: {e}")
+                try:
+                    record.display_name = f"Conversation {record.ghl_id or 'Unknown'}"
+                except:
+                    record.display_name = "Conversation"
 
     @api.constrains('contact_id', 'location_id')
     def _check_contact_location_consistency(self):
@@ -574,6 +602,7 @@ class GhlContactConversation(models.Model):
         import requests
         import logging
         import json
+        import time
         _logger = logging.getLogger(__name__)
 
         def ms_to_datetime(ms):
@@ -679,14 +708,47 @@ class GhlContactConversation(models.Model):
                             'channel': conv_data.get('channel', ''),
                         }
 
-                        # Create or update conversation
-                        if existing_conv:
-                            existing_conv.write(conv_vals)
-                            updated_count += 1
-                            conversation_record = existing_conv
-                        else:
-                            conversation_record = self.sudo().create(conv_vals)
-                            created_count += 1
+                        # Create or update conversation with retry logic for serialization failures
+                        max_retries = 3
+                        conversation_record = None
+                        
+                        for attempt in range(max_retries):
+                            try:
+                                if existing_conv:
+                                    existing_conv.write(conv_vals)
+                                    updated_count += 1
+                                    conversation_record = existing_conv
+                                else:
+                                    conversation_record = self.sudo().create(conv_vals)
+                                    created_count += 1
+                                break  # Success, exit retry loop
+                                
+                            except Exception as write_error:
+                                error_str = str(write_error)
+                                if ("could not serialize access due to concurrent update" in error_str or 
+                                    "transaction is aborted" in error_str or
+                                    "deadlock detected" in error_str) and attempt < max_retries - 1:
+                                    
+                                    # Wait with exponential backoff before retrying
+                                    wait_time = (2 ** attempt) * 0.1  # 0.1s, 0.2s, 0.4s
+                                    _logger.warning(f"Serialization failure for conversation {conv_id}, retrying in {wait_time}s (attempt {attempt + 1}/{max_retries})")
+                                    time.sleep(wait_time)
+                                    
+                                    # Re-fetch the existing conversation in case it was created by another process
+                                    if not existing_conv:
+                                        existing_conv = self.sudo().search([
+                                            ('ghl_id', '=', conv_id),
+                                            ('contact_id', '=', contact_record.id)
+                                        ], limit=1)
+                                    continue
+                                else:
+                                    # If it's not a serialization error or we've exhausted retries, re-raise
+                                    _logger.error(f"Conversation write failed after {attempt + 1} attempts: {error_str}")
+                                    raise write_error
+                        
+                        if not conversation_record:
+                            _logger.error(f"Failed to create/update conversation {conv_id} after {max_retries} attempts")
+                            continue
 
                         # Fetch messages for this conversation
                         message_result = self.env['ghl.contact.message'].sudo().fetch_messages_for_conversation(
