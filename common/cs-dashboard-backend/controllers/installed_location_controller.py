@@ -5180,15 +5180,28 @@ class InstalledLocationController(http.Controller):
                     headers=get_cors_headers(request)
                 )
             else:
-                return Response(
-                    json.dumps({
-                        'success': False,
-                        'error': transcript_result.get('error', 'Failed to fetch transcript')
-                    }),
-                    content_type='application/json',
-                    status=500,
-                    headers=get_cors_headers(request)
-                )
+                # Check if it's a "no transcript" case
+                if transcript_result.get('no_transcript'):
+                    return Response(
+                        json.dumps({
+                            'success': False,
+                            'error': transcript_result.get('error', 'No transcript available'),
+                            'no_transcript': True
+                        }),
+                        content_type='application/json',
+                        status=200,  # Return 200 for "no transcript" case
+                        headers=get_cors_headers(request)
+                    )
+                else:
+                    return Response(
+                        json.dumps({
+                            'success': False,
+                            'error': transcript_result.get('error', 'Failed to fetch transcript')
+                        }),
+                        content_type='application/json',
+                        status=500,
+                        headers=get_cors_headers(request)
+                    )
 
         except Exception as e:
             import traceback
@@ -5277,15 +5290,28 @@ class InstalledLocationController(http.Controller):
                     headers=get_cors_headers(request)
                 )
             else:
-                return Response(
-                    json.dumps({
-                        'success': False,
-                        'error': recording_result.get('error', 'Failed to fetch recording')
-                    }),
-                    content_type='application/json',
-                    status=500,
-                    headers=get_cors_headers(request)
-                )
+                # Check if it's a "no recording" case
+                if recording_result.get('no_recording'):
+                    return Response(
+                        json.dumps({
+                            'success': False,
+                            'error': recording_result.get('error', 'No recording available'),
+                            'no_recording': True
+                        }),
+                        content_type='application/json',
+                        status=200,  # Return 200 for "no recording" case
+                        headers=get_cors_headers(request)
+                    )
+                else:
+                    return Response(
+                        json.dumps({
+                            'success': False,
+                            'error': recording_result.get('error', 'Failed to fetch recording')
+                        }),
+                        content_type='application/json',
+                        status=500,
+                        headers=get_cors_headers(request)
+                    )
 
         except Exception as e:
             import traceback

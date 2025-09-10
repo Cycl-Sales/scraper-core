@@ -389,6 +389,10 @@ export default function CallTranscriptDialog({ open, onOpenChange, callData, onD
         }
       } else if (result.no_transcript) {
         showToast('No transcript available for this call', 'info');
+        // Trigger data refresh to get updated transcript_checked and transcript_available fields
+        if (onDataRefresh) {
+          await onDataRefresh();
+        }
       } else {
         throw new Error(result.error || 'Failed to fetch transcript');
       }
@@ -480,6 +484,10 @@ export default function CallTranscriptDialog({ open, onOpenChange, callData, onD
         }
       } else if (result.no_recording) {
         showToast('No recording available for this call', 'info');
+        // Trigger data refresh to get updated recording_checked and recording_available fields
+        if (onDataRefresh) {
+          await onDataRefresh();
+        }
       } else {
         throw new Error(result.error || 'Failed to fetch recording');
       }
@@ -904,13 +912,15 @@ export default function CallTranscriptDialog({ open, onOpenChange, callData, onD
                             ? "This call has been confirmed to have no recording in GHL" 
                             : "Click the button below to fetch recording from GHL API"}
                         </div>
-                        <Button
-                          onClick={handleFetchRecording}
-                          className="mt-4 bg-blue-600 hover:bg-blue-700 text-white"
-                          size="sm"
-                        >
-                          📥 Fetch Recording
-                        </Button>
+                        {!(callData.recording_checked && !callData.recording_available) && (
+                          <Button
+                            onClick={handleFetchRecording}
+                            className="mt-4 bg-blue-600 hover:bg-blue-700 text-white"
+                            size="sm"
+                          >
+                            📥 Fetch Recording
+                          </Button>
+                        )}
                       </>
                     )}
                   </div>
