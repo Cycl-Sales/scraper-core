@@ -357,11 +357,54 @@ class GhlContactMessage(models.Model):
 
                 ghl_id = msg.get('id')
 
-                # Find the conversation record
-                conversation_record = self.env['ghl.contact.conversation'].search([('ghl_id', '=', conversation_id)],
-                                                                                  limit=1)
+                # Find the conversation record with retry logic for serialization failures
+                conversation_record = None
+                max_retries = 3
+                for attempt in range(max_retries):
+                    try:
+                        conversation_record = self.env['ghl.contact.conversation'].search([('ghl_id', '=', conversation_id)],
+                                                                                          limit=1)
+                        break  # Success, exit retry loop
+                    except Exception as search_error:
+                        error_str = str(search_error)
+                        if ("could not serialize access due to concurrent update" in error_str or 
+                            "transaction is aborted" in error_str or
+                            "deadlock detected" in error_str) and attempt < max_retries - 1:
+                            
+                            # Wait with exponential backoff before retrying
+                            import time
+                            wait_time = (2 ** attempt) * 0.1  # 0.1s, 0.2s, 0.4s
+                            _logger.warning(f"Serialization failure for conversation search {conversation_id}, retrying in {wait_time}s (attempt {attempt + 1}/{max_retries})")
+                            time.sleep(wait_time)
+                            continue
+                        else:
+                            # If it's not a serialization error or we've exhausted retries, log and continue
+                            _logger.error(f"Conversation search failed after {attempt + 1} attempts: {error_str}")
+                            break
 
-                user_record = self.env['ghl.location.user'].search([('external_id', '=', msg.get('userId'))], limit=1)
+                # Find the user record with retry logic for serialization failures
+                user_record = None
+                user_max_retries = 3
+                for user_attempt in range(user_max_retries):
+                    try:
+                        user_record = self.env['ghl.location.user'].search([('external_id', '=', msg.get('userId'))], limit=1)
+                        break  # Success, exit retry loop
+                    except Exception as user_search_error:
+                        error_str = str(user_search_error)
+                        if ("could not serialize access due to concurrent update" in error_str or 
+                            "transaction is aborted" in error_str or
+                            "deadlock detected" in error_str) and user_attempt < user_max_retries - 1:
+                            
+                            # Wait with exponential backoff before retrying
+                            import time
+                            wait_time = (2 ** user_attempt) * 0.1  # 0.1s, 0.2s, 0.4s
+                            _logger.warning(f"Serialization failure for user search {msg.get('userId')}, retrying in {wait_time}s (attempt {user_attempt + 1}/{user_max_retries})")
+                            time.sleep(wait_time)
+                            continue
+                        else:
+                            # If it's not a serialization error or we've exhausted retries, log and continue
+                            _logger.error(f"User search failed after {user_attempt + 1} attempts: {error_str}")
+                            break
 
                 # If user not found, try to fetch it from GHL API
                 if not user_record and msg.get('userId'):
@@ -379,9 +422,28 @@ class GhlContactMessage(models.Model):
                                 company_id=company_id,
                                 app_access_token=app.access_token
                             )
-                            # Try to find the user again after fetching
-                            user_record = self.env['ghl.location.user'].search(
-                                [('external_id', '=', msg.get('userId'))], limit=1)
+                            # Try to find the user again after fetching with retry logic
+                            for retry_attempt in range(user_max_retries):
+                                try:
+                                    user_record = self.env['ghl.location.user'].search(
+                                        [('external_id', '=', msg.get('userId'))], limit=1)
+                                    break  # Success, exit retry loop
+                                except Exception as retry_search_error:
+                                    error_str = str(retry_search_error)
+                                    if ("could not serialize access due to concurrent update" in error_str or 
+                                        "transaction is aborted" in error_str or
+                                        "deadlock detected" in error_str) and retry_attempt < user_max_retries - 1:
+                                        
+                                        # Wait with exponential backoff before retrying
+                                        import time
+                                        wait_time = (2 ** retry_attempt) * 0.1  # 0.1s, 0.2s, 0.4s
+                                        _logger.warning(f"Serialization failure for user retry search {msg.get('userId')}, retrying in {wait_time}s (attempt {retry_attempt + 1}/{user_max_retries})")
+                                        time.sleep(wait_time)
+                                        continue
+                                    else:
+                                        # If it's not a serialization error or we've exhausted retries, log and continue
+                                        _logger.error(f"User retry search failed after {retry_attempt + 1} attempts: {error_str}")
+                                        break
 
                 print(user_record)
                 print(msg)
@@ -407,7 +469,29 @@ class GhlContactMessage(models.Model):
                 # Meta
                 meta = msg.get('meta')
 
-                existing = self.sudo().search([('ghl_id', '=', ghl_id)], limit=1)
+                # Search for existing message with retry logic for serialization failures
+                existing = None
+                msg_search_retries = 3
+                for msg_attempt in range(msg_search_retries):
+                    try:
+                        existing = self.sudo().search([('ghl_id', '=', ghl_id)], limit=1)
+                        break  # Success, exit retry loop
+                    except Exception as msg_search_error:
+                        error_str = str(msg_search_error)
+                        if ("could not serialize access due to concurrent update" in error_str or 
+                            "transaction is aborted" in error_str or
+                            "deadlock detected" in error_str) and msg_attempt < msg_search_retries - 1:
+                            
+                            # Wait with exponential backoff before retrying
+                            import time
+                            wait_time = (2 ** msg_attempt) * 0.1  # 0.1s, 0.2s, 0.4s
+                            _logger.warning(f"Serialization failure for message search {ghl_id}, retrying in {wait_time}s (attempt {msg_attempt + 1}/{msg_search_retries})")
+                            time.sleep(wait_time)
+                            continue
+                        else:
+                            # If it's not a serialization error or we've exhausted retries, log and continue
+                            _logger.error(f"Message search failed after {msg_attempt + 1} attempts: {error_str}")
+                            break
                 if existing:
                     # Use retry mechanism for message updates to prevent serialization failures
                     if _update_message_with_retry(self.env, existing, vals):
@@ -428,7 +512,28 @@ class GhlContactMessage(models.Model):
                                 f"Duplicate detected for message {ghl_id} during create. Attempting to update instead.")
                             # Try to find and update the existing message
                             try:
-                                existing_msg = self.sudo().search([('ghl_id', '=', ghl_id)], limit=1)
+                                # Search for existing message with retry logic for duplicate detection
+                                existing_msg = None
+                                for dup_attempt in range(msg_search_retries):
+                                    try:
+                                        existing_msg = self.sudo().search([('ghl_id', '=', ghl_id)], limit=1)
+                                        break  # Success, exit retry loop
+                                    except Exception as dup_search_error:
+                                        error_str = str(dup_search_error)
+                                        if ("could not serialize access due to concurrent update" in error_str or 
+                                            "transaction is aborted" in error_str or
+                                            "deadlock detected" in error_str) and dup_attempt < msg_search_retries - 1:
+                                            
+                                            # Wait with exponential backoff before retrying
+                                            import time
+                                            wait_time = (2 ** dup_attempt) * 0.1  # 0.1s, 0.2s, 0.4s
+                                            _logger.warning(f"Serialization failure for duplicate message search {ghl_id}, retrying in {wait_time}s (attempt {dup_attempt + 1}/{msg_search_retries})")
+                                            time.sleep(wait_time)
+                                            continue
+                                        else:
+                                            # If it's not a serialization error or we've exhausted retries, log and continue
+                                            _logger.error(f"Duplicate message search failed after {dup_attempt + 1} attempts: {error_str}")
+                                            break
                                 if existing_msg:
                                     # Use retry mechanism for message updates to prevent serialization failures
                                     if _update_message_with_retry(self.env, existing_msg, vals):
@@ -474,8 +579,16 @@ class GhlContactMessage(models.Model):
 
             except Exception as e:
                 msg_id = msg.get('id', 'unknown') if isinstance(msg, dict) else str(msg)
-                _logger.error(f"Error processing message {msg_id}: {str(e)}")
-                continue
+                error_str = str(e)
+                
+                # Check if this is a transaction abort error
+                if "current transaction is aborted" in error_str or "transaction is aborted" in error_str:
+                    _logger.error(f"Transaction aborted while processing message {msg_id}: {error_str}")
+                    # For transaction abort errors, we should break out of the loop as continuing will fail
+                    break
+                else:
+                    _logger.error(f"Error processing message {msg_id}: {error_str}")
+                    continue
 
         result = {
             'success': True,
