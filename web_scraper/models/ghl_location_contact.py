@@ -245,16 +245,10 @@ class GHLLocationContact(models.Model):
             
             for attempt in range(max_retries):
                 try:
-                    # Use a fresh transaction for each retry attempt to avoid aborted transaction issues
-                    with self.env.registry.cursor() as new_cr:
-                        from odoo import api, SUPERUSER_ID
-                        new_env = api.Environment(new_cr, SUPERUSER_ID, {})
-                        
-                        messages = new_env['ghl.contact.message'].search([
-                            ('contact_id', '=', contact.id)
-                        ])
-                        new_cr.commit()  # Commit the search transaction
-                        break  # Success, exit retry loop
+                    messages = self.env['ghl.contact.message'].search([
+                        ('contact_id', '=', contact.id)
+                    ])
+                    break  # Success, exit retry loop
                 except Exception as search_error:
                     error_str = str(search_error)
                     if ("could not serialize access due to concurrent update" in error_str or 
@@ -353,16 +347,10 @@ class GHLLocationContact(models.Model):
             
             for attempt in range(max_retries):
                 try:
-                    # Use a fresh transaction for each retry attempt to avoid aborted transaction issues
-                    with self.env.registry.cursor() as new_cr:
-                        from odoo import api, SUPERUSER_ID
-                        new_env = api.Environment(new_cr, SUPERUSER_ID, {})
-                        
-                        last_message = new_env['ghl.contact.message'].search([
-                            ('contact_id', '=', contact.id)
-                        ], order='create_date desc', limit=1)
-                        new_cr.commit()  # Commit the search transaction
-                        break  # Success, exit retry loop
+                    last_message = self.env['ghl.contact.message'].search([
+                        ('contact_id', '=', contact.id)
+                    ], order='create_date desc', limit=1)
+                    break  # Success, exit retry loop
                 except Exception as search_error:
                     error_str = str(search_error)
                     if ("could not serialize access due to concurrent update" in error_str or 
@@ -398,16 +386,10 @@ class GHLLocationContact(models.Model):
             
             for attempt in range(max_retries):
                 try:
-                    # Use a fresh transaction for each retry attempt to avoid aborted transaction issues
-                    with self.env.registry.cursor() as new_cr:
-                        from odoo import api, SUPERUSER_ID
-                        new_env = api.Environment(new_cr, SUPERUSER_ID, {})
-                        
-                        last_message = new_env['ghl.contact.message'].search([
-                            ('contact_id', '=', contact.id)
-                        ], order='create_date desc', limit=1)
-                        new_cr.commit()  # Commit the search transaction
-                        break  # Success, exit retry loop
+                    last_message = self.env['ghl.contact.message'].search([
+                        ('contact_id', '=', contact.id)
+                    ], order='create_date desc', limit=1)
+                    break  # Success, exit retry loop
                 except Exception as search_error:
                     error_str = str(search_error)
                     if ("could not serialize access due to concurrent update" in error_str or 

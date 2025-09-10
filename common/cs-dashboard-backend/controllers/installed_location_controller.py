@@ -2778,93 +2778,66 @@ class InstalledLocationController(http.Controller):
         db_name = request.env.cr.dbname
         contact_ids = contacts.ids  # Capture IDs to avoid cursor issues
         
-        def sync_contacts_background():
-            # Create a new environment for background thread
-            from odoo import api, SUPERUSER_ID
-            from odoo.modules.registry import Registry
-            
-            # Use the captured database name
-            current_db_name = db_name
+        # Get location token for GHL API calls
+        from odoo.addons.web_scraper.models.ghl_api_utils import get_location_token
+        location_token = get_location_token(access_token, company_id, location_id)
 
-            # Create a new environment for the background thread
-            registry = Registry(current_db_name)
-            
-            # Get location token for GHL API calls (outside of transaction)
-            from odoo.addons.web_scraper.models.ghl_api_utils import get_location_token
-            location_token = get_location_token(access_token, company_id, location_id)
+        if not location_token:
+            _logger.error("Failed to get location token for GHL sync")
+            return Response(
+                json.dumps({'success': False, 'error': 'Failed to get location token'}),
+                content_type='application/json',
+                status=400,
+                headers=get_cors_headers(request)
+            )
 
-            if not location_token:
-                _logger.error("Failed to get location token for GHL sync")
-                return
+        success_count = 0
+        error_count = 0
 
-            success_count = 0
-            error_count = 0
+        # Process each contact synchronously with simple error handling
+        for contact in contacts:
+            try:
+                # Get the correct location ID for this contact
+                contact_location_id = contact.location_id.location_id if contact.location_id else location_id
 
-            # Process each contact in its own transaction to prevent cascading failures
-            for contact_id in contact_ids:
-                try:
-                    # Use individual transaction for each contact to prevent bulk UPDATE conflicts
-                    with registry.cursor() as cr:
-                        env = api.Environment(cr, SUPERUSER_ID, {})
-                        
-                        # Re-fetch the contact from database to get latest version
-                        contact = env['ghl.location.contact'].sudo().browse(contact_id)
-                        if not contact.exists():
-                            _logger.warning(f"Contact {contact_id} no longer exists, skipping")
-                            continue
-                        
-                        # Get the correct location ID for this contact
-                        contact_location_id = contact.location_id.location_id if contact.location_id else location_id
+                # Sync conversations and messages for this contact
+                conversation_result = request.env[
+                    'ghl.contact.conversation'].sudo().sync_conversations_for_contact_with_location_token(
+                    location_token, contact_location_id, contact.external_id
+                )
 
-                        # Sync conversations and messages for this contact
-                        conversation_result = env[
-                            'ghl.contact.conversation'].sudo().sync_conversations_for_contact_with_location_token(
-                            location_token, contact_location_id, contact.external_id
-                        )
-
-                        if conversation_result.get('success'):
-                            # Sync tasks for this contact
-                            try:
-                                env['ghl.contact.task'].sync_contact_tasks_from_ghl(
-                                    contact.id, access_token, location_id, company_id
-                                )
-                            except Exception as task_error:
-                                # Safely get contact name to avoid cursor issues
-                                try:
-                                    contact_name = contact.name if hasattr(contact, 'name') else f"Contact ID {contact.id}"
-                                except:
-                                    contact_name = f"Contact ID {contact.id}"
-                                _logger.error(f"Error syncing tasks for contact {contact_name}: {str(task_error)}")
-                            
-                            success_count += 1
-                            
-                        else:
-                            # Safely get contact name to avoid cursor issues
-                            try:
-                                contact_name = contact.name if hasattr(contact, 'name') else f"Contact ID {contact.id}"
-                            except:
-                                contact_name = f"Contact ID {contact.id}"
-                            _logger.error(f"Failed to sync conversations for contact {contact_name}: {conversation_result.get('message', 'Unknown error')}")
-                            error_count += 1
-                        
-                        # Commit the individual transaction
-                        cr.commit()
-                        
-                except Exception as contact_error:
-                    # Safely get contact name to avoid cursor issues
+                if conversation_result.get('success'):
+                    # Sync tasks for this contact
                     try:
-                        contact_name = f"Contact ID {contact_id}"
-                    except:
-                        contact_name = f"Contact ID {contact_id}"
-                    _logger.error(f"Error syncing contact {contact_name}: {str(contact_error)}")
+                        request.env['ghl.contact.task'].sync_contact_tasks_from_ghl(
+                            contact.id, access_token, location_id, company_id
+                        )
+                    except Exception as task_error:
+                        _logger.error(f"Error syncing tasks for contact {contact.name}: {str(task_error)}")
+                    
+                    success_count += 1
+                    
+                else:
+                    _logger.error(f"Failed to sync conversations for contact {contact.name}: {conversation_result.get('message', 'Unknown error')}")
                     error_count += 1
-                    continue
+                    
+            except Exception as contact_error:
+                _logger.error(f"Error syncing contact {contact.name}: {str(contact_error)}")
+                error_count += 1
+                continue
 
-            _logger.info(f"Background sync completed: {success_count} successful, {error_count} failed")
-
-        # Start background sync in a separate thread
-        sync_thread = threading.Thread(target=sync_contacts_background, daemon=True)
-        sync_thread.start()
+        _logger.info(f"Sync completed: {success_count} successful, {error_count} failed")
+        
+        return Response(
+            json.dumps({
+                'success': True,
+                'message': f'Sync completed: {success_count} successful, {error_count} failed',
+                'success_count': success_count,
+                'error_count': error_count
+            }),
+            content_type='application/json',
+            headers=get_cors_headers(request)
+        )
 
         pass
 
