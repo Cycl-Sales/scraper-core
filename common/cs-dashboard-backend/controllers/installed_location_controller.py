@@ -1260,6 +1260,7 @@ class InstalledLocationController(http.Controller):
         # _logger.info(f"[location-contacts] Found {len(contacts)} contacts for location_id={location_id}")  # Reduced logging for production
         if contacts:
             # _logger.info(f"[location-contacts] Contact external_ids: {[c.external_id for c in contacts]}")  # Reduced logging for production
+            pass  # No action needed when contacts exist
 
         contact_data = []
         for contact in contacts:
