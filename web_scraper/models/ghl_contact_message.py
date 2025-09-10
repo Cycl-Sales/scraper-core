@@ -369,7 +369,7 @@ class GhlContactMessage(models.Model):
                             
                             conversation_record = new_env['ghl.contact.conversation'].search([('ghl_id', '=', conversation_id)],
                                                                                               limit=1)
-                            new_cr.commit()  # Commit the search transaction
+                            # Don't commit search transactions, just use them for the search
                             break  # Success, exit retry loop
                     except Exception as search_error:
                         error_str = str(search_error)
@@ -399,7 +399,7 @@ class GhlContactMessage(models.Model):
                             new_env = api.Environment(new_cr, SUPERUSER_ID, {})
                             
                             user_record = new_env['ghl.location.user'].search([('external_id', '=', msg.get('userId'))], limit=1)
-                            new_cr.commit()  # Commit the search transaction
+                            # Don't commit search transactions, just use them for the search
                             break  # Success, exit retry loop
                     except Exception as user_search_error:
                         error_str = str(user_search_error)
@@ -444,7 +444,7 @@ class GhlContactMessage(models.Model):
                                         
                                         user_record = new_env['ghl.location.user'].search(
                                             [('external_id', '=', msg.get('userId'))], limit=1)
-                                        new_cr.commit()  # Commit the search transaction
+                                        # Don't commit search transactions, just use them for the search
                                         break  # Success, exit retry loop
                                 except Exception as retry_search_error:
                                     error_str = str(retry_search_error)
@@ -498,7 +498,7 @@ class GhlContactMessage(models.Model):
                             new_env = api.Environment(new_cr, SUPERUSER_ID, {})
                             
                             existing = new_env['ghl.contact.message'].sudo().search([('ghl_id', '=', ghl_id)], limit=1)
-                            new_cr.commit()  # Commit the search transaction
+                            # Don't commit search transactions, just use them for the search
                             break  # Success, exit retry loop
                     except Exception as msg_search_error:
                         error_str = str(msg_search_error)
@@ -546,7 +546,7 @@ class GhlContactMessage(models.Model):
                                             new_env = api.Environment(new_cr, SUPERUSER_ID, {})
                                             
                                             existing_msg = new_env['ghl.contact.message'].sudo().search([('ghl_id', '=', ghl_id)], limit=1)
-                                            new_cr.commit()  # Commit the search transaction
+                                            # Don't commit search transactions, just use them for the search
                                             break  # Success, exit retry loop
                                     except Exception as dup_search_error:
                                         error_str = str(dup_search_error)
