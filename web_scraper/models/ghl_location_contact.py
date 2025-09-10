@@ -234,11 +234,41 @@ class GHLLocationContact(models.Model):
 
     def _compute_touch_summary(self):
         """Compute touch summary based on message types"""
+        import logging
+        import time
+        _logger = logging.getLogger(__name__)
+        
         for contact in self:
-            # Get all messages for this contact
-            messages = self.env['ghl.contact.message'].search([
-                ('contact_id', '=', contact.id)
-            ])
+            # Get all messages for this contact with retry logic for serialization failures
+            messages = None
+            max_retries = 3
+            
+            for attempt in range(max_retries):
+                try:
+                    messages = self.env['ghl.contact.message'].search([
+                        ('contact_id', '=', contact.id)
+                    ])
+                    break  # Success, exit retry loop
+                except Exception as search_error:
+                    error_str = str(search_error)
+                    if ("could not serialize access due to concurrent update" in error_str or 
+                        "transaction is aborted" in error_str or
+                        "deadlock detected" in error_str) and attempt < max_retries - 1:
+                        
+                        # Wait with exponential backoff before retrying
+                        wait_time = (2 ** attempt) * 0.1  # 0.1s, 0.2s, 0.4s
+                        _logger.warning(f"Serialization failure for touch summary message search (contact {contact.id}), retrying in {wait_time}s (attempt {attempt + 1}/{max_retries})")
+                        time.sleep(wait_time)
+                        continue
+                    else:
+                        # If it's not a serialization error or we've exhausted retries, use fallback
+                        _logger.error(f"Touch summary message search failed after {attempt + 1} attempts: {error_str}")
+                        contact.touch_summary = 'error_loading'
+                        break
+
+            if messages is None:
+                contact.touch_summary = 'error_loading'
+                continue
 
             if not messages:
                 contact.touch_summary = 'no_touches'
@@ -306,11 +336,37 @@ class GHLLocationContact(models.Model):
 
     def _compute_last_touch_date(self):
         """Compute last touch date from most recent message"""
+        import logging
+        import time
+        _logger = logging.getLogger(__name__)
+        
         for contact in self:
-            # Get the most recent message for this contact
-            last_message = self.env['ghl.contact.message'].search([
-                ('contact_id', '=', contact.id)
-            ], order='create_date desc', limit=1)
+            # Get the most recent message for this contact with retry logic for serialization failures
+            last_message = None
+            max_retries = 3
+            
+            for attempt in range(max_retries):
+                try:
+                    last_message = self.env['ghl.contact.message'].search([
+                        ('contact_id', '=', contact.id)
+                    ], order='create_date desc', limit=1)
+                    break  # Success, exit retry loop
+                except Exception as search_error:
+                    error_str = str(search_error)
+                    if ("could not serialize access due to concurrent update" in error_str or 
+                        "transaction is aborted" in error_str or
+                        "deadlock detected" in error_str) and attempt < max_retries - 1:
+                        
+                        # Wait with exponential backoff before retrying
+                        wait_time = (2 ** attempt) * 0.1  # 0.1s, 0.2s, 0.4s
+                        _logger.warning(f"Serialization failure for last touch date message search (contact {contact.id}), retrying in {wait_time}s (attempt {attempt + 1}/{max_retries})")
+                        time.sleep(wait_time)
+                        continue
+                    else:
+                        # If it's not a serialization error or we've exhausted retries, use fallback
+                        _logger.error(f"Last touch date message search failed after {attempt + 1} attempts: {error_str}")
+                        contact.last_touch_date = False
+                        break
 
             if last_message and last_message.create_date:
                 contact.last_touch_date = last_message.create_date
@@ -319,11 +375,37 @@ class GHLLocationContact(models.Model):
 
     def _compute_last_message_content(self):
         """Compute last message content from most recent message"""
+        import logging
+        import time
+        _logger = logging.getLogger(__name__)
+        
         for contact in self:
-            # Get the most recent message for this contact
-            last_message = self.env['ghl.contact.message'].search([
-                ('contact_id', '=', contact.id)
-            ], order='create_date desc', limit=1)
+            # Get the most recent message for this contact with retry logic for serialization failures
+            last_message = None
+            max_retries = 3
+            
+            for attempt in range(max_retries):
+                try:
+                    last_message = self.env['ghl.contact.message'].search([
+                        ('contact_id', '=', contact.id)
+                    ], order='create_date desc', limit=1)
+                    break  # Success, exit retry loop
+                except Exception as search_error:
+                    error_str = str(search_error)
+                    if ("could not serialize access due to concurrent update" in error_str or 
+                        "transaction is aborted" in error_str or
+                        "deadlock detected" in error_str) and attempt < max_retries - 1:
+                        
+                        # Wait with exponential backoff before retrying
+                        wait_time = (2 ** attempt) * 0.1  # 0.1s, 0.2s, 0.4s
+                        _logger.warning(f"Serialization failure for last message content search (contact {contact.id}), retrying in {wait_time}s (attempt {attempt + 1}/{max_retries})")
+                        time.sleep(wait_time)
+                        continue
+                    else:
+                        # If it's not a serialization error or we've exhausted retries, use fallback
+                        _logger.error(f"Last message content search failed after {attempt + 1} attempts: {error_str}")
+                        contact.last_message = ''
+                        break
 
             if last_message and last_message.body:
                 # Store as JSON for consistency with existing pattern
@@ -341,9 +423,50 @@ class GHLLocationContact(models.Model):
 
     def update_touch_information(self):
         """Update touch summary, last touch date, and last message for this contact"""
-        self._compute_touch_summary()
-        self._compute_last_touch_date()
-        self._compute_last_message_content()
+        import logging
+        import time
+        from odoo import api, SUPERUSER_ID
+        _logger = logging.getLogger(__name__)
+        
+        max_retries = 3
+        
+        for attempt in range(max_retries):
+            try:
+                # Use a separate transaction for each contact update to prevent bulk UPDATE
+                with self.env.registry.cursor() as new_cr:
+                    new_env = api.Environment(new_cr, SUPERUSER_ID, {})
+                    
+                    # Re-fetch the contact from database to get latest version
+                    fresh_contact = new_env['ghl.location.contact'].sudo().browse(self.id)
+                    if not fresh_contact.exists():
+                        _logger.warning(f"Contact {self.id} no longer exists")
+                        return
+                    
+                    # Perform the update on the fresh record
+                    fresh_contact._compute_touch_summary()
+                    fresh_contact._compute_last_touch_date()
+                    fresh_contact._compute_last_message_content()
+                    
+                    # Commit the individual transaction
+                    new_cr.commit()
+                    
+                    return  # Success, exit retry loop
+                    
+            except Exception as e:
+                error_str = str(e)
+                if ("could not serialize access due to concurrent update" in error_str or 
+                    "transaction is aborted" in error_str or
+                    "deadlock detected" in error_str) and attempt < max_retries - 1:
+                    
+                    # Wait with exponential backoff before retrying
+                    wait_time = (2 ** attempt) * 0.1  # 0.1s, 0.2s, 0.4s
+                    _logger.warning(f"Serialization failure for contact touch update {self.id}, retrying in {wait_time}s (attempt {attempt + 1}/{max_retries})")
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    # If it's not a serialization error or we've exhausted retries, log and return
+                    _logger.error(f"Contact touch update failed after {attempt + 1} attempts: {error_str}")
+                    return
 
     @api.model
     def update_all_contacts_touch_information(self):
@@ -1800,11 +1923,26 @@ IMPORTANT: Return ONLY the JSON object. Do not wrap it in markdown code blocks (
             
             for attempt in range(max_retries):
                 try:
-                    old_status = contact.ai_status
-                    contact.update_ai_status_based_on_activity()
-                    if contact.ai_status != old_status:
-                        updated_count += 1
-                    break  # Success, exit retry loop
+                    # Use a separate transaction for each contact update to prevent bulk UPDATE
+                    with self.env.registry.cursor() as new_cr:
+                        from odoo import api, SUPERUSER_ID
+                        new_env = api.Environment(new_cr, SUPERUSER_ID, {})
+                        
+                        # Re-fetch the contact from database to get latest version
+                        fresh_contact = new_env['ghl.location.contact'].sudo().browse(contact.id)
+                        if not fresh_contact.exists():
+                            _logger.warning(f"Contact {contact.id} no longer exists")
+                            break
+                        
+                        old_status = fresh_contact.ai_status
+                        fresh_contact.update_ai_status_based_on_activity()
+                        
+                        # Commit the individual transaction
+                        new_cr.commit()
+                        
+                        if fresh_contact.ai_status != old_status:
+                            updated_count += 1
+                        break  # Success, exit retry loop
                     
                 except (psycopg2.errors.SerializationFailure, psycopg2.errors.DeadlockDetected) as db_error:
                     if attempt < max_retries - 1:
