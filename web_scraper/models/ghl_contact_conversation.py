@@ -371,14 +371,18 @@ class GhlContactConversation(models.Model):
                         'phone': conversation_data.get('phone', ''),
                     }
 
-                    if existing_conversation:
-                        # Update existing conversation
-                        existing_conversation.write(conversation_values)
-                        updated_count += 1
-                    else:
-                        # Create new conversation
-                        self.create(conversation_values)
-                        created_count += 1
+                    try:
+                        if existing_conversation:
+                            # Update existing conversation
+                            existing_conversation.write(conversation_values)
+                            updated_count += 1
+                        else:
+                            # Create new conversation
+                            self.create(conversation_values)
+                            created_count += 1
+                    except Exception as write_error:
+                        _logger.warning(f"Could not create/update conversation {conversation_data.get('id', 'unknown')}: {str(write_error)}")
+                        continue  # Skip this conversation and continue with the next one
 
                 except Exception as e:
                     error_msg = f"Error processing conversation {conversation_data.get('id', 'unknown')}: {str(e)}"
@@ -1012,11 +1016,15 @@ class GhlContactConversation(models.Model):
                 ('ghl_id', '=', vals['ghl_id']),
                 ('location_id', '=', installed_location.id)
             ], limit=1)
-            if conversation:
-                conversation.write(vals)
-            else:
-                conversation = self.sudo().create(vals)
-            return conversation
+            try:
+                if conversation:
+                    conversation.write(vals)
+                else:
+                    conversation = self.sudo().create(vals)
+                return conversation
+            except Exception as write_error:
+                _logger.warning(f"Could not create/update conversation {vals.get('ghl_id', 'unknown')}: {str(write_error)}")
+                return None
         except Exception as e:
             _logger.error(f"Error fetching single conversation: {e}")
             return None
