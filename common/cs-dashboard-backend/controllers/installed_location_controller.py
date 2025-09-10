@@ -2774,18 +2774,24 @@ class InstalledLocationController(http.Controller):
         from datetime import datetime
         
         try:
-            # Calculate offset for pagination
-            offset = (page - 1) * limit
-            
-            # Fetch contacts from GHL API with pagination
-            url = f"https://services.leadconnectorhq.com/contacts/?locationId={location_id}&limit={limit}&offset={offset}"
+            # Use the correct GHL API search endpoint with proper pagination
+            # Based on GHL API documentation: https://highlevel.stoplight.io/docs/integrations/dbe4f3a00a106-search-contacts
+            url = f"https://services.leadconnectorhq.com/contacts/search"
             headers = {
                 'Accept': 'application/json',
                 'Authorization': f'Bearer {location_token}',
                 'Version': '2021-07-28',
+                'Content-Type': 'application/json'
             }
             
-            response = requests.get(url, headers=headers, timeout=30)
+            # Prepare search payload with pagination
+            search_payload = {
+                "locationId": location_id,
+                "limit": limit,
+                "page": page
+            }
+            
+            response = requests.post(url, headers=headers, json=search_payload, timeout=30)
             
             if response.status_code == 200:
                 data = response.json()
