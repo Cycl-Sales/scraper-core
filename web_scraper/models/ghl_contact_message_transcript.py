@@ -305,9 +305,30 @@ class GhlContactMessageTranscript(models.Model):
 
                 # Update the message record to mark transcript fetch as attempted
                 # transcript_fetched will be computed automatically based on transcript_ids
-                message.write({
-                    'transcript_fetch_attempted': True
-                })
+                # Add retry logic to handle concurrent updates
+                max_retries = 3
+                for attempt in range(max_retries):
+                    try:
+                        message.write({
+                            'transcript_fetch_attempted': True
+                        })
+                        break  # Success, exit retry loop
+                    except Exception as write_error:
+                        error_str = str(write_error)
+                        if ("could not serialize access due to concurrent update" in error_str or 
+                            "transaction is aborted" in error_str or
+                            "deadlock detected" in error_str) and attempt < max_retries - 1:
+                            
+                            # Wait with exponential backoff before retrying
+                            import time
+                            wait_time = (2 ** attempt) * 0.1  # 0.1s, 0.2s, 0.4s
+                            _logger.warning(f"Serialization failure for message update {message_id}, retrying in {wait_time}s (attempt {attempt + 1}/{max_retries})")
+                            time.sleep(wait_time)
+                            continue
+                        else:
+                            # If it's not a serialization error or we've exhausted retries, log and continue
+                            _logger.error(f"Message update failed after {attempt + 1} attempts: {error_str}")
+                            break
 
                 # Get transcript summary for duration info
                 transcript_summary = self.get_transcript_summary()
@@ -330,10 +351,31 @@ class GhlContactMessageTranscript(models.Model):
                         # Mark the message as having no transcript available
                         message = self.env['ghl.contact.message'].sudo().browse(message_id)
                         if message.exists():
-                            message.write({
-                                'transcript_checked': True,
-                                'transcript_available': False
-                            })
+                            # Add retry logic to handle concurrent updates
+                            max_retries = 3
+                            for attempt in range(max_retries):
+                                try:
+                                    message.write({
+                                        'transcript_checked': True,
+                                        'transcript_available': False
+                                    })
+                                    break  # Success, exit retry loop
+                                except Exception as write_error:
+                                    error_str = str(write_error)
+                                    if ("could not serialize access due to concurrent update" in error_str or 
+                                        "transaction is aborted" in error_str or
+                                        "deadlock detected" in error_str) and attempt < max_retries - 1:
+                                        
+                                        # Wait with exponential backoff before retrying
+                                        import time
+                                        wait_time = (2 ** attempt) * 0.1  # 0.1s, 0.2s, 0.4s
+                                        _logger.warning(f"Serialization failure for message update {message_id}, retrying in {wait_time}s (attempt {attempt + 1}/{max_retries})")
+                                        time.sleep(wait_time)
+                                        continue
+                                    else:
+                                        # If it's not a serialization error or we've exhausted retries, log and continue
+                                        _logger.error(f"Message update failed after {attempt + 1} attempts: {error_str}")
+                                        break
                         _logger.info(f"Message {message_id} does not have a transcript available")
                         return {
                             'success': False,

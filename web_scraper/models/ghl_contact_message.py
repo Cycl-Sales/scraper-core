@@ -706,13 +706,34 @@ class GhlContactMessage(models.Model):
                 recording_data_b64 = base64.b64encode(response.content).decode('utf-8')
 
 
-                self.write({
-                    'recording_data': recording_data_b64,
-                    'recording_filename': filename,
-                    'recording_content_type': content_type,
-                    'recording_size': len(response.content)
-                    # recording_fetched will be computed automatically based on recording_data
-                })
+                # Add retry logic to handle concurrent updates
+                max_retries = 3
+                for attempt in range(max_retries):
+                    try:
+                        self.write({
+                            'recording_data': recording_data_b64,
+                            'recording_filename': filename,
+                            'recording_content_type': content_type,
+                            'recording_size': len(response.content)
+                            # recording_fetched will be computed automatically based on recording_data
+                        })
+                        break  # Success, exit retry loop
+                    except Exception as write_error:
+                        error_str = str(write_error)
+                        if ("could not serialize access due to concurrent update" in error_str or 
+                            "transaction is aborted" in error_str or
+                            "deadlock detected" in error_str) and attempt < max_retries - 1:
+                            
+                            # Wait with exponential backoff before retrying
+                            import time
+                            wait_time = (2 ** attempt) * 0.1  # 0.1s, 0.2s, 0.4s
+                            _logger.warning(f"Serialization failure for recording update {self.id}, retrying in {wait_time}s (attempt {attempt + 1}/{max_retries})")
+                            time.sleep(wait_time)
+                            continue
+                        else:
+                            # If it's not a serialization error or we've exhausted retries, log and continue
+                            _logger.error(f"Recording update failed after {attempt + 1} attempts: {error_str}")
+                            break
 
 
                 # Verify the data was saved correctly
