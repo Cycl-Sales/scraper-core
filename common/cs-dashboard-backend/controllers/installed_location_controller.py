@@ -3188,68 +3188,20 @@ class InstalledLocationController(http.Controller):
                     if assigned_user:
                         assigned_user_name = assigned_user.name or f"{assigned_user.first_name or ''} {assigned_user.last_name or ''}".strip()
 
-                # Only compute fresh data for contacts that are being synced in background
-                # This prevents concurrent database operations for all 100 contacts
-                if contact in limited_contacts:
-                    # Force fresh data computation from GHL API with error handling
-                    # These methods will now fetch fresh data from GHL API
-                    try:
-                        touch_summary = self._compute_touch_summary_for_contact(contact)
-                    except Exception as e:
-                        _logger.error(f"Error computing touch summary for contact {contact.id}: {str(e)}")
-                        touch_summary = contact.touch_summary or 'No activity'
-                    
-                    try:
-                        last_touch_date = self._compute_last_touch_date_for_contact(contact)
-                    except Exception as e:
-                        _logger.error(f"Error computing last touch date for contact {contact.id}: {str(e)}")
-                        last_touch_date = contact.last_touch_date
-                    
-                    try:
-                        last_message_data = self._compute_last_message_content_for_contact(contact)
-                    except Exception as e:
-                        _logger.error(f"Error computing last message content for contact {contact.id}: {str(e)}")
-                        last_message_data = contact.last_message or []
-                else:
-                    # Use existing data for contacts not being synced
-                    touch_summary = contact.touch_summary or 'No activity'
-                    last_touch_date = contact.last_touch_date
-                    last_message_data = contact.last_message or []
+                # Use existing data for all contacts (no background sync)
+                touch_summary = contact.touch_summary or 'No activity'
+                last_touch_date = contact.last_touch_date
+                last_message_data = contact.last_message or []
                 
-                # Only compute engagement summary for contacts being synced
-                if contact in limited_contacts:
-                    try:
-                        engagement_summary = self._compute_engagement_summary_for_contact(contact)
-                    except Exception as e:
-                        _logger.error(f"Error computing engagement summary for contact {contact.id}: {str(e)}")
-                        engagement_summary = []
-                else:
-                    # Use existing engagement summary for contacts not being synced
-                    engagement_summary = contact.engagement_summary or []
+                # Use existing engagement summary for all contacts
+                engagement_summary = contact.engagement_summary or []
                 
-                # Only compute speed to lead for contacts being synced
-                if contact in limited_contacts:
-                    try:
-                        speed_to_lead = self._compute_speed_to_lead_for_contact(contact)
-                    except Exception as e:
-                        _logger.error(f"Error computing speed to lead for contact {contact.id}: {str(e)}")
-                        speed_to_lead = 'Unknown'
-                else:
-                    # Use existing speed to lead for contacts not being synced
-                    speed_to_lead = 'Unknown'
+                # Use existing speed to lead for all contacts
+                speed_to_lead = 'Unknown'
 
-                # Get fresh counts from GHL API only for contacts being synced
-                if contact in limited_contacts:
-                    tasks_count = request.env['ghl.contact.task'].sudo().search_count([
-                        ('contact_id', '=', contact.id)
-                    ])
-                    conversations_count = request.env['ghl.contact.conversation'].sudo().search_count([
-                        ('contact_id', '=', contact.id)
-                    ])
-                else:
-                    # Use existing counts for contacts not being synced
-                    tasks_count = 0
-                    conversations_count = 0
+                # Use existing counts for all contacts (no background sync)
+                tasks_count = 0
+                conversations_count = 0
 
                 contact_info = {
                     'id': contact.id,
