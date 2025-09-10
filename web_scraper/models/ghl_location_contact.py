@@ -1153,7 +1153,11 @@ IMPORTANT: Return ONLY the JSON object. Do not wrap it in markdown code blocks (
         return super().create(vals)
 
     def write(self, vals):
-        """Override write to handle location_id relationship"""
+        """Override write to handle location_id relationship and serialization failures"""
+        import time
+        import logging
+        _logger = logging.getLogger(__name__)
+        
         # Handle location_id string conversion
         if isinstance(vals, dict) and isinstance(vals.get('location_id'), str):
             installed_location = self.env['installed.location'].search([
@@ -1165,7 +1169,144 @@ IMPORTANT: Return ONLY the JSON object. Do not wrap it in markdown code blocks (
                 # If no matching location found, raise error
                 raise ValueError(f"No installed location found for location_id: {vals['location_id']}")
 
-        return super().write(vals)
+        # Handle serialization failures with retry logic
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                return super().write(vals)
+            except Exception as e:
+                error_str = str(e)
+                if ("could not serialize access due to concurrent update" in error_str or 
+                    "transaction is aborted" in error_str or
+                    "deadlock detected" in error_str) and attempt < max_retries - 1:
+                    
+                    # Wait with exponential backoff before retrying
+                    wait_time = (2 ** attempt) * 0.1  # 0.1s, 0.2s, 0.4s
+                    _logger.warning(f"Serialization failure for contact write, retrying in {wait_time}s (attempt {attempt + 1}/{max_retries})")
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    # If it's not a serialization error or we've exhausted retries, re-raise
+                    _logger.error(f"Contact write failed after {attempt + 1} attempts: {error_str}")
+                    raise e
+        
+        return False
+
+    @api.model
+    def safe_bulk_write(self, records, vals, max_retries=3):
+        """
+        Safely perform bulk write operations with serialization failure handling.
+        
+        Args:
+            records: Recordset of contacts to update
+            vals: Dictionary of values to write
+            max_retries: Maximum number of retry attempts
+            
+        Returns:
+            dict: Results with success count and failed record IDs
+        """
+        import time
+        import logging
+        _logger = logging.getLogger(__name__)
+        
+        results = {
+            'success_count': 0,
+            'failed_ids': [],
+            'total_attempts': 0
+        }
+        
+        # Process records individually to avoid bulk UPDATE conflicts
+        for record in records:
+            for attempt in range(max_retries):
+                try:
+                    record.write(vals)
+                    results['success_count'] += 1
+                    break  # Success, move to next record
+                    
+                except Exception as e:
+                    error_str = str(e)
+                    results['total_attempts'] += 1
+                    
+                    if ("could not serialize access due to concurrent update" in error_str or 
+                        "transaction is aborted" in error_str or
+                        "deadlock detected" in error_str) and attempt < max_retries - 1:
+                        
+                        # Wait with exponential backoff before retrying
+                        wait_time = (2 ** attempt) * 0.1  # 0.1s, 0.2s, 0.4s
+                        _logger.warning(f"Serialization failure for contact {record.id}, retrying in {wait_time}s (attempt {attempt + 1}/{max_retries})")
+                        time.sleep(wait_time)
+                        continue
+                    else:
+                        _logger.error(f"Failed to update contact {record.id} after {attempt + 1} attempts: {error_str}")
+                        results['failed_ids'].append(record.id)
+                        break
+        
+        return results
+
+    @api.model
+    def _safe_update_with_retry(self, record_ids, vals, max_retries=3):
+        """
+        Safely update records with automatic retry on serialization failures.
+        This method processes records one by one to avoid bulk UPDATE conflicts.
+        
+        Args:
+            record_ids: List of record IDs to update
+            vals: Dictionary of values to write
+            max_retries: Maximum number of retry attempts
+            
+        Returns:
+            dict: Results with success count and failed record IDs
+        """
+        import time
+        import logging
+        _logger = logging.getLogger(__name__)
+        
+        results = {
+            'success_count': 0,
+            'failed_ids': [],
+            'total_attempts': 0
+        }
+        
+        for record_id in record_ids:
+            for attempt in range(max_retries):
+                try:
+                    # Use a separate transaction for each record
+                    with self.env.registry.cursor() as new_cr:
+                        new_env = api.Environment(new_cr, SUPERUSER_ID, {})
+                        
+                        # Get fresh record from database
+                        record = new_env[self._name].sudo().browse(record_id)
+                        if not record.exists():
+                            _logger.warning(f"Record {record_id} no longer exists, skipping")
+                            break
+                        
+                        # Perform the update
+                        record.write(vals)
+                        
+                        # Commit the individual transaction
+                        new_cr.commit()
+                        results['success_count'] += 1
+                        break  # Success, move to next record
+                        
+                except Exception as e:
+                    error_str = str(e)
+                    results['total_attempts'] += 1
+                    
+                    if ("could not serialize access due to concurrent update" in error_str or 
+                        "transaction is aborted" in error_str or
+                        "deadlock detected" in error_str) and attempt < max_retries - 1:
+                        
+                        # Wait with exponential backoff before retrying
+                        wait_time = (2 ** attempt) * 0.1  # 0.1s, 0.2s, 0.4s
+                        _logger.warning(f"Serialization failure for record {record_id}, retrying in {wait_time}s (attempt {attempt + 1}/{max_retries})")
+                        time.sleep(wait_time)
+                        continue
+                    else:
+                        _logger.error(f"Failed to update record {record_id} after {attempt + 1} attempts: {error_str}")
+                        results['failed_ids'].append(record_id)
+                        break
+        
+        return results
 
     def action_view_attributions(self):
         """Action to view contact attributions"""
