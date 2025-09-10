@@ -283,7 +283,7 @@ class GhlContactMessage(models.Model):
                 if last_message_id:
                     params['lastMessageId'] = last_message_id
 
-                _logger.info(f"Fetching messages for conversation {conversation_id} with params: {params}")
+                # _logger.info(f"Fetching messages for conversation {conversation_id} with params: {params}")  # Reduced logging for production
                 response = requests.get(base_url, headers=headers, params=params, timeout=30)
 
                 if response.status_code != 200:
@@ -297,10 +297,10 @@ class GhlContactMessage(models.Model):
                         'total_messages': 0,
                     }
 
-                _logger.info(f"Response status: {response.status_code}")
+                # _logger.info(f"Response status: {response.status_code}")  # Reduced logging for production
                 data = response.json()
-                _logger.info(
-                    f"Response data type: {type(data)}, keys: {list(data.keys()) if isinstance(data, dict) else 'Not a dict'}")
+                # _logger.info(
+                #     f"Response data type: {type(data)}, keys: {list(data.keys()) if isinstance(data, dict) else 'Not a dict'}")  # Reduced logging for production
 
                 # Handle nested messages structure
                 messages_container = data.get('messages', {})
@@ -314,9 +314,10 @@ class GhlContactMessage(models.Model):
                     next_page = data.get('nextPage', False)
                     last_message_id_from_response = None
 
-                _logger.info(f"Messages type: {type(messages)}, Found {len(messages)} messages")
+                # _logger.info(f"Messages type: {type(messages)}, Found {len(messages)} messages")  # Reduced logging for production
                 if messages:
-                    _logger.info(f"First message type: {type(messages[0])}, First message ID: {messages[0].get('id')}")
+                    # _logger.info(f"First message type: {type(messages[0])}, First message ID: {messages[0].get('id')}")  # Reduced logging for production
+                    pass
 
                 if not messages:
                     break
@@ -483,8 +484,8 @@ class GhlContactMessage(models.Model):
                 _logger.error(f"Error processing message {msg_id}: {str(e)}")
                 continue
 
-        _logger.info(
-            f"Returning result: created_count={created_count}, updated_count={updated_count}, total_messages={len(all_messages)}")
+        # _logger.info(
+        #     f"Returning result: created_count={created_count}, updated_count={updated_count}, total_messages={len(all_messages)}")  # Reduced logging for production
         result = {
             'success': True,
             'created_count': created_count,
@@ -1324,7 +1325,7 @@ def _update_message_with_retry(env, message, update_data, max_retries=3):
                 # Commit the individual transaction
                 new_cr.commit()
                 
-                _logger.info(f"Successfully updated message {message.id} on attempt {attempt + 1}")
+                # _logger.info(f"Successfully updated message {message.id} on attempt {attempt + 1}")  # Reduced logging for production
                 return True
             
         except Exception as e:

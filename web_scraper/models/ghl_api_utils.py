@@ -285,7 +285,7 @@ def get_location_token(app_access_token: str, company_id: str, location_id: str)
             token_json = response.json()
             location_token = token_json.get('access_token')
             if location_token:
-                _logger.info("Successfully obtained location token")
+                # _logger.info("Successfully obtained location token")  # Reduced logging for production
                 return location_token
             else:
                 _logger.error(f"No access_token in location token response: {token_json}")

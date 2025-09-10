@@ -2577,8 +2577,8 @@ class InstalledLocationController(http.Controller):
                                         limit=100  # Fetch more messages to get accurate counts
                                     )
                                     if message_result.get('success'):
-                                        _logger.info(
-                                            f"Successfully fetched fresh messages for conversation {conversation.ghl_id}")
+                                        # _logger.info(
+                                        #     f"Successfully fetched fresh messages for conversation {conversation.ghl_id}")  # Reduced logging for production
                                     else:
                                         _logger.warning(
                                             f"Failed to fetch fresh messages for conversation {conversation.ghl_id}: {message_result.get('error')}")
@@ -2599,15 +2599,15 @@ class InstalledLocationController(http.Controller):
             # Filter for OUTBOUND messages only (from our side)
             outbound_messages = messages.filtered(lambda m: m.direction == 'outbound')
 
-            _logger.info(
-                f"Touch summary: {len(messages)} total messages, {len(outbound_messages)} outbound messages for contact {contact.id}")
+            # _logger.info(
+            #     f"Touch summary: {len(messages)} total messages, {len(outbound_messages)} outbound messages for contact {contact.id}")  # Reduced logging for production
 
             # Count outbound messages by type
             message_counts = {}
             for message in outbound_messages:
                 message_type = message.message_type or 'UNKNOWN'
                 message_counts[message_type] = message_counts.get(message_type, 0) + 1
-                _logger.info(f"Outbound message type: {message_type}, count: {message_counts[message_type]}")
+                # _logger.info(f"Outbound message type: {message_type}, count: {message_counts[message_type]}")  # Reduced logging for production
 
             # Create touch summary string in the format expected by frontend: "3 SMS, 1 PHONE CALL"
             touch_parts = []
@@ -2617,7 +2617,7 @@ class InstalledLocationController(http.Controller):
                 touch_parts.append(f"{count} {type_name}")
 
             result = ', '.join(touch_parts) if touch_parts else 'no_touches'
-            _logger.info(f"Touch summary (outbound only) for contact {contact.id}: {result}")
+            # _logger.info(f"Touch summary (outbound only) for contact {contact.id}: {result}")  # Reduced logging for production
             return result
 
         except Exception as e:
@@ -2666,7 +2666,7 @@ class InstalledLocationController(http.Controller):
 
         try:
             # Always try to fetch fresh messages from GHL API first (same as touch summary)
-            _logger.info(f"Fetching fresh messages from GHL API for engagement summary - contact {contact.external_id}")
+            # _logger.info(f"Fetching fresh messages from GHL API for engagement summary - contact {contact.external_id}")  # Reduced logging for production
 
             # Get conversations for this contact
             conversations = request.env['ghl.contact.conversation'].sudo().search([

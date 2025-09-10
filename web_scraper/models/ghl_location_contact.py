@@ -1633,7 +1633,7 @@ IMPORTANT: Return ONLY the JSON object. Do not wrap it in markdown code blocks (
                 # Only update if status has changed
                 if new_ai_status != contact.ai_status:
                     contact.ai_status = new_ai_status
-                    _logger.info(f"Updated contact {contact.id} AI status from '{contact.ai_status}' to '{new_ai_status}' based on activity")
+                    # _logger.info(f"Updated contact {contact.id} AI status from '{contact.ai_status}' to '{new_ai_status}' based on activity")  # Reduced logging for production
                 
             except Exception as e:
                 _logger.error(f"Error updating AI status for contact {contact.id}: {str(e)}")
@@ -1768,7 +1768,7 @@ IMPORTANT: Return ONLY the JSON object. Do not wrap it in markdown code blocks (
                 # Also update AI status based on activity
                 self.update_ai_status_based_on_activity()
                 
-                _logger.info(f"Updated touch information and AI status for contact {self.id}")
+                # _logger.info(f"Updated touch information and AI status for contact {self.id}")  # Reduced logging for production
                 return  # Success, exit retry loop
                 
             except (psycopg2.errors.SerializationFailure, psycopg2.errors.DeadlockDetected) as db_error:
