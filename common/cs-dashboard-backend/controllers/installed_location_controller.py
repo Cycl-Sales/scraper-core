@@ -2579,6 +2579,7 @@ class InstalledLocationController(http.Controller):
                                     if message_result.get('success'):
                                         # _logger.info(
                                         #     f"Successfully fetched fresh messages for conversation {conversation.ghl_id}")  # Reduced logging for production
+                                        pass  # No action needed when messages are fetched successfully
                                     else:
                                         _logger.warning(
                                             f"Failed to fetch fresh messages for conversation {conversation.ghl_id}: {message_result.get('error')}")
