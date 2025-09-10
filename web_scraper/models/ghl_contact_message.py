@@ -498,10 +498,15 @@ class GhlContactMessage(models.Model):
                             break
                 if existing:
                     # Use retry mechanism for message updates to prevent serialization failures
-                    if _update_message_with_retry(self.env, existing, vals):
+                    update_result = _update_message_with_retry(self.env, existing, vals)
+                    if update_result == 'success':
                         updated_count += 1
                         message_rec = existing
-                    else:
+                    elif update_result == 'not_found':
+                        # Message no longer exists - this is normal, not an error
+                        _logger.info(f"Message {ghl_id} no longer exists, skipping update")
+                        continue
+                    else:  # update_result == 'failed'
                         _logger.error(f"Failed to update message {ghl_id} after retries")
                         continue
                 else:
@@ -1415,7 +1420,7 @@ def _update_message_with_retry(env, message, update_data, max_retries=3):
         max_retries: Maximum number of retry attempts (default: 3)
     
     Returns:
-        bool: True if update was successful, False otherwise
+        str: 'success' if update was successful, 'not_found' if message no longer exists, 'failed' if update failed
     """
     import time
     import logging
@@ -1432,7 +1437,7 @@ def _update_message_with_retry(env, message, update_data, max_retries=3):
                 fresh_message = new_env['ghl.contact.message'].sudo().browse(message.id)
                 if not fresh_message.exists():
                     _logger.warning(f"Message {message.id} no longer exists")
-                    return False
+                    return 'not_found'
                 
                 # Perform the update on the fresh record
                 fresh_message.write(update_data)
@@ -1440,7 +1445,7 @@ def _update_message_with_retry(env, message, update_data, max_retries=3):
                 # Commit the individual transaction
                 new_cr.commit()
                 
-                return True
+                return 'success'
             
         except Exception as e:
             error_str = str(e)
@@ -1455,6 +1460,6 @@ def _update_message_with_retry(env, message, update_data, max_retries=3):
                 continue
             else:
                 _logger.error(f"Failed to update message {message.id} after {attempt + 1} attempts: {error_str}")
-                return False
+                return 'failed'
     
-    return False
+    return 'failed'
