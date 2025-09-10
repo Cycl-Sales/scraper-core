@@ -115,7 +115,10 @@ export default function CallTranscriptDialog({ open, onOpenChange, callData, onD
   // Update local transcript and recording when callData changes and check for existing data
   useEffect(() => {
     setLocalTranscript(callData.transcript || []);
-    setLocalRecordingUrl(callData.recordingUrl || '');
+    // Ensure recording URL uses the correct base URL
+    const recordingUrl = callData.recordingUrl || '';
+    const fullRecordingUrl = recordingUrl.startsWith('http') ? recordingUrl : `${PROD_BASE_URL}${recordingUrl}`;
+    setLocalRecordingUrl(fullRecordingUrl);
     
     // Reset the fetch attempt flags when callData changes
     recordingFetchAttemptedRef.current = false;
@@ -388,7 +391,8 @@ export default function CallTranscriptDialog({ open, onOpenChange, callData, onD
 
       // If we already have a recording URL, no need to fetch
       if (callData.recordingUrl) {
-        setLocalRecordingUrl(callData.recordingUrl);
+        const fullRecordingUrl = callData.recordingUrl.startsWith('http') ? callData.recordingUrl : `${PROD_BASE_URL}${callData.recordingUrl}`;
+        setLocalRecordingUrl(fullRecordingUrl);
         return;
       }
 
@@ -434,8 +438,9 @@ export default function CallTranscriptDialog({ open, onOpenChange, callData, onD
       console.log('Recording API Response result:', result);
       
       if (result.success) {
-        // Update local recording state
-        setLocalRecordingUrl(result.recording_url);
+        // Update local recording state with full URL
+        const fullRecordingUrl = result.recording_url.startsWith('http') ? result.recording_url : `${PROD_BASE_URL}${result.recording_url}`;
+        setLocalRecordingUrl(fullRecordingUrl);
         alert(`Recording fetched successfully!`);
         
         // Trigger data refresh
