@@ -1978,45 +1978,25 @@ export default function AnalyticsContactsTable({ loading = false, locationId, se
                           const touchSummaryData = parseTouchSummary(row.touchSummary ?? '');
                           const isNoTouches = touchSummaryData.length === 1 && touchSummaryData[0].text === 'no_touches';
                           
-                          return <TableCell key={col} className="whitespace-nowrap px-3 py-2">
+                          return <TableCell key={col} className="px-3 py-2">
                             {isNoTouches ? (
                               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-slate-600 text-slate-400 font-medium tracking-tight h-7 text-[11px] bg-slate-800/50">
                                 <div className="w-1.5 h-1.5 rounded-full bg-slate-500"></div>
                                 No Activity
                               </span>
                             ) : (
-                              <Popover>
-                                <PopoverTrigger asChild>
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-blue-500/30 text-blue-300 font-medium tracking-tight h-7 text-[11px] bg-gradient-to-r from-blue-600/20 to-blue-700/20 hover:from-blue-600/30 hover:to-blue-700/30 hover:border-blue-400/50 transition-all duration-200"
+                              <div className="flex flex-wrap gap-1">
+                                {touchSummaryData.map((chip, index) => (
+                                  <span
+                                    key={index}
+                                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border ${chip.border} ${chip.textColor} font-medium tracking-tight h-7 text-[11px] bg-slate-800/30 transition-all duration-200`}
+                                    style={{ borderWidth: 1 }}
                                   >
-                                    <div className="w-1.5 h-1.5 rounded-full bg-blue-400"></div>
-                                    Activity
-                                  </Button>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-96 p-4 bg-slate-900/95 border border-slate-700/50 text-slate-200 backdrop-blur-sm shadow-xl">
-                                  <div className="space-y-3">
-                                    <div className="flex items-center gap-2 pb-2 border-b border-slate-700/50">
-                                      <div className="w-2 h-2 rounded-full bg-blue-400"></div>
-                                      <div className="font-semibold text-white">Touch Summary</div>
-                                    </div>
-                                    <div className="flex flex-wrap gap-1">
-                                      {touchSummaryData.map((chip, index) => (
-                                        <span
-                                          key={index}
-                                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border ${chip.border} ${chip.textColor} font-medium tracking-tight h-7 text-[11px] bg-slate-800/30 transition-all duration-200 hover:scale-105`}
-                                          style={{ borderWidth: 1 }}
-                                        >
-                                          <span className={chip.iconColor}>{chip.icon}</span>
-                                          {chip.text}
-                                        </span>
-                                      ))}
-                                    </div>
-                                  </div>
-                                </PopoverContent>
-                              </Popover>
+                                    <span className={chip.iconColor}>{chip.icon}</span>
+                                    {chip.text}
+                                  </span>
+                                ))}
+                              </div>
                             )}
                           </TableCell>;
                         case "Engagement Summary":
@@ -2035,36 +2015,16 @@ export default function AnalyticsContactsTable({ loading = false, locationId, se
                                 No Engagement
                               </span>
                             ) : (
-                              <Popover>
-                                <PopoverTrigger asChild>
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-emerald-500/30 text-emerald-300 font-medium tracking-tight h-7 text-[11px] bg-gradient-to-r from-emerald-600/20 to-green-700/20 hover:from-emerald-600/30 hover:to-green-700/30 hover:border-emerald-400/50 transition-all duration-200"
-                                  >
-                                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-400"></div>
-                                    Engagement
-                                  </Button>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-96 p-4 bg-slate-900/95 border border-slate-700/50 text-slate-200 backdrop-blur-sm shadow-xl">
-                                  <div className="space-y-3">
-                                    <div className="flex items-center gap-2 pb-2 border-b border-slate-700/50">
-                                      <div className="w-2 h-2 rounded-full bg-emerald-400"></div>
-                                      <div className="font-semibold text-white">Engagement Summary</div>
-                                    </div>
-                                    <div className="flex flex-wrap gap-1">
-                                      {Array.isArray(row.engagementSummary) && row.engagementSummary.length > 0
-                                        ? row.engagementSummary.map((e, idx) => (
-                                          <span key={idx} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border ${e.color || 'border-slate-500 text-slate-300'} font-medium tracking-tight h-7 text-[11px] bg-slate-800/30 transition-all duration-200 hover:scale-105`} style={{ borderWidth: 1 }}>
-                                            <span>{e.icon || '📄'}</span>
-                                            {e.type === "No Engagement" ? "No Engagement" : `${e.count}x ${formatEngagementType(e.type)}`}
-                                          </span>
-                                        ))
-                                        : <span className="text-slate-500 text-[11px]">No engagement data</span>}
-                                    </div>
-                                  </div>
-                                </PopoverContent>
-                              </Popover>
+                              <div className="flex flex-wrap gap-1">
+                                {Array.isArray(row.engagementSummary) && row.engagementSummary.length > 0
+                                  ? row.engagementSummary.map((e, idx) => (
+                                    <span key={idx} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border ${e.color || 'border-slate-500 text-slate-300'} font-medium tracking-tight h-7 text-[11px] bg-slate-800/30 transition-all duration-200`} style={{ borderWidth: 1 }}>
+                                      <span>{e.icon || '📄'}</span>
+                                      {e.type === "No Engagement" ? "No Engagement" : `${e.count}x ${formatEngagementType(e.type)}`}
+                                    </span>
+                                  ))
+                                  : <span className="text-slate-500 text-[11px]">No engagement data</span>}
+                              </div>
                             )}
                           </TableCell>;
                         case "Last Touch Date":
