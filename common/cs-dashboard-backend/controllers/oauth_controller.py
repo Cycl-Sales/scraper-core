@@ -21,7 +21,8 @@ class GHLOAuthController(http.Controller):
         This endpoint receives the authorization code from GHL after user installs the app
         """
         try:
-            # Parse query parameters
+            # Parse query parameters from the current request URL
+            parsed_url = urlparse(request.httprequest.url)
             query_params = parse_qs(parsed_url.query) if parsed_url.query else {} 
             
             # Try to parse JSON from request data
