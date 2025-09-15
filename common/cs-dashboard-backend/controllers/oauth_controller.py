@@ -136,7 +136,7 @@ class GHLOAuthController(http.Controller):
                     headers=get_cors_headers(request)
                 )
 
-            access_token, refresh_token = location_token_result
+            access_token, refresh_token = token_result
             if company_id and (not kwargs.get('locationId') and not state):
                 # Store the agency token
                 self._store_ghl_credentials(company_id, access_token, refresh_token, state, app_id)
