@@ -3,6 +3,9 @@ common/react-zillow/vite.config.ts
 common/react-zillow/dist/ 
 common/react-zillow/src/services/zillowService.ts
 
+# AI Call Analyzer
+common/ai-call-analyzer/
+
 # Python compiled files
 *.pyc
 __pycache__/
