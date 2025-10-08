@@ -1,9 +1,13 @@
 """
 CyclSales Dashboard API - Main Application Entry Point
 """
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from app.core.config import settings
+from app.core.security import SecurityHeaders
 from app.api.v1 import oauth, webhooks, locations, contacts
 
 # Initialize FastAPI app
@@ -11,18 +15,44 @@ app = FastAPI(
     title=settings.APP_NAME,
     version="2.0.0",
     description="Modern API for CyclSales Dashboard - GHL Integration & Analytics",
-    docs_url="/docs",
-    redoc_url="/redoc",
+    docs_url="/docs" if settings.DEBUG else None,  # Disable docs in production
+    redoc_url="/redoc" if settings.DEBUG else None,
 )
 
-# CORS Middleware
+
+# Security Headers Middleware
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        # Add security headers
+        for header, value in SecurityHeaders.get_headers().items():
+            if value:  # Only add non-empty headers
+                response.headers[header] = value
+        return response
+
+
+app.add_middleware(SecurityHeadersMiddleware)
+
+# CORS Middleware (configured restrictively)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
+    allow_origins=settings.CORS_ORIGINS,  # Only allow specific origins
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH"],  # Explicit methods only
     allow_headers=["*"],
+    max_age=3600,  # Cache preflight for 1 hour
 )
+
+# Gzip compression
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+# Trusted Host Middleware (prevents host header attacks)
+if not settings.DEBUG:
+    # In production, only allow requests to your actual domain
+    app.add_middleware(
+        TrustedHostMiddleware,
+        allowed_hosts=["*.railway.app", "*.cyclsales.com", "localhost"]
+    )
 
 # Include API routers
 app.include_router(oauth.router, prefix=f"{settings.API_V1_PREFIX}/oauth", tags=["OAuth"])

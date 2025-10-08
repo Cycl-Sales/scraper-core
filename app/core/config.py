@@ -48,6 +48,14 @@ class Settings(BaseSettings):
     CELERY_BROKER_URL: str = "redis://localhost:6379/1"
     CELERY_RESULT_BACKEND: str = "redis://localhost:6379/2"
 
+    # Security
+    ALLOWED_HOSTS: List[str] = ["*"]  # Set to specific domains in production
+    MAX_REQUEST_SIZE: int = 10 * 1024 * 1024  # 10 MB
+    RATE_LIMIT_PER_MINUTE: int = 100
+
+    # Webhook Security (optional)
+    GHL_WEBHOOK_SECRET: str = ""  # For webhook signature verification
+
     class Config:
         env_file = ".env"
         case_sensitive = True
