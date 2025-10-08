@@ -1,22 +1,24 @@
 """
 CyclSales Dashboard API - Main Application Entry Point
 """
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from app.core.config import settings
 from app.core.security import SecurityHeaders
-from app.api.v1 import oauth, webhooks, locations, contacts
+from app.api.v1 import oauth, webhooks, locations, contacts, auth
 
 # Initialize FastAPI app
 app = FastAPI(
     title=settings.APP_NAME,
     version="2.0.0",
     description="Modern API for CyclSales Dashboard - GHL Integration & Analytics",
-    docs_url="/docs" if settings.DEBUG else None,  # Disable docs in production
-    redoc_url="/redoc" if settings.DEBUG else None,
+    # Docs URLs - will add authentication below
+    docs_url=None,  # Disable default docs
+    redoc_url=None,  # Disable default redoc
+    openapi_url=None,  # Disable default OpenAPI
 )
 
 
@@ -55,6 +57,7 @@ if not settings.DEBUG:
     )
 
 # Include API routers
+app.include_router(auth.router, prefix=f"{settings.API_V1_PREFIX}/auth", tags=["Authentication"])
 app.include_router(oauth.router, prefix=f"{settings.API_V1_PREFIX}/oauth", tags=["OAuth"])
 app.include_router(webhooks.router, prefix=f"{settings.API_V1_PREFIX}/webhooks", tags=["Webhooks"])
 app.include_router(locations.router, prefix=f"{settings.API_V1_PREFIX}/locations", tags=["Locations"])
@@ -80,6 +83,37 @@ async def health_check():
         "database": "connected",  # TODO: Add actual DB check
         "redis": "connected",  # TODO: Add actual Redis check
     }
+
+
+# Secure API Documentation
+# Only accessible with admin credentials
+from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
+from fastapi.responses import JSONResponse
+from app.core.ip_filter import check_admin_ip
+
+
+@app.get("/openapi.json", include_in_schema=False)
+async def get_openapi(admin_ip: str = Depends(check_admin_ip)):
+    """Protected OpenAPI schema"""
+    return JSONResponse(app.openapi())
+
+
+@app.get("/docs", include_in_schema=False)
+async def get_documentation(admin_ip: str = Depends(check_admin_ip)):
+    """Protected Swagger UI documentation"""
+    return get_swagger_ui_html(
+        openapi_url="/openapi.json",
+        title=f"{settings.APP_NAME} - Documentation"
+    )
+
+
+@app.get("/redoc", include_in_schema=False)
+async def get_redoc(admin_ip: str = Depends(check_admin_ip)):
+    """Protected ReDoc documentation"""
+    return get_redoc_html(
+        openapi_url="/openapi.json",
+        title=f"{settings.APP_NAME} - Documentation"
+    )
 
 
 if __name__ == "__main__":

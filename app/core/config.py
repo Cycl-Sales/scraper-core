@@ -53,6 +53,9 @@ class Settings(BaseSettings):
     MAX_REQUEST_SIZE: int = 10 * 1024 * 1024  # 10 MB
     RATE_LIMIT_PER_MINUTE: int = 100
 
+    # IP Whitelisting
+    ADMIN_IPS: List[str] = ["127.0.0.1", "::1"]  # IPs allowed to access /docs, /admin
+
     # Webhook Security (optional)
     GHL_WEBHOOK_SECRET: str = ""  # For webhook signature verification
 
